@@ -9,3 +9,6 @@ dist/
 *.spec
 *.egg-info/
 .DS_Store
+AGENTS.md
+IMPLEMENTATION_PLAN.md
+IMPLEMENTATION_STATUS.md
