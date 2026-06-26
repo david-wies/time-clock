@@ -1,5 +1,6 @@
-__all__ = ["WorkType", "VacationType", "Weekday"]
+from enum import IntEnum, StrEnum
 
+__all__ = ["WorkType", "VacationType", "Weekday"]
 
 
 class WorkType(StrEnum):
@@ -15,8 +16,6 @@ class VacationType(StrEnum):
     UNPAID_LEAVE = "unpaid_leave"
     CARRY_OVER = "carry_over"
 
-
-__all__ = ["WorkType", "VacationType", "Weekday"]
 
 class Weekday(IntEnum):
     MON = 0
