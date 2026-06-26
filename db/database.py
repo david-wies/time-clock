@@ -4,6 +4,7 @@ import platform
 from pathlib import Path
 from typing import Optional, Any, Union
 
+
 def get_default_db_path() -> Path:
     """Returns the default DB path depending on OS."""
     if platform.system() == "Windows":
@@ -20,19 +21,22 @@ def get_default_db_path() -> Path:
             base_dir = Path(xdg_data) / "time-clock"
         else:
             base_dir = Path.home() / ".local" / "share" / "time-clock"
-            
+
     base_dir.mkdir(parents=True, exist_ok=True)
     return base_dir / "time_clock.db"
+
 
 class SharedConnectionWrapper:
     def __init__(self, conn: sqlite3.Connection) -> None:
         self.__dict__["_conn"] = conn
+        return
 
     def __getattr__(self, name: str) -> Any:
         return getattr(self._conn, name)
 
     def __setattr__(self, name: str, value: Any) -> None:
         setattr(self._conn, name, value)
+        return
 
     def close(self) -> None:
         # No-op to preserve in-memory DB lifetime
@@ -46,9 +50,11 @@ class SharedConnectionWrapper:
 
     def commit(self) -> None:
         self._conn.commit()
+        return
 
     def rollback(self) -> None:
         self._conn.rollback()
+        return
 
     def __enter__(self) -> "SharedConnectionWrapper":
         self._conn.__enter__()
@@ -56,6 +62,7 @@ class SharedConnectionWrapper:
 
     def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> Any:
         return self._conn.__exit__(exc_type, exc_val, exc_tb)
+
 
 class Database:
     def __init__(self, db_path: Optional[str] = None) -> None:
@@ -67,28 +74,28 @@ class Database:
             self.db_path = str(get_default_db_path())
         else:
             self.db_path = db_path
-            
+
         self._shared_conn: Optional[SharedConnectionWrapper] = None
         if self.db_path == ":memory:":
             raw_conn = sqlite3.connect(self.db_path)
             raw_conn.row_factory = sqlite3.Row
             raw_conn.execute("PRAGMA foreign_keys=ON;")
             self._shared_conn = SharedConnectionWrapper(raw_conn)
-            
+
         self._init_db()
+        return
 
     def get_connection(self) -> Union[sqlite3.Connection, SharedConnectionWrapper]:
         """Creates and configures a new SQLite connection or returns the shared one."""
         if self._shared_conn is not None:
             return self._shared_conn
-            
+
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
         # Enable WAL mode for concurrency, enable foreign keys
         conn.execute("PRAGMA journal_mode=WAL;")
         conn.execute("PRAGMA foreign_keys=ON;")
         return conn
-
 
     def _init_db(self) -> None:
         """Initializes tables and migrations."""
@@ -99,6 +106,7 @@ class Database:
                 self._apply_migrations(conn)
         finally:
             conn.close()
+        return
 
     def _create_tables(self, conn: sqlite3.Connection) -> None:
         """Creates tables if they do not exist."""
@@ -138,7 +146,8 @@ class Database:
                 updated_at    TEXT    NOT NULL DEFAULT (datetime('now'))
             );
         """)
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_time_record_date ON time_record(date);")
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_time_record_date ON time_record(date);")
 
         # 4. Vacation settings
         conn.execute("""
@@ -161,7 +170,8 @@ class Database:
                 updated_at  TEXT    NOT NULL DEFAULT (datetime('now'))
             );
         """)
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_vacation_record_date ON vacation_record(date);")
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_vacation_record_date ON vacation_record(date);")
 
         # 6. Sickness settings
         conn.execute("""
@@ -182,7 +192,8 @@ class Database:
                 updated_at  TEXT    NOT NULL DEFAULT (datetime('now'))
             );
         """)
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_sickness_record_date ON sickness_record(date);")
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_sickness_record_date ON sickness_record(date);")
 
         # 8. Carry-over log
         conn.execute("""
@@ -224,6 +235,7 @@ class Database:
                 UPDATE sickness_record SET updated_at = datetime('now') WHERE id = NEW.id;
             END;
         """)
+        return
 
     def _apply_migrations(self, conn: sqlite3.Connection) -> None:
         """Applies schema migrations using user_version."""
@@ -236,3 +248,4 @@ class Database:
         if version == 0:
             # Set to current schema version 1
             cursor.execute("PRAGMA user_version = 1;")
+        return

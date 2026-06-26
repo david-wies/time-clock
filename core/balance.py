@@ -3,24 +3,27 @@ from typing import Optional, Any, Union
 from domain.types import TimeRecord
 from core.timeutil import duration
 
+
 def get_daily_target(target_date: date, targets: dict[int, float], exceptions: dict[date, float]) -> float:
     """Returns the target hours for a specific date, checking exceptions first."""
     if target_date in exceptions:
         return exceptions[target_date]
     return targets.get(target_date.weekday(), 0.0)
 
+
 def get_record_duration(rec: TimeRecord, today: date, now_time: time) -> float:
     """Calculates duration of a record. If open and is today, computes elapsed time."""
     if rec.end_time is not None:
         return duration(rec.start_time, rec.end_time, rec.break_minutes)
-    
+
     # Open record
     if rec.date == today:
         # Compute elapsed time from start to now
         return duration(rec.start_time, now_time, rec.break_minutes)
-    
+
     # Open record on a past day (or future): treat as 0.0 until closed
     return 0.0
+
 
 def calculate_period_balance(
     records: list[TimeRecord],
@@ -49,25 +52,25 @@ def calculate_period_balance(
 
     total_worked = 0.0
     total_target = 0.0
-    
+
     # Iterate through every day in the range
     delta = end_date - start_date
     num_days = delta.days + 1
-    
+
     for i in range(num_days):
         current_date = start_date + timedelta(days=i)
-        
+
         # Add target
         target = get_daily_target(current_date, targets, exceptions)
         total_target += target
-        
+
         # Add worked
         day_records = records_by_date.get(current_date, [])
         for rec in day_records:
             total_worked += get_record_duration(rec, today, now_time)
 
     balance = total_worked - total_target
-    
+
     # Overtime rate only applies to positive balances (surplus)
     if balance > 0:
         weighted_overtime = balance * overtime_rate
@@ -82,12 +85,14 @@ def calculate_period_balance(
         "days_in_period": num_days
     }
 
+
 def get_week_range(target_date: date) -> tuple[date, date]:
     """Returns the (Monday, Sunday) date range of the week containing target_date."""
     # weekday() returns 0 for Mon, 6 for Sun
     start = target_date - timedelta(days=target_date.weekday())
     end = start + timedelta(days=6)
     return start, end
+
 
 def get_month_range(target_date: date) -> tuple[date, date]:
     """Returns the (1st, last day) date range of the month containing target_date."""
@@ -100,6 +105,7 @@ def get_month_range(target_date: date) -> tuple[date, date]:
         next_month = date(target_date.year, target_date.month + 1, 1)
         end = next_month - timedelta(days=1)
     return start, end
+
 
 def get_year_range(target_date: date) -> tuple[date, date]:
     """Returns the (Jan 1, Dec 31) date range of the year containing target_date."""

@@ -6,6 +6,7 @@ from models.vacation_model import VacationModel
 from core.events import EventBus
 from db.database import Database
 
+
 def test_vacation_record_crud(db: Database, event_bus: EventBus) -> None:
     model = VacationModel(db, event_bus)
 
@@ -31,7 +32,7 @@ def test_vacation_record_crud(db: Database, event_bus: EventBus) -> None:
     fetched.hours = 4.0
     fetched.vtype = VacationType.SPECIAL_LEAVE
     model.update_record(fetched)
-    
+
     updated = model.get_record_by_id(rec_id)
     assert updated.hours == 4.0
     assert updated.vtype == VacationType.SPECIAL_LEAVE
@@ -40,9 +41,10 @@ def test_vacation_record_crud(db: Database, event_bus: EventBus) -> None:
     model.delete_record(rec_id)
     assert model.get_record_by_id(rec_id) is None
 
+
 def test_vacation_settings(db: Database, event_bus: EventBus) -> None:
     model = VacationModel(db, event_bus)
-    
+
     model.save_settings(2026, 160.0, 40.0)
     settings = model.get_settings(2026)
     assert settings is not None
@@ -50,6 +52,7 @@ def test_vacation_settings(db: Database, event_bus: EventBus) -> None:
     assert settings["max_carry_over"] == 40.0
 
     assert model.get_settings(2025) is None
+
 
 def test_vacation_balance_and_carry_over(db: Database, event_bus: EventBus) -> None:
     model = VacationModel(db, event_bus)
@@ -62,8 +65,10 @@ def test_vacation_balance_and_carry_over(db: Database, event_bus: EventBus) -> N
 
     # 2. Add some used vacation in 2025
     # Total used in 2025: 140h (so 20h remaining)
-    r1 = VacationRecord(None, date(2025, 6, 1), 120.0, VacationType.ANNUAL_LEAVE)
-    r2 = VacationRecord(None, date(2025, 12, 25), 20.0, VacationType.PUBLIC_HOLIDAY)
+    r1 = VacationRecord(None, date(2025, 6, 1), 120.0,
+                        VacationType.ANNUAL_LEAVE)
+    r2 = VacationRecord(None, date(2025, 12, 25), 20.0,
+                        VacationType.PUBLIC_HOLIDAY)
     model.insert_record(r1)
     model.insert_record(r2)
 
@@ -82,7 +87,7 @@ def test_vacation_balance_and_carry_over(db: Database, event_bus: EventBus) -> N
 
     # 5. Check audit logs and summary
     assert model.get_already_transferred(2025, 2026) == 15.0
-    
+
     # 2026 summary should show 15h carry_over credit
     summary_2026 = model.calculate_vacation_summary(2026)
     assert summary_2026["allowance"] == 160.0

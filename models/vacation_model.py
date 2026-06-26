@@ -7,10 +7,12 @@ from core.events import EventBus, Event
 from core.timeutil import iso_to_date, date_to_iso
 from db.database import Database
 
+
 class VacationModel:
     def __init__(self, db: Database, bus: EventBus) -> None:
         self.db = db
         self.bus = bus
+        return
 
     def _row_to_record(self, row: sqlite3.Row) -> VacationRecord:
         return VacationRecord(
@@ -25,11 +27,13 @@ class VacationModel:
         conn = self.db.get_connection()
         try:
             cursor = conn.cursor()
-            cursor.execute("SELECT * FROM vacation_record WHERE id = ?;", (record_id,))
+            cursor.execute(
+                "SELECT * FROM vacation_record WHERE id = ?;", (record_id,))
             row = cursor.fetchone()
             return self._row_to_record(row) if row else None
         finally:
             conn.close()
+        return None
 
     def get_records_for_year(self, year: int, month: Optional[int] = None) -> list[VacationRecord]:
         conn = self.db.get_connection()
@@ -53,6 +57,7 @@ class VacationModel:
             return [self._row_to_record(row) for row in rows]
         finally:
             conn.close()
+        return []
 
     def insert_record(self, record: VacationRecord) -> int:
         conn = self.db.get_connection()
@@ -76,6 +81,7 @@ class VacationModel:
             return record_id
         finally:
             conn.close()
+        return -1
 
     def update_record(self, record: VacationRecord) -> None:
         if record.id is None:
@@ -100,15 +106,18 @@ class VacationModel:
             self.bus.publish(Event.VACATION_CHANGED)
         finally:
             conn.close()
+        return
 
     def delete_record(self, record_id: int) -> None:
         conn = self.db.get_connection()
         try:
             with conn:
-                conn.execute("DELETE FROM vacation_record WHERE id = ?;", (record_id,))
+                conn.execute(
+                    "DELETE FROM vacation_record WHERE id = ?;", (record_id,))
             self.bus.publish(Event.VACATION_CHANGED)
         finally:
             conn.close()
+        return
 
     # --- Vacation Settings Queries ---
 
@@ -116,7 +125,8 @@ class VacationModel:
         conn = self.db.get_connection()
         try:
             cursor = conn.cursor()
-            cursor.execute("SELECT hours_per_year, max_carry_over FROM vacation_settings WHERE year = ?;", (year,))
+            cursor.execute(
+                "SELECT hours_per_year, max_carry_over FROM vacation_settings WHERE year = ?;", (year,))
             row = cursor.fetchone()
             if row:
                 return {
@@ -126,6 +136,7 @@ class VacationModel:
             return None
         finally:
             conn.close()
+        return None
 
     def save_settings(self, year: int, hours_per_year: float, max_carry_over: float) -> None:
         conn = self.db.get_connection()
@@ -141,6 +152,7 @@ class VacationModel:
             self.bus.publish(Event.SETTINGS_CHANGED)
         finally:
             conn.close()
+        return
 
     # --- Carry-Over Calculations & Logging ---
 
@@ -149,11 +161,13 @@ class VacationModel:
         conn = self.db.get_connection()
         try:
             cursor = conn.cursor()
-            cursor.execute("SELECT id, from_year, to_year, hours, transferred_at FROM carry_over_log WHERE to_year = ?;", (to_year,))
+            cursor.execute(
+                "SELECT id, from_year, to_year, hours, transferred_at FROM carry_over_log WHERE to_year = ?;", (to_year,))
             rows = cursor.fetchall()
             return [dict(row) for row in rows]
         finally:
             conn.close()
+        return []
 
     def get_already_transferred(self, from_year: int, to_year: int) -> float:
         """Returns sum of hours already transferred from from_year to to_year."""
@@ -168,6 +182,7 @@ class VacationModel:
             return row["total"] if row and row["total"] is not None else 0.0
         finally:
             conn.close()
+        return 0.0
 
     def calculate_vacation_summary(self, year: int) -> dict[str, float]:
         """
@@ -180,7 +195,7 @@ class VacationModel:
         """
         settings = self.get_settings(year)
         allowance = settings["hours_per_year"] if settings else 0.0
-        
+
         conn = self.db.get_connection()
         try:
             cursor = conn.cursor()
@@ -231,7 +246,7 @@ class VacationModel:
         """
         prev_year = to_year - 1
         prev_summary = self.calculate_vacation_summary(prev_year)
-        
+
         surplus = prev_summary["remaining"]
         if surplus < 0:
             surplus = 0.0
@@ -244,7 +259,8 @@ class VacationModel:
         if available_surplus < 0:
             available_surplus = 0.0
 
-        allowed_transfer = min(max_carry_over - already_transferred, available_surplus)
+        allowed_transfer = min(
+            max_carry_over - already_transferred, available_surplus)
         if allowed_transfer < 0:
             allowed_transfer = 0.0
 
@@ -265,7 +281,7 @@ class VacationModel:
         """
         # Carry-over date is traditionally Jan 1st of destination year
         carry_date = f"{to_year:04d}-01-01"
-        
+
         conn = self.db.get_connection()
         try:
             with conn:
@@ -286,3 +302,4 @@ class VacationModel:
             self.bus.publish(Event.VACATION_CHANGED)
         finally:
             conn.close()
+        return

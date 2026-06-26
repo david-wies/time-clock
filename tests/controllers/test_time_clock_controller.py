@@ -8,10 +8,12 @@ from settings import SettingsManager
 from core.events import EventBus
 from db.database import Database
 
+
 @pytest.fixture
 def controller(db: Database, event_bus: EventBus, settings_manager: SettingsManager) -> TimeClockController:
     model = TimeClockModel(db, event_bus)
     return TimeClockController(model, settings_manager)
+
 
 def test_save_valid_record(controller: TimeClockController) -> None:
     rec = TimeRecord(
@@ -22,41 +24,51 @@ def test_save_valid_record(controller: TimeClockController) -> None:
         break_minutes=30,
         work_type=WorkType.REMOTE
     )
-    
+
     result = controller.save_record(rec)
     assert result.ok is True
     assert rec.id is not None
 
+
 def test_save_overlapping_record(controller: TimeClockController) -> None:
     # Save first record: 09:00 - 17:00
-    r1 = TimeRecord(None, date(2026, 6, 26), time(9, 0), time(17, 0), 30, WorkType.REMOTE)
+    r1 = TimeRecord(None, date(2026, 6, 26), time(
+        9, 0), time(17, 0), 30, WorkType.REMOTE)
     assert controller.save_record(r1).ok is True
 
     # Attempt overlap: 12:00 - 13:00
-    r2 = TimeRecord(None, date(2026, 6, 26), time(12, 0), time(13, 0), 0, WorkType.REMOTE)
+    r2 = TimeRecord(None, date(2026, 6, 26), time(
+        12, 0), time(13, 0), 0, WorkType.REMOTE)
     res = controller.save_record(r2)
     assert res.ok is False
     assert "overlaps" in res.errors[0]
 
+
 def test_save_break_exceeds_shift(controller: TimeClockController) -> None:
     # 09:00 - 10:00 (60 mins), break is 75 mins
-    rec = TimeRecord(None, date(2026, 6, 26), time(9, 0), time(10, 0), 75, WorkType.REMOTE)
+    rec = TimeRecord(None, date(2026, 6, 26), time(
+        9, 0), time(10, 0), 75, WorkType.REMOTE)
     res = controller.save_record(rec)
     assert res.ok is False
     assert "Break cannot exceed shift length" in res.errors[0]
 
+
 def test_save_in_site_no_office(controller: TimeClockController) -> None:
-    rec = TimeRecord(None, date(2026, 6, 26), time(9, 0), time(17, 0), 30, WorkType.IN_SITE, office=None)
+    rec = TimeRecord(None, date(2026, 6, 26), time(
+        9, 0), time(17, 0), 30, WorkType.IN_SITE, office=None)
     res = controller.save_record(rec)
     assert res.ok is False
     assert "select or enter an office" in res.errors[0]
 
+
 def test_save_note_too_long(controller: TimeClockController) -> None:
     long_note = "a" * 501
-    rec = TimeRecord(None, date(2026, 6, 26), time(9, 0), time(17, 0), 30, WorkType.REMOTE, note=long_note)
+    rec = TimeRecord(None, date(2026, 6, 26), time(9, 0), time(
+        17, 0), 30, WorkType.REMOTE, note=long_note)
     res = controller.save_record(rec)
     assert res.ok is False
     assert "Note is too long" in res.errors[0]
+
 
 def test_clock_in_out_flow(controller: TimeClockController) -> None:
     # Set default config
@@ -84,10 +96,13 @@ def test_clock_in_out_flow(controller: TimeClockController) -> None:
     # Verify no open records
     assert len(controller.model.get_open_records()) == 0
 
+
 def test_clock_out_multiple_open_records(controller: TimeClockController) -> None:
     # Insert two open records with different start times to avoid overlap validation
-    r1 = TimeRecord(None, date(2026, 6, 26), time(9, 0), None, 0, WorkType.REMOTE)
-    r2 = TimeRecord(None, date(2026, 6, 26), time(10, 0), None, 0, WorkType.ROAD)
+    r1 = TimeRecord(None, date(2026, 6, 26), time(
+        9, 0), None, 0, WorkType.REMOTE)
+    r2 = TimeRecord(None, date(2026, 6, 26), time(
+        10, 0), None, 0, WorkType.ROAD)
     controller.model.insert_record(r1)
     controller.model.insert_record(r2)
 
@@ -108,4 +123,3 @@ def test_clock_out_multiple_open_records(controller: TimeClockController) -> Non
 
     # Remaining open records should be 1
     assert len(controller.model.get_open_records()) == 1
-

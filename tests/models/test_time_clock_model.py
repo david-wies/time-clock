@@ -6,6 +6,7 @@ from models.time_clock_model import TimeClockModel
 from core.events import EventBus, Event
 from db.database import Database
 
+
 def test_time_record_crud(db: Database, event_bus: EventBus) -> None:
     model = TimeClockModel(db, event_bus)
 
@@ -20,14 +21,14 @@ def test_time_record_crud(db: Database, event_bus: EventBus) -> None:
         office=None,
         note="Test record"
     )
-    
+
     # Listen to changes
     change_called = False
+
     def on_change() -> None:
         nonlocal change_called
         change_called = True
     event_bus.subscribe(Event.TIME_RECORDS_CHANGED, on_change)
-
 
     rec_id = model.insert_record(rec)
     assert rec_id > 0
@@ -54,12 +55,16 @@ def test_time_record_crud(db: Database, event_bus: EventBus) -> None:
     model.delete_record(rec_id)
     assert model.get_record_by_id(rec_id) is None
 
+
 def test_get_records_for_period(db: Database, event_bus: EventBus) -> None:
     model = TimeClockModel(db, event_bus)
-    
-    r1 = TimeRecord(None, date(2026, 6, 1), time(9, 0), time(17, 0), 0, WorkType.REMOTE)
-    r2 = TimeRecord(None, date(2026, 6, 15), time(10, 0), None, 0, WorkType.REMOTE)  # Open record
-    r3 = TimeRecord(None, date(2026, 7, 1), time(9, 0), time(17, 0), 0, WorkType.REMOTE)
+
+    r1 = TimeRecord(None, date(2026, 6, 1), time(
+        9, 0), time(17, 0), 0, WorkType.REMOTE)
+    r2 = TimeRecord(None, date(2026, 6, 15), time(10, 0),
+                    None, 0, WorkType.REMOTE)  # Open record
+    r3 = TimeRecord(None, date(2026, 7, 1), time(
+        9, 0), time(17, 0), 0, WorkType.REMOTE)
 
     model.insert_record(r1)
     model.insert_record(r2)
@@ -77,13 +82,14 @@ def test_get_records_for_period(db: Database, event_bus: EventBus) -> None:
     assert len(open_records) == 1
     assert open_records[0].date == date(2026, 6, 15)
 
+
 def test_targets_and_exceptions(db: Database, event_bus: EventBus) -> None:
     model = TimeClockModel(db, event_bus)
 
     # Test targets save & fetch
     targets = {0: 8.0, 1: 8.0, 4: 6.0}
     model.save_work_day_targets(targets)
-    
+
     fetched_targets = model.get_work_day_targets()
     assert fetched_targets[0] == 8.0
     assert fetched_targets[4] == 6.0

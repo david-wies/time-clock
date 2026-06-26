@@ -1,3 +1,5 @@
+__all__ = ["TimeRecord", "VacationRecord", "SicknessRecord", "Result"]
+
 from dataclasses import dataclass
 from datetime import date, time
 from typing import Optional

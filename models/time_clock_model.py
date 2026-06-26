@@ -33,6 +33,7 @@ class TimeClockModel:
             return self._row_to_record(row) if row else None
         finally:
             conn.close()
+        return None
 
     def get_records_by_date(self, target_date: date) -> list[TimeRecord]:
         conn = self.db.get_connection()
@@ -46,6 +47,7 @@ class TimeClockModel:
             return [self._row_to_record(row) for row in rows]
         finally:
             conn.close()
+        return []
 
     def get_records_for_period(self, year: int, month: Optional[int] = None) -> list[TimeRecord]:
         """

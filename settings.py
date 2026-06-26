@@ -2,6 +2,7 @@ import json
 from typing import Any, Optional
 from db.database import Database
 
+
 class SettingsManager:
     # Default settings dict
     DEFAULTS = {
@@ -13,18 +14,21 @@ class SettingsManager:
         "overtime_period": "month",  # "week" | "month" | "year"
         "view_mode": "month",        # "week" | "month"
         "minimize_to_tray": False,
-        "last_country_holiday": "UnitedStates"  # Country/Region for holiday auto-import
+        # Country/Region for holiday auto-import
+        "last_country_holiday": "UnitedStates"
     }
 
     def __init__(self, db: Database) -> None:
         self.db = db
+        return
 
     def get(self, key: str) -> Any:
         """Retrieves a configuration value. Falls back to default if not set."""
         conn = self.db.get_connection()
         try:
             cursor = conn.cursor()
-            cursor.execute("SELECT value FROM app_config WHERE key = ?;", (key,))
+            cursor.execute(
+                "SELECT value FROM app_config WHERE key = ?;", (key,))
             row = cursor.fetchone()
             if row:
                 return json.loads(row["value"])
@@ -48,3 +52,4 @@ class SettingsManager:
                 )
         finally:
             conn.close()
+        return

@@ -2,6 +2,7 @@ import pytest
 from datetime import date, time
 from core.timeutil import duration, str_to_time, time_to_str, date_to_iso, iso_to_date
 
+
 @pytest.mark.parametrize("start,end,brk,expected", [
     ("09:00", "17:00", 30, 7.5),   # normal day
     ("08:30", "12:00", 0,  3.5),   # no break
@@ -12,9 +13,11 @@ from core.timeutil import duration, str_to_time, time_to_str, date_to_iso, iso_t
 def test_duration(start, end, brk, expected) -> None:
     assert duration(start, end, brk) == pytest.approx(expected)
 
+
 def test_break_exceeds_shift_is_negative() -> None:
     # 09:00 to 10:00 is 1 hour (60 min). Break is 90 mins (1.5h). Net is -0.5h.
     assert duration("09:00", "10:00", 90) < 0
+
 
 def test_time_conversions() -> None:
     assert time_to_str(time(9, 30)) == "09:30"
@@ -23,6 +26,7 @@ def test_time_conversions() -> None:
 
     with pytest.raises(ValueError):
         str_to_time("invalid-time")
+
 
 def test_date_conversions() -> None:
     d = date(2026, 6, 26)
