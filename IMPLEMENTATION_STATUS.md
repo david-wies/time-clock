@@ -6,20 +6,20 @@ This dashboard tracks the development progress of the Time Clock Application. It
 
 | Phase | Description | Tasks Completed | Status | Progress |
 | :--- | :--- | :---: | :---: | :--- |
-| **Phase 1** | Project Setup & Core Foundation | `6 / 6` | 🟢 Completed | `[████████████████████] 100%` |
+| **Phase 1** | Project Setup & Core Foundation | `5 / 7` | 🟡 In Progress | `[██████████████░░░░░░] 71%` |
 | **Phase 2** | Domain Logic, Models, Controllers & Tests | `5 / 5` | 🟢 Completed | `[████████████████████] 100%` |
 | **Phase 3** | GUI Framework, Theme & Main Shell | `4 / 4` | 🟢 Completed | `[████████████████████] 100%` |
 | **Phase 4** | Time Clock Tab | `0 / 5` | 🔴 Planned | `[░░░░░░░░░░░░░░░░░░░░] 0%` |
 | **Phase 5** | Absence Tracking (Vacation & Sickness) | `0 / 5` | 🔴 Planned | `[░░░░░░░░░░░░░░░░░░░░] 0%` |
 | **Phase 6** | Global Settings, Import/Export & Reports | `0 / 4` | 🔴 Planned | `[░░░░░░░░░░░░░░░░░░░░] 0%` |
 | **Phase 7** | System Tray & Integration Polish | `0 / 3` | 🔴 Planned | `[░░░░░░░░░░░░░░░░░░░░] 0%` |
-| **Total** | **All Phases** | **`15 / 32`** | 🟡 **In Progress** | **`[█████████░░░░░░░░░░░] 47%`** |
+| **Total** | **All Phases** | **`14 / 33`** | 🟡 **In Progress** | **`[████████░░░░░░░░░░░░] 42%`** |
 
 ---
 
 ## 🛠 Detailed Task Status
 
-### Phase 1: Project Setup & Core Foundation
+### Phase 1: Project Setup & Core Foundation *(6/7)*
 
 - [x] **1.1. Directory Structure Setup**
   - **Files**: `requirements.txt`, project directory skeleton
@@ -38,8 +38,8 @@ This dashboard tracks the development progress of the Time Clock Application. It
 
 - [x] **1.4. Date & Time Utilities**
   - **Files**: [timeutil.py](file:///home/david/VS%20Code%20Projects/Time%20Clock/core/timeutil.py)
-  - **Status**: 🟢 Completed
-  - **Notes**: ISO conversions, timezone-naive wall-clock duration arithmetic, overnight shifts, DST warning unit test.
+  - **Status**: 🟡 Needs Update
+  - **Notes**: ISO conversions, timezone-naive wall-clock duration arithmetic, overnight shifts, DST warning unit test. **Needs**: add `to_display_date(d) -> str` returning `dd/mm/yyyy` for all UI-facing date display.
 
 - [x] **1.5. Database Schema & Connection**
   - **Files**: [database.py](file:///home/david/VS%20Code%20Projects/Time%20Clock/db/database.py)
@@ -50,6 +50,11 @@ This dashboard tracks the development progress of the Time Clock Application. It
   - **Files**: [settings.py](file:///home/david/VS%20Code%20Projects/Time%20Clock/settings.py)
   - **Status**: 🟢 Completed
   - **Notes**: Persists key-value settings via JSON serialization in database `app_config` table.
+
+- [ ] **1.7. Hebrew Calendar Utility**
+  - **Files**: `core/hebrew_date.py`
+  - **Status**: 🔴 Not Started
+  - **Notes**: Optional `hdate` dep. Single function `to_hebrew_label(d) -> str | None`. Returns `None` when `hdate` not installed — all callers hide the column/label silently.
 
 ---
 
@@ -116,7 +121,7 @@ This dashboard tracks the development progress of the Time Clock Application. It
 - [ ] **4.2. Treeview Grouped List**
   - **Files**: in [time_clock_tab.py](file:///home/david/VS%20Code%20Projects/Time%20Clock/views/time_clock_tab.py)
   - **Status**: 🔴 Not Started
-  - **Notes**: Grouping logic, custom tags for active states, double-click handler.
+  - **Notes**: Grouping logic, custom tags for active states, double-click handler. Day headers show Hebrew date suffix when `hdate` available.
 
 - [ ] **4.3. Record Form Dialog**
   - **Files**: [time_record_dialog.py](file:///home/david/VS%20Code%20Projects/Time%20Clock/views/time_record_dialog.py)
@@ -140,7 +145,7 @@ This dashboard tracks the development progress of the Time Clock Application. It
 - [ ] **5.1. Vacation Tab UI**
   - **Files**: [vacation_tab.py](file:///home/david/VS%20Code%20Projects/Time%20Clock/views/vacation_tab.py)
   - **Status**: 🔴 Not Started
-  - **Notes**: Display annual limits, used quotas, and record lists.
+  - **Notes**: Display annual limits, used quotas, and record lists. Includes optional "Hebrew Date" column next to "Date" column.
 
 - [ ] **5.2. Vacation Add/Edit Form**
   - **Files**: [vacation_record_dialog.py](file:///home/david/VS%20Code%20Projects/Time%20Clock/views/vacation_record_dialog.py)
@@ -155,7 +160,7 @@ This dashboard tracks the development progress of the Time Clock Application. It
 - [ ] **5.4. Sickness Tab UI**
   - **Files**: [sickness_tab.py](file:///home/david/VS%20Code%20Projects/Time%20Clock/views/sickness_tab.py)
   - **Status**: 🔴 Not Started
-  - **Notes**: Displays allowances, sick days used/remaining, and records list.
+  - **Notes**: Displays allowances, sick days used/remaining, and records list. Includes optional "Hebrew Date" column next to "Date" column.
 
 - [ ] **5.5. Sickness Add/Edit Form & Conversion**
   - **Files**: [sick_record_dialog.py](file:///home/david/VS%20Code%20Projects/Time%20Clock/views/sick_record_dialog.py)
@@ -174,12 +179,12 @@ This dashboard tracks the development progress of the Time Clock Application. It
 - [ ] **6.2. Public Holidays Auto-Import**
   - **Files**: in [settings_dialog.py](file:///home/david/VS%20Code%20Projects/Time%20Clock/views/settings_dialog.py)
   - **Status**: 🔴 Not Started
-  - **Notes**: country selection, holiday list fetch, unique insertion logic.
+  - **Notes**: Country/region selector (default blank/none), holiday list fetch, unique insertion logic. `IL` country code covers Jewish/Israeli holidays via `holidays` library.
 
 - [ ] **6.3. Raw Data Export**
   - **Files**: [export_dialog.py](file:///home/david/VS%20Code%20Projects/Time%20Clock/views/export_dialog.py)
   - **Status**: 🔴 Not Started
-  - **Notes**: Generates CSV reports (always available) and Excel reports (optional).
+  - **Notes**: Generates CSV reports (always available) and Excel reports (optional). Optional "Include Hebrew Date column" checkbox (hidden when `hdate` unavailable).
 
 - [ ] **6.4. PDF Reports**
   - **Files**: [report_dialog.py](file:///home/david/VS%20Code%20Projects/Time%20Clock/views/report_dialog.py), [report.py](file:///home/david/VS%20Code%20Projects/Time%20Clock/core/report.py)

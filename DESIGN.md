@@ -251,7 +251,7 @@ Stored as computed value on read — not persisted. DB stores raw start/end/brea
 
 ```
 ┌──────────────────────────────────────────────────────────┐
-│ Today: 2026-06-26  |  Target: 8.0h  |  Remaining: 3.5h  │
+│ Today: 26/06/2026  |  Target: 8.0h  |  Remaining: 3.5h  │
 ├──────────────────────────────────────────────────────────┤
 │ ┌─ Year: [2026 ▼]  Month: [June ▼] ──────────────────┐  │
 │ │                                                     │  │
@@ -289,13 +289,14 @@ Two prominent one-click buttons above the record list:
 - Primary sort: `date DESC`
 - Within each day, sort by `start_time ASC`
 - Grouped by month with collapsible headers
-- Within each month, grouped by day with day header showing daily subtotal: `── Monday, June 1 (7.5h) ──`
+- Within each month, grouped by day with day header showing daily subtotal and Hebrew date: `── Monday, June 1 / י"ז סיוון תשפ"ו (7.5h) ──`
 - Each row: `start-end | break | type + office | note | net_duration`
 - Open records (no end_time): yellow background, "in progress" label, duration shows elapsed so far
 - Month footer: total hours for that month
 - Selected row highlighted
 - Double-click any row → opens edit dialog for that record
 - Each workday can have multiple records (contiguous blocks with breaks) — no break field within a single record needed since break is per-record
+- Hebrew date display depends on `hdate` library (optional dep; see §21.7). If absent, Hebrew date portion of day header is omitted silently.
 
 ### 5.4 Daily Target Calculation
 
@@ -315,7 +316,7 @@ Two prominent one-click buttons above the record list:
 
 ```
 ┌─ Time Record ───────────────────────────────────────────┐
-│ Date:  [2026-06-26 [📅▼]]    ← DateEntry with dropdown  │
+│ Date:  [26/06/2026 [📅▼]]    ← DateEntry with dropdown  │
 │ Start: [09:00]   End: [17:00]                           │
 │ Break: [00:30] (HH:MM, unpaid) → Net duration: 7.5h    │
 │ Type:  ○ In Site  ○ Road  ○ Remote                      │
@@ -373,31 +374,34 @@ If `end_time < start_time` (e.g., 22:00 → 06:00):
 ### 6.2 Layout
 
 ```
-┌──────────────────────────────────────────────────────────┐
-│ Year: [2026 ▼]  Month: [All ▼]                         │
-│ Vacation: 120.0h / 170.0h available  |  Remaining: 50.0h │
-│ (annual: 104.0h, holiday: 16.0h, carry_over: +10.0h)     │
-├──────────────────────────────────────────────────────────┤
-│ ┌────────────────────────────────────────────────────┐  │
-│ │  2026-01-01  carry_over  10.0h  Carry-over 2025    │  │
-│ │  2026-01-05  annual_leave 8.0h  Ski trip           │  │
-│ │  2026-04-10  public_holiday 8.0h  Easter           │  │
-│ │  2026-05-12  unpaid_leave 8.0h  Personal matters   │  │
-│ │  2026-07-15  annual_leave 8.0h  Summer vacation    │  │
-│ │  ─────────────────────────────────────             │  │
-│ │  Total debits: 24.0h (14% of available pool)      │  │
-│ └────────────────────────────────────────────────────┘  │
-│                                                          │
-│ [+ Add Record]  [✏ Edit Record]  [🗑 Remove Record]     │
-│ [+ Add Carry-Over Hours]                                 │
-└──────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────┐
+│ Year: [2026 ▼]  Month: [All ▼]                                      │
+│ Vacation: 120.0h / 170.0h available  |  Remaining: 50.0h            │
+│ (annual: 104.0h, holiday: 16.0h, carry_over: +10.0h)                │
+├──────────────────────────────────────────────────────────────────────┤
+│ ┌──────────────────────────────────────────────────────────────────┐ │
+│ │  Date        Hebrew Date      Type          Hours  Note          │ │
+│ │  01/01/2026  א׳ טבת תשפ"ו   carry_over    10.0h  Carry-over 25 │ │
+│ │  05/01/2026  ה׳ טבת תשפ"ו   annual_leave   8.0h  Ski trip      │ │
+│ │  10/04/2026  י"ב ניסן תשפ"ו public_holiday 8.0h  Easter        │ │
+│ │  12/05/2026  י"ד אייר תשפ"ו unpaid_leave   8.0h  Personal      │ │
+│ │  15/07/2026  כ"א תמוז תשפ"ו annual_leave   8.0h  Summer vac.  │ │
+│ │  ──────────────────────────────────────────────────────────────  │ │
+│ │  Total debits: 24.0h (14% of available pool)                    │ │
+│ └──────────────────────────────────────────────────────────────────┘ │
+│                                                                      │
+│ [+ Add Record]  [✏ Edit Record]  [🗑 Remove Record]                 │
+│ [+ Add Carry-Over Hours]                                             │
+└──────────────────────────────────────────────────────────────────────┘
 ```
+
+- Hebrew Date column populated by `core/hebrew_date.py` (see §21.7). Column hidden if `hdate` unavailable.
 
 ### 6.3 Add/Edit Vacation Record Dialog
 
 ```
 ┌─ Vacation Record ───────────────────────────────────────────────────────────┐
-│ Date:  [2026-07-15 [📅▼]]  ← DateEntry with dropdown                        │
+│ Date:  [15/07/2026 [📅▼]]  ← DateEntry with dropdown                        │
 │ Hours: [8.0]                                                                │
 │ Type:  ○ Annual Leave  ○ Public Holiday  ○ Special Leave                     │
 │        ○ Unpaid Leave  ○ Carry-over                                         │
@@ -442,21 +446,24 @@ If `end_time < start_time` (e.g., 22:00 → 06:00):
 ### 7.1 Layout
 
 ```
-┌──────────────────────────────────────────────────────────┐
-│ Year: [2026 ▼]  Month: [June ▼]                        │
-│ Sick days: 2.5 / 10.0 used  |  Remaining: 7.5 days     │
-├──────────────────────────────────────────────────────────┤
-│ ┌────────────────────────────────────────────────────┐  │
-│ │  2026-02-15  8.0h  Flu                            │  │
-│ │  2026-03-10  4.0h  Dentist appointment            │  │
-│ │  2026-05-22  8.0h  Stomach bug                    │  │
-│ │  ─────────────────────────────────────             │  │
-│ │  Total: 20.0h (2.5 days)                          │  │
-│ └────────────────────────────────────────────────────┘  │
-│                                                          │
-│ [+ Add Record]  [✏ Edit Record]  [🗑 Remove Record]     │
-└──────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────┐
+│ Year: [2026 ▼]  Month: [June ▼]                                    │
+│ Sick days: 2.5 / 10.0 used  |  Remaining: 7.5 days                │
+├─────────────────────────────────────────────────────────────────────┤
+│ ┌───────────────────────────────────────────────────────────────┐  │
+│ │  Date        Hebrew Date       Hours  Note                    │  │
+│ │  15/02/2026  כ"ז שבט תשפ"ו   8.0h   Flu                    │  │
+│ │  10/03/2026  י' אדר תשפ"ו    4.0h   Dentist appointment     │  │
+│ │  22/05/2026  כ"ד אייר תשפ"ו  8.0h   Stomach bug             │  │
+│ │  ───────────────────────────────────────────────────────────  │  │
+│ │  Total: 20.0h (2.5 days)                                     │  │
+│ └───────────────────────────────────────────────────────────────┘  │
+│                                                                     │
+│ [+ Add Record]  [✏ Edit Record]  [🗑 Remove Record]                │
+└─────────────────────────────────────────────────────────────────────┘
 ```
+
+- Hebrew Date column populated by `core/hebrew_date.py` (see §21.7). Column hidden if `hdate` unavailable.
 
 - Hours-to-days conversion: `days = hours / daily_target` (average), or display both
 - Grouped by month with collapsible headers, same pattern as Time Clock
@@ -465,7 +472,7 @@ If `end_time < start_time` (e.g., 22:00 → 06:00):
 
 ```
 ┌─ Sick Record ───────────────────────────────────────┐
-│ Date:  [2026-02-15 [📅▼]]                            │
+│ Date:  [15/02/2026 [📅▼]]                            │
 │ Hours: [8.0]                                         │
 │ Note:  [Flu ___________________________________]    │
 │                                                      │
@@ -511,9 +518,9 @@ If `end_time < start_time` (e.g., 22:00 → 06:00):
 │ ┌─ Date Exceptions ────────────────────────────────┐  │
 │ │  Override target for specific dates:              │  │
 │ │  ┌──────────────────────┐                         │  │
-│ │  │ 2025-12-24  4.0h  Christmas Eve  │  [+ Add]   │  │
-│ │  │ 2025-12-25  0.0h  Christmas Day  │  [× Remove] │  │
-│ │  │ 2026-01-01  0.0h  New Year       │  [✏ Edit]   │  │
+│ │  │ 24/12/2025  4.0h  Christmas Eve  │  [+ Add]   │  │
+│ │  │ 25/12/2025  0.0h  Christmas Day  │  [× Remove] │  │
+│ │  │ 01/01/2026  0.0h  New Year       │  [✏ Edit]   │  │
 │ │  └──────────────────────┘                         │  │
 │ └──────────────────────────────────────────────────┘  │
 │ ┌─ Vacation ──────────────────────────────────────┐  │
@@ -539,7 +546,7 @@ If `end_time < start_time` (e.g., 22:00 → 06:00):
 
 ```
 ┌──────────────────┐
-│ 2026-06-26 [📅▼] │  ← DateEntry with dropdown calendar
+│ 26/06/2026 [📅▼] │  ← DateEntry with dropdown calendar
 └──────────────────┘
 ```
 
@@ -769,7 +776,7 @@ time-clock/
 
 ```
 ┌─ Export Time Records ──────────────────────────────┐
-│ Date range: [2026-01-01 [📅▼]] to [2026-06-26 [📅▼]] │
+│ Date range: [01/01/2026 [📅▼]] to [26/06/2026 [📅▼]] │
 │                                                     │
 │ Include: ☑ Group by month  ☑ Summary row           │
 │          ☐ Only working days  ☐ Omit notes          │
@@ -913,6 +920,7 @@ Centralizes every "what time is it / how long was that" decision so it is testab
 
 - `now_hm() -> str` returns `datetime.now().strftime("%H:%M")` (local). Used by clock-in/out.
 - All `start_time`/`end_time` are naive local wall-clock; the app is single-user single-timezone. UTC is reserved for `created_at`/`updated_at` audit columns only.
+- **Display date format**: all Gregorian dates shown to the user use `dd/mm/yyyy` (e.g., `26/06/2026`). Storage in DB and internal Python `date` objects remain ISO 8601 (`YYYY-MM-DD`). Conversion lives in `core/timeutil.py` as `to_display_date(d: date) -> str` (returns `d.strftime("%d/%m/%Y")`). No view or model formats dates directly.
 
 ### 18.2 Duration & overnight (DST-aware)
 
@@ -1040,11 +1048,13 @@ The following were originally deferred but are now in scope for v1.
 
 ### 21.1 Public Holidays Auto-Import
 
-- Settings → Time Clock gains a **Country/Region** selector and an **"Import holidays for year"** button.
+- Settings → Time Clock gains a **Country/Region** selector (default: none) and an **"Import holidays for year"** button.
 - Uses the `holidays` library (optional dep; button disabled with hint if missing) to enumerate public holidays for the chosen region + year.
 - Each holiday becomes a `work_day_exception` row with `hours = 0` and `label = <holiday name>` — reusing the existing exception mechanism (§3, §5.4). No new table.
 - Conflict handling: respects `UNIQUE(date)` — existing exception on a date is **kept**, import skips it and reports "N added, M skipped (already set)".
 - Holidays therefore flow automatically into the daily-target logic (0h target ⇒ "Day off") and into the sickness day-equivalent rules.
+- **Jewish/Israeli holidays**: when country is set to `IL` (Israel) or `JewishHolidays` locale is selected, the `holidays` library's Israel support is used. This includes Rosh Hashana, Yom Kippur, Sukkot, Passover, Shavuot, Independence Day, etc. These are imported as `work_day_exception` rows exactly like any other country's holidays.
+- Country/Region is **optional** — app functions fully without it. Selector defaults to blank ("None"); no import is attempted until a region is chosen.
 
 ### 21.2 Reports (PDF summary)
 
@@ -1085,6 +1095,31 @@ The following were originally deferred but are now in scope for v1.
 - **Week view**: 7-day strip (Mon–Sun) for the selected week with prev/next-week nav; each day shows its records + daily subtotal and target delta; week footer shows the §18.3 weekly running balance.
 - Both views share the same `ttk.Treeview` and tag styling (§16.4); the toggle swaps the grouping/query, not the widget.
 - Week navigation reuses Year/Month filter state; selecting a day in week view scrolls month view to it and vice-versa.
+
+### 21.7 Hebrew Calendar Date Display
+
+Entirely optional — app functions identically without it.
+
+- **Dependency**: `hdate` (PyPI: `hdate`). If not installed, all Hebrew date columns/labels are silently hidden; no warning shown.
+- **Conversion utility**: `core/hebrew_date.py` — single function `to_hebrew_label(d: date) -> str | None` that returns a formatted Hebrew date string (e.g., `"י"ז סיוון תשפ"ו"`) or `None` if `hdate` is unavailable.
+- **Display locations**:
+  - Time Clock grouped list day headers: `── Monday, June 1 / י"ז סיוון תשפ"ו (7.5h) ──`
+  - Vacation list: "Hebrew Date" column next to "Date" column
+  - Sickness list: "Hebrew Date" column next to "Date" column
+  - Export: optional "Hebrew Date" column in CSV/Excel/PDF (checkbox in export dialog, hidden if dep missing)
+- **Column width**: fixed monospace-aligned column; uses the same `Consolas` font as time columns (§16.3).
+- **Settings toggle**: Settings → General → "Show Hebrew dates" checkbox (default: on when `hdate` is installed, irrelevant when absent). Stored in `app_config`.
+- **No schema change**: Hebrew dates are always computed on the fly from the stored Gregorian ISO date. Never persisted.
+
+```python
+# core/hebrew_date.py
+def to_hebrew_label(d: date) -> str | None:
+    try:
+        from hdate import HDate
+        return str(HDate(d))
+    except ImportError:
+        return None
+```
 
 ## 22. Future Considerations (non-goal for v1)
 

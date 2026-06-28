@@ -1,6 +1,7 @@
 tkcalendar>=1.6.1
 sv-ttk>=2.6.0
 holidays>=0.40
+hdate>=0.10.0
 reportlab>=4.1.0
 pystray>=0.19.5
 Pillow>=10.2.0
