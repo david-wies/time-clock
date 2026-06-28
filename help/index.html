@@ -1,127 +1,435 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Time Clock — Help</title>
-<style>
-body { font-family: 'Segoe UI', Helvetica, Arial, sans-serif; margin: 0; display: flex; color: #1A1A1A; background: #FAFAFA; }
-nav#toc { width: 240px; min-width: 240px; background: #FFFFFF; border-right: 1px solid #E5E7EB; padding: 16px; height: 100vh; overflow-y: auto; position: sticky; top: 0; }
-nav#toc h2 { font-size: 14px; margin: 0 0 8px; color: #6B7280; text-transform: uppercase; letter-spacing: 0.5px; }
-nav#toc ul { list-style: none; padding: 0; margin: 0; }
-nav#toc li { margin: 4px 0; }
-nav#toc a { text-decoration: none; color: #2563EB; font-size: 13px; display: block; padding: 4px 8px; border-radius: 4px; }
-nav#toc a:hover { background: #EFF6FF; }
-#search { margin-bottom: 12px; width: 100%; padding: 6px 8px; border: 1px solid #D1D5DB; border-radius: 4px; font-size: 13px; }
-main { flex: 1; padding: 24px 40px; max-width: 720px; }
-h1 { font-size: 24px; margin: 0 0 16px; }
-h2 { font-size: 18px; margin: 24px 0 8px; border-bottom: 1px solid #E5E7EB; padding-bottom: 4px; }
-h3 { font-size: 15px; margin: 16px 0 4px; }
-p, li { font-size: 13px; line-height: 1.6; color: #4B5563; }
-kbd { background: #F3F4F6; border: 1px solid #D1D5DB; border-radius: 3px; padding: 1px 5px; font-size: 12px; font-family: monospace; }
-table { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: 13px; }
-th, td { border: 1px solid #E5E7EB; padding: 6px 10px; text-align: left; }
-th { background: #F9FAFB; font-weight: 600; }
-footer { margin-top: 32px; font-size: 11px; color: #9CA3AF; }
-@media (prefers-color-scheme: dark) {
-  body { background: #1E1E1E; color: #E0E0E0; }
-  nav#toc { background: #2D2D2D; border-color: #374151; }
-  nav#toc a { color: #3B82F6; }
-  nav#toc a:hover { background: #1E3A5F; }
-  #search { background: #374151; border-color: #4B5563; color: #E0E0E0; }
-  th { background: #374151; }
-  td, th { border-color: #374151; }
-  p, li { color: #9CA3AF; }
-}
-</style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Time Clock — Help</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Helvetica, Arial, sans-serif;
+      margin: 0;
+      display: flex;
+      color: #111827;
+      background: #FAFAFA;
+    }
+
+    nav#toc {
+      width: 240px;
+      min-width: 240px;
+      background: #FFFFFF;
+      border-right: 1px solid #D1D5DB;
+      padding: 16px;
+      height: 100vh;
+      overflow-y: auto;
+      position: sticky;
+      top: 0;
+    }
+
+    nav#toc h2 {
+      font-size: 14px;
+      margin: 0 0 8px;
+      color: #6B7280;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    nav#toc ul {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+
+    nav#toc li {
+      margin: 4px 0;
+    }
+
+    nav#toc a {
+      text-decoration: none;
+      color: #1D4ED8;
+      font-size: 13px;
+      display: block;
+      padding: 4px 8px;
+      border-radius: 4px;
+    }
+
+    nav#toc a:hover {
+      background: #EFF6FF;
+    }
+
+    #search {
+      margin-bottom: 12px;
+      width: 100%;
+      padding: 6px 8px;
+      border: 1px solid #D1D5DB;
+      border-radius: 4px;
+      font-size: 13px;
+      color: #111827;
+      background: #FFFFFF;
+    }
+
+    main {
+      flex: 1;
+      padding: 24px 40px;
+      max-width: 720px;
+    }
+
+    h1 {
+      font-size: 24px;
+      margin: 0 0 16px;
+      color: #111827;
+    }
+
+    h2 {
+      font-size: 18px;
+      margin: 24px 0 8px;
+      border-bottom: 2px solid #D1D5DB;
+      padding-bottom: 4px;
+      color: #111827;
+    }
+
+    h3 {
+      font-size: 15px;
+      margin: 16px 0 4px;
+      color: #1F2937;
+    }
+
+    p,
+    li {
+      font-size: 13px;
+      line-height: 1.6;
+      color: #374151;
+    }
+
+    kbd {
+      background: #E5E7EB;
+      border: 1px solid #9CA3AF;
+      border-bottom-width: 2px;
+      border-radius: 4px;
+      padding: 1px 6px;
+      font-size: 12px;
+      font-family: monospace;
+      color: #111827;
+    }
+
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      margin: 12px 0;
+      font-size: 13px;
+    }
+
+    th,
+    td {
+      border: 1px solid #D1D5DB;
+      padding: 6px 10px;
+      text-align: left;
+    }
+
+    th {
+      background: #E5E7EB;
+      font-weight: 600;
+      color: #111827;
+    }
+
+    td {
+      color: #374151;
+    }
+
+    #searchModeLabel {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      color: #6B7280;
+      margin-top: 6px;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    #searchModeLabel input[type=checkbox] {
+      cursor: pointer;
+      accent-color: #1D4ED8;
+    }
+
+    .search-highlight {
+      background: #FEF08A;
+      border-radius: 2px;
+      color: #111827;
+    }
+
+    footer {
+      margin-top: 32px;
+      font-size: 11px;
+      color: #9CA3AF;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      body {
+        background: #1E1E1E;
+        color: #E0E0E0;
+      }
+
+      nav#toc {
+        background: #2D2D2D;
+        border-color: #4B5563;
+      }
+
+      nav#toc a {
+        color: #60A5FA;
+      }
+
+      nav#toc a:hover {
+        background: #1E3A5F;
+      }
+
+      #search {
+        background: #374151;
+        border-color: #4B5563;
+        color: #E0E0E0;
+      }
+
+      h1,
+      h2,
+      h3 {
+        color: #F9FAFB;
+      }
+
+      th {
+        background: #374151;
+        color: #F9FAFB;
+      }
+
+      td {
+        color: #D1D5DB;
+      }
+
+      td,
+      th {
+        border-color: #4B5563;
+      }
+
+      p,
+      li {
+        color: #9CA3AF;
+      }
+
+      kbd {
+        background: #374151;
+        border-color: #6B7280;
+        color: #F3F4F6;
+      }
+
+      #searchModeLabel {
+        color: #9CA3AF;
+      }
+
+      .search-highlight {
+        background: #854D0E;
+        color: #FEF9C3;
+      }
+    }
+  </style>
 </head>
+
 <body>
-<nav id="toc">
-<h2>Contents</h2>
-<input id="search" type="text" placeholder="Search..." oninput="filterToc(this.value)">
-<ul id="tocList">
-<li><a href="#getting-started">Getting Started</a></li>
-<li><a href="#time-clock">Time Clock</a></li>
-<li><a href="#vacation">Vacation</a></li>
-<li><a href="#sickness">Sickness</a></li>
-<li><a href="#settings">Settings</a></li>
-<li><a href="#export">Export</a></li>
-<li><a href="#shortcuts">Keyboard Shortcuts</a></li>
-<li><a href="#faq">FAQ</a></li>
-</ul>
-</nav>
-<main>
-<h1>Time Clock Help</h1>
+  <nav id="toc">
+    <h2>Contents</h2>
+    <input id="search" type="text" placeholder="Search..." oninput="onSearch(this.value)">
+    <label id="searchModeLabel">
+      <input type="checkbox" id="searchContent" onchange="onSearch(document.getElementById('search').value)">
+      Search in content
+    </label>
+    <ul id="tocList">
+      <li><a href="#getting-started">Getting Started</a></li>
+      <li><a href="#time-clock">Time Clock</a></li>
+      <li><a href="#vacation">Vacation</a></li>
+      <li><a href="#sickness">Sickness</a></li>
+      <li><a href="#settings">Settings</a></li>
+      <li><a href="#export">Export</a></li>
+      <li><a href="#shortcuts">Keyboard Shortcuts</a></li>
+      <li><a href="#faq">FAQ</a></li>
+    </ul>
+  </nav>
+  <main>
+    <h1>Time Clock Help</h1>
 
-<section id="getting-started">
-<h2>Getting Started</h2>
-<p>On first launch, set your daily work targets in <strong>Settings → Time Clock</strong>. Then use the <strong>Time Clock</strong> tab to clock in/out and track your hours. Vacation and Sickness tabs are pre-configured with defaults but can be adjusted in Settings.</p>
-</section>
+    <section id="getting-started">
+      <h2>Getting Started</h2>
+      <p>On first launch, set your daily work targets in <strong>Settings → Time Clock</strong>. Then use the
+        <strong>Time Clock</strong> tab to clock in/out and track your hours. Vacation and Sickness tabs are
+        pre-configured with defaults but can be adjusted in Settings.</p>
+    </section>
 
-<section id="time-clock">
-<h2>Time Clock</h2>
-<p>The Time Clock tab shows a grouped view of your work records by month and day. Use <strong>▶ Clock In</strong> to start tracking and <strong>■ Clock Out</strong> to stop. Add manual records via <strong>+ Add Record</strong>. Double-click any record to edit. The header shows today's target, worked hours, and remaining balance.</p>
-<h3>Overnight Shifts</h3>
-<p>If end time is before start time (e.g. 22:00 → 06:00), the app treats it as an overnight shift. Duration is computed as <code>(24:00 - start) + end - break</code>. A warning is shown when saving.</p>
-</section>
+    <section id="time-clock">
+      <h2>Time Clock</h2>
+      <p>The Time Clock tab shows a grouped view of your work records by month and day. Use <strong>▶ Clock In</strong>
+        to start tracking and <strong>■ Clock Out</strong> to stop. Add manual records via <strong>+ Add
+          Record</strong>. Double-click any record to edit. The header shows today's target, worked hours, and remaining
+        balance.</p>
+      <h3>Overnight Shifts</h3>
+      <p>If end time is before start time (e.g. 22:00 → 06:00), the app treats it as an overnight shift. Duration is
+        computed as <code>(24:00 - start) + end - break</code>. A warning is shown when saving.</p>
+    </section>
 
-<section id="vacation">
-<h2>Vacation</h2>
-<p>Track annual leave, public holidays, special leave, unpaid leave, and carry-over hours. The pool is calculated as allowance + carry-over credits minus used debits (annual, holiday, special). Carry-over from previous years is capped by your settings.</p>
-</section>
+    <section id="vacation">
+      <h2>Vacation</h2>
+      <p>Track annual leave, public holidays, special leave, unpaid leave, and carry-over hours. The pool is calculated
+        as allowance + carry-over credits minus used debits (annual, holiday, special). Carry-over from previous years
+        is capped by your settings.</p>
+    </section>
 
-<section id="sickness">
-<h2>Sickness</h2>
-<p>Sick days are tracked in hours and converted to day-equivalents based on your daily target. Weekend sick days are capped at 1.0 day. Sick days reset each year.</p>
-</section>
+    <section id="sickness">
+      <h2>Sickness</h2>
+      <p>Sick days are tracked in hours and converted to day-equivalents based on your daily target. Weekend sick days
+        are capped at 1.0 day. Sick days reset each year.</p>
+    </section>
 
-<section id="settings">
-<h2>Settings</h2>
-<p>Access via <strong>Settings → Settings</strong> or <kbd>Ctrl+S</kbd>. Configure daily work targets per day-of-week, date-specific exceptions, office list, vacation allowance and carry-over cap, and sickness days per year.</p>
-</section>
+    <section id="settings">
+      <h2>Settings</h2>
+      <p>Access via <strong>Settings → Settings</strong> or <kbd>Ctrl+S</kbd>. Configure daily work targets per
+        day-of-week, date-specific exceptions, office list, vacation allowance and carry-over cap, and sickness days per
+        year.</p>
+    </section>
 
-<section id="export">
-<h2>Export</h2>
-<p>Use <strong>File → Export</strong> to export records per tab. CSV is always available. Excel and PDF require optional dependencies.</p>
-</section>
+    <section id="export">
+      <h2>Export</h2>
+      <p>Use <strong>File → Export</strong> to export records per tab. CSV is always available. Excel and PDF require
+        optional dependencies.</p>
+    </section>
 
-<section id="shortcuts">
-<h2>Keyboard Shortcuts</h2>
-<table>
-<tr><th>Shortcut</th><th>Action</th><th>Scope</th></tr>
-<tr><td><kbd>Ctrl+N</kbd></td><td>New time record</td><td>Time Clock tab</td></tr>
-<tr><td><kbd>Ctrl+Shift+N</kbd></td><td>New vacation record</td><td>Vacation tab</td></tr>
-<tr><td><kbd>Ctrl+Shift+S</kbd></td><td>New sick record</td><td>Sickness tab</td></tr>
-<tr><td><kbd>Ctrl+E</kbd></td><td>Edit selected record</td><td>All tabs</td></tr>
-<tr><td><kbd>Delete</kbd></td><td>Remove selected record</td><td>All tabs</td></tr>
-<tr><td><kbd>Ctrl+D</kbd></td><td>Clock out</td><td>Time Clock tab</td></tr>
-<tr><td><kbd>Ctrl+S</kbd></td><td>Open settings</td><td>Global</td></tr>
-<tr><td><kbd>F5</kbd></td><td>Refresh data</td><td>All tabs</td></tr>
-<tr><td><kbd>F1</kbd></td><td>Open help</td><td>Global</td></tr>
-</table>
-</section>
+    <section id="shortcuts">
+      <h2>Keyboard Shortcuts</h2>
+      <table>
+        <tr>
+          <th>Shortcut</th>
+          <th>Action</th>
+          <th>Scope</th>
+        </tr>
+        <tr>
+          <td><kbd>Ctrl+N</kbd></td>
+          <td>New time record</td>
+          <td>Time Clock tab</td>
+        </tr>
+        <tr>
+          <td><kbd>Ctrl+Shift+N</kbd></td>
+          <td>New vacation record</td>
+          <td>Vacation tab</td>
+        </tr>
+        <tr>
+          <td><kbd>Ctrl+Shift+S</kbd></td>
+          <td>New sick record</td>
+          <td>Sickness tab</td>
+        </tr>
+        <tr>
+          <td><kbd>Ctrl+E</kbd></td>
+          <td>Edit selected record</td>
+          <td>All tabs</td>
+        </tr>
+        <tr>
+          <td><kbd>Delete</kbd></td>
+          <td>Remove selected record</td>
+          <td>All tabs</td>
+        </tr>
+        <tr>
+          <td><kbd>Ctrl+D</kbd></td>
+          <td>Clock out</td>
+          <td>Time Clock tab</td>
+        </tr>
+        <tr>
+          <td><kbd>Ctrl+S</kbd></td>
+          <td>Open settings</td>
+          <td>Global</td>
+        </tr>
+        <tr>
+          <td><kbd>F5</kbd></td>
+          <td>Refresh data</td>
+          <td>All tabs</td>
+        </tr>
+        <tr>
+          <td><kbd>F1</kbd></td>
+          <td>Open help</td>
+          <td>Global</td>
+        </tr>
+      </table>
+    </section>
 
-<section id="faq">
-<h2>FAQ</h2>
-<h3>What happens if I close the app while clocked in?</h3>
-<p>On restart, the app detects open records and warns you. You can clock out or delete the dangling record.</p>
-<h3>How are overnight shifts handled?</h3>
-<p>If end time is before start, the app assumes the shift crosses midnight. Duration is computed across two calendar days.</p>
-<h3>Does the app handle DST changes?</h3>
-<p>All times are wall-clock local. The <code>datetime('now')</code> UTC function is used only for audit timestamps, not for clock-in/out times.</p>
-</section>
+    <section id="faq">
+      <h2>FAQ</h2>
+      <h3>What happens if I close the app while clocked in?</h3>
+      <p>On restart, the app detects open records and warns you. You can clock out or delete the dangling record.</p>
+      <h3>How are overnight shifts handled?</h3>
+      <p>If end time is before start, the app assumes the shift crosses midnight. Duration is computed across two
+        calendar days.</p>
+      <h3>Does the app handle DST changes?</h3>
+      <p>All times are wall-clock local. The <code>datetime('now')</code> UTC function is used only for audit
+        timestamps, not for clock-in/out times.</p>
+    </section>
 
-<footer>Time Clock App v1.0.0</footer>
-</main>
-<script>
-function filterToc(val) {
-  const items = document.querySelectorAll('#tocList li');
-  const q = val.toLowerCase();
-  items.forEach(li => {
-    const text = li.textContent.toLowerCase();
-    li.style.display = text.includes(q) ? '' : 'none';
-  });
-}
-</script>
+    <footer>Time Clock App v1.0.0</footer>
+  </main>
+  <script>
+    function clearHighlights() {
+      document.querySelectorAll('.search-highlight').forEach(el => {
+        el.parentNode.replaceChild(document.createTextNode(el.textContent), el);
+      });
+      document.querySelectorAll('main section').forEach(s => s.normalize());
+    }
+
+    function highlightInNode(node, q) {
+      if (node.nodeType === Node.TEXT_NODE) {
+        const text = node.textContent;
+        const idx = text.toLowerCase().indexOf(q);
+        if (idx === -1) return false;
+        const span = document.createElement('mark');
+        span.className = 'search-highlight';
+        span.textContent = text.slice(idx, idx + q.length);
+        const after = document.createTextNode(text.slice(idx + q.length));
+        node.textContent = text.slice(0, idx);
+        node.parentNode.insertBefore(span, node.nextSibling);
+        node.parentNode.insertBefore(after, span.nextSibling);
+        return true;
+      }
+      if (node.nodeType === Node.ELEMENT_NODE && node.nodeName !== 'SCRIPT' && node.nodeName !== 'STYLE') {
+        let found = false;
+        Array.from(node.childNodes).forEach(child => { if (highlightInNode(child, q)) found = true; });
+        return found;
+      }
+      return false;
+    }
+
+    function onSearch(val) {
+      clearHighlights();
+      const q = val.toLowerCase().trim();
+      const inContent = document.getElementById('searchContent').checked;
+      const tocItems = document.querySelectorAll('#tocList li');
+
+      if (!q) {
+        tocItems.forEach(li => li.style.display = '');
+        document.querySelectorAll('main section').forEach(s => s.style.display = '');
+        return;
+      }
+
+      if (!inContent) {
+        document.querySelectorAll('main section').forEach(s => s.style.display = '');
+        tocItems.forEach(li => {
+          li.style.display = li.textContent.toLowerCase().includes(q) ? '' : 'none';
+        });
+        return;
+      }
+
+      // Content search: show/hide sections, highlight matches, sync TOC
+      tocItems.forEach(li => {
+        const href = li.querySelector('a') && li.querySelector('a').getAttribute('href');
+        const section = href ? document.querySelector('main ' + href) : null;
+        if (!section) { li.style.display = 'none'; return; }
+        const matches = section.textContent.toLowerCase().includes(q);
+        section.style.display = matches ? '' : 'none';
+        li.style.display = matches ? '' : 'none';
+        if (matches) highlightInNode(section, q);
+      });
+    }
+  </script>
 </body>
+
 </html>
