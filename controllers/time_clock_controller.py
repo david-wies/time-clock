@@ -155,9 +155,10 @@ class TimeClockController:
         now = datetime.now()
         target_record.end_time = now.time().replace(second=0, microsecond=0)
         
-        # Validate updated record
+        # Validate updated record; exclude other open records — parallel sessions are by design (§5.2)
         existing = self.model.get_records_by_date(target_record.date)
-        errors = validate_time_record(target_record, existing)
+        existing_for_validation = [r for r in existing if r.id == target_record.id or r.end_time is not None]
+        errors = validate_time_record(target_record, existing_for_validation)
         if errors:
             return Result(ok=False, errors=errors)
             

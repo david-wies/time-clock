@@ -12,7 +12,6 @@ class TimeClockModel:
     def __init__(self, db: Database, bus: EventBus) -> None:
         self.db = db
         self.bus = bus
-        return
 
     def _row_to_record(self, row: sqlite3.Row) -> TimeRecord:
         return TimeRecord(
@@ -36,7 +35,6 @@ class TimeClockModel:
             return self._row_to_record(row) if row else None
         finally:
             conn.close()
-        return None
 
     def get_records_by_date(self, target_date: date) -> list[TimeRecord]:
         conn = self.db.get_connection()
@@ -50,8 +48,7 @@ class TimeClockModel:
             return [self._row_to_record(row) for row in rows]
         finally:
             conn.close()
-        return []
-    
+
     def get_records_for_period(self, year: int, month: Optional[int] = None) -> list[TimeRecord]:
         """
         Retrieves all time records for the given year and optionally month.
@@ -62,8 +59,6 @@ class TimeClockModel:
             cursor = conn.cursor()
             if month is not None:
                 start_date = f"{year:04d}-{month:02d}-01"
-                # Handle end of month boundary simply using date math or like
-                # SQLite string sorting is fine with this
                 end_date = f"{year:04d}-{month:02d}-31"
                 cursor.execute(
                     "SELECT * FROM time_record WHERE date >= ? AND date <= ? ORDER BY date DESC, start_time ASC;",
@@ -119,7 +114,6 @@ class TimeClockModel:
             return record_id
         finally:
             conn.close()
-        return -1
 
     def update_record(self, record: TimeRecord) -> None:
         if record.id is None:
@@ -148,7 +142,6 @@ class TimeClockModel:
             self.bus.publish(Event.TIME_RECORDS_CHANGED)
         finally:
             conn.close()
-        return
 
     def delete_record(self, record_id: int) -> None:
         conn = self.db.get_connection()
@@ -159,7 +152,6 @@ class TimeClockModel:
             self.bus.publish(Event.TIME_RECORDS_CHANGED)
         finally:
             conn.close()
-        return
 
     # --- Target Hours & Exceptions Queries ---
 
@@ -173,7 +165,6 @@ class TimeClockModel:
             return {row["day_of_week"]: row["hours"] for row in rows}
         finally:
             conn.close()
-        return {}
 
     def save_work_day_targets(self, targets: dict[int, float]) -> None:
         conn = self.db.get_connection()
@@ -190,7 +181,6 @@ class TimeClockModel:
             self.bus.publish(Event.SETTINGS_CHANGED)
         finally:
             conn.close()
-        return
 
     def get_date_exceptions(self, year: Optional[int] = None) -> list[dict[str, Any]]:
         """Returns work day exceptions. If year is specified, filters by that year."""
@@ -211,7 +201,6 @@ class TimeClockModel:
             return [dict(row) for row in rows]
         finally:
             conn.close()
-        return []
 
     def save_date_exception(self, date_str: str, hours: float, label: Optional[str] = None) -> None:
         conn = self.db.get_connection()
@@ -227,7 +216,6 @@ class TimeClockModel:
             self.bus.publish(Event.SETTINGS_CHANGED)
         finally:
             conn.close()
-        return
 
     def delete_date_exception(self, exception_id: int) -> None:
         conn = self.db.get_connection()
@@ -238,7 +226,6 @@ class TimeClockModel:
             self.bus.publish(Event.SETTINGS_CHANGED)
         finally:
             conn.close()
-        return
 
     def delete_date_exception_by_date(self, date_str: str) -> None:
         conn = self.db.get_connection()
@@ -249,4 +236,3 @@ class TimeClockModel:
             self.bus.publish(Event.SETTINGS_CHANGED)
         finally:
             conn.close()
-        return

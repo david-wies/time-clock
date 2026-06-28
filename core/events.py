@@ -1,6 +1,6 @@
 """Simple synchronous pub/sub event bus."""
 from enum import Enum
-from typing import Callable, Dict, List
+from typing import Callable
 
 
 class Event(Enum):
@@ -13,19 +13,17 @@ class Event(Enum):
 
 class EventBus:
     def __init__(self):
-        self._subscribers: Dict[Event, List[Callable]] = {}
-        return
+        self._subscribers: dict[Event, list[Callable]] = {}
 
-    def subscribe(self, event: Event, handler: Callable) -> None:
+    def subscribe(self, event: Event, handler: Callable) -> Callable:
         self._subscribers.setdefault(event, []).append(handler)
-        return
-    
-    def unsubscribe(self, event: Event, handler: Callable) -> None:
-        if event in self._subscribers:
-            self._subscribers[event].remove(handler)
-        return
+        def _unsub():
+            try:
+                self._subscribers[event].remove(handler)
+            except ValueError:
+                pass
+        return _unsub
 
     def publish(self, event: Event, **payload) -> None:
         for handler in self._subscribers.get(event, []):
             handler(**payload)
-        return
