@@ -65,13 +65,14 @@ def test_day_equivalent_conversion(db: Database, event_bus: EventBus) -> None:
     assert sick_model.get_day_equivalent(mon_date, 8.0) == 1.0
     assert sick_model.get_day_equivalent(mon_date, 4.0) == 0.5
     assert sick_model.get_day_equivalent(
-        mon_date, 12.0) == 1.0  # capped at 1.0
+        mon_date, 12.0) == pytest.approx(1.5)  # no cap on weekdays (§7.4)
 
     # 2. Wednesday (target 4h): 4h sick = 1.0 day; 2h sick = 0.5 days
     wed_date = date(2026, 6, 24)  # Wednesday
     assert sick_model.get_day_equivalent(wed_date, 4.0) == 1.0
     assert sick_model.get_day_equivalent(wed_date, 2.0) == 0.5
-    assert sick_model.get_day_equivalent(wed_date, 8.0) == 1.0  # capped at 1.0
+    assert sick_model.get_day_equivalent(
+        wed_date, 8.0) == pytest.approx(2.0)  # no cap on weekdays (§7.4)
 
     # 3. Saturday (target 0h): capped at 1.0 day max, uses 8.0h reference
     sat_date = date(2026, 6, 27)  # Saturday

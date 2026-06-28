@@ -110,3 +110,30 @@ def get_month_range(target_date: date) -> tuple[date, date]:
 def get_year_range(target_date: date) -> tuple[date, date]:
     """Returns the (Jan 1, Dec 31) date range of the year containing target_date."""
     return date(target_date.year, 1, 1), date(target_date.year, 12, 31)
+
+
+# Alias matching §18.3 spec name
+period_balance = calculate_period_balance
+
+
+def overtime(
+    records: list[TimeRecord],
+    start_date: date,
+    end_date: date,
+    targets: dict[int, float],
+    exceptions: dict[date, float],
+    rate: float = 1.0,
+    today: Optional[date] = None,
+    now_time: Optional[time] = None,
+) -> tuple[float, float]:
+    """
+    Returns (raw_hours, weighted_hours) for the period (§21.3).
+    Rate applies only to positive balances (surplus); deficit is returned raw.
+    """
+    result = calculate_period_balance(
+        records, start_date, end_date, targets, exceptions,
+        overtime_rate=rate, today=today, now_time=now_time
+    )
+    raw = result["balance"]
+    weighted = result["weighted_overtime"]
+    return raw, weighted

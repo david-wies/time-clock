@@ -11,7 +11,6 @@ class SicknessModel:
     def __init__(self, db: Database, bus: EventBus) -> None:
         self.db = db
         self.bus = bus
-        return
 
     def _row_to_record(self, row: sqlite3.Row) -> SicknessRecord:
         return SicknessRecord(
@@ -31,7 +30,6 @@ class SicknessModel:
             return self._row_to_record(row) if row else None
         finally:
             conn.close()
-        return None
 
     def get_records_for_year(self, year: int, month: Optional[int] = None) -> list[SicknessRecord]:
         conn = self.db.get_connection()
@@ -55,7 +53,6 @@ class SicknessModel:
             return [self._row_to_record(row) for row in rows]
         finally:
             conn.close()
-        return []
 
     def insert_record(self, record: SicknessRecord) -> int:
         conn = self.db.get_connection()
@@ -78,7 +75,6 @@ class SicknessModel:
             return record_id
         finally:
             conn.close()
-        return -1
 
     def update_record(self, record: SicknessRecord) -> None:
         if record.id is None:
@@ -102,7 +98,6 @@ class SicknessModel:
             self.bus.publish(Event.SICKNESS_CHANGED)
         finally:
             conn.close()
-        return
 
     def delete_record(self, record_id: int) -> None:
         conn = self.db.get_connection()
@@ -113,7 +108,6 @@ class SicknessModel:
             self.bus.publish(Event.SICKNESS_CHANGED)
         finally:
             conn.close()
-        return
 
     # --- Sickness Settings Queries ---
 
@@ -128,7 +122,6 @@ class SicknessModel:
             return row["days_per_year"] if row else None
         finally:
             conn.close()
-        return None
 
     def save_settings(self, year: int, days_per_year: float) -> None:
         conn = self.db.get_connection()
@@ -144,7 +137,6 @@ class SicknessModel:
             self.bus.publish(Event.SETTINGS_CHANGED)
         finally:
             conn.close()
-        return
 
     # --- Sickness Calculations & Summaries ---
 
@@ -170,10 +162,9 @@ class SicknessModel:
             target_hours = 8.0
 
         if target_hours == 0.0:
-            # Weekend / day off: cap at 1.0 day, standard 8h reference
+            # Weekend / day off: cap at 1.0 day, standard 8h reference (§7.4)
             return min(1.0, hours / 8.0)
-        else:
-            return min(1.0, hours / target_hours)
+        return hours / target_hours
 
     def calculate_sickness_summary(self, year: int) -> dict[str, float]:
         """

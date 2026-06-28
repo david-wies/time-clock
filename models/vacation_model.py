@@ -12,7 +12,6 @@ class VacationModel:
     def __init__(self, db: Database, bus: EventBus) -> None:
         self.db = db
         self.bus = bus
-        return
 
     def _row_to_record(self, row: sqlite3.Row) -> VacationRecord:
         return VacationRecord(
@@ -33,7 +32,6 @@ class VacationModel:
             return self._row_to_record(row) if row else None
         finally:
             conn.close()
-        return None
 
     def get_records_for_year(self, year: int, month: Optional[int] = None) -> list[VacationRecord]:
         conn = self.db.get_connection()
@@ -57,7 +55,6 @@ class VacationModel:
             return [self._row_to_record(row) for row in rows]
         finally:
             conn.close()
-        return []
 
     def insert_record(self, record: VacationRecord) -> int:
         conn = self.db.get_connection()
@@ -81,7 +78,6 @@ class VacationModel:
             return record_id
         finally:
             conn.close()
-        return -1
 
     def update_record(self, record: VacationRecord) -> None:
         if record.id is None:
@@ -106,7 +102,6 @@ class VacationModel:
             self.bus.publish(Event.VACATION_CHANGED)
         finally:
             conn.close()
-        return
 
     def delete_record(self, record_id: int) -> None:
         conn = self.db.get_connection()
@@ -117,7 +112,6 @@ class VacationModel:
             self.bus.publish(Event.VACATION_CHANGED)
         finally:
             conn.close()
-        return
 
     # --- Vacation Settings Queries ---
 
@@ -136,7 +130,6 @@ class VacationModel:
             return None
         finally:
             conn.close()
-        return None
 
     def save_settings(self, year: int, hours_per_year: float, max_carry_over: float) -> None:
         conn = self.db.get_connection()
@@ -152,7 +145,6 @@ class VacationModel:
             self.bus.publish(Event.SETTINGS_CHANGED)
         finally:
             conn.close()
-        return
 
     # --- Carry-Over Calculations & Logging ---
 
@@ -167,7 +159,6 @@ class VacationModel:
             return [dict(row) for row in rows]
         finally:
             conn.close()
-        return []
 
     def get_already_transferred(self, from_year: int, to_year: int) -> float:
         """Returns sum of hours already transferred from from_year to to_year."""
@@ -182,7 +173,6 @@ class VacationModel:
             return row["total"] if row and row["total"] is not None else 0.0
         finally:
             conn.close()
-        return 0.0
 
     def calculate_vacation_summary(self, year: int) -> dict[str, float]:
         """
@@ -302,4 +292,3 @@ class VacationModel:
             self.bus.publish(Event.VACATION_CHANGED)
         finally:
             conn.close()
-        return

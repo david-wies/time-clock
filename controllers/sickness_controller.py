@@ -3,17 +3,18 @@ from domain.types import SicknessRecord, Result
 from models.sickness_model import SicknessModel
 
 def validate_sick_record(record: SicknessRecord) -> list[str]:
-    """Pure validation function for SicknessRecord."""
+    """Pure validation function for SicknessRecord (enforces §7.3 table)."""
     errors = []
-    
-    # 1. Bounds checking on hours
+
+    if record.date is None:
+        errors.append("Please enter a valid date.")
+
     if record.hours < 0.5 or record.hours > 24.0:
         errors.append("Hours must be between 0.5 and 24.")
-        
-    # 2. Note length
+
     if record.note and len(record.note) > 500:
         errors.append("Note is too long (max 500 characters).")
-        
+
     return errors
 
 class SicknessController:

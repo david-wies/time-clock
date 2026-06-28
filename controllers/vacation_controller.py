@@ -3,19 +3,25 @@ from domain.types import VacationRecord, Result
 from domain.enums import VacationType
 from models.vacation_model import VacationModel
 
+
 def validate_vacation_record(record: VacationRecord) -> list[str]:
-    """Pure validation function for VacationRecord."""
+    """Pure validation function for VacationRecord (enforces §6.5 table)."""
     errors = []
-    
-    # 1. Bounds checking on hours
+
+    if record.date is None:
+        errors.append("Please enter a valid date.")
+
+    if record.vtype is None:
+        errors.append("Please select a vacation type.")
+
     if record.hours < 0.5 or record.hours > 24.0:
         errors.append("Hours must be between 0.5 and 24.")
-        
-    # 2. Note length
+
     if record.note and len(record.note) > 500:
         errors.append("Note is too long (max 500 characters).")
-        
+
     return errors
+
 
 class VacationController:
     def __init__(self, model: VacationModel) -> None:
@@ -33,11 +39,11 @@ class VacationController:
             VacationType.PUBLIC_HOLIDAY,
             VacationType.SPECIAL_LEAVE
         )
-        
+
         if is_debit:
             year = record.date.year
             summary = self.model.calculate_vacation_summary(year)
-            
+
             # If editing, subtract old record hours from used to calculate projected remaining
             old_hours = 0.0
             if record.id is not None:
@@ -48,9 +54,10 @@ class VacationController:
                     VacationType.SPECIAL_LEAVE
                 ):
                     old_hours = old_rec.hours
-            
-            projected_remaining = summary["remaining"] + old_hours - record.hours
-            
+
+            projected_remaining = summary["remaining"] + \
+                old_hours - record.hours
+
             if projected_remaining < 0 and not confirm_over_balance:
                 return Result(ok=False, errors=["OVER_BALANCE_WARNING"])
 
@@ -68,16 +75,17 @@ class VacationController:
         """Validates and records a carry-over allocation."""
         if hours <= 0:
             return Result(ok=False, errors=["Hours to transfer must be greater than zero."])
-            
+
         allowance = self.model.calculate_carry_over_allowance(to_year)
         allowed_max = allowance["allowed_transfer"]
-        
+
         if hours > allowed_max:
             return Result(
                 ok=False,
-                errors=[f"Cannot transfer {hours:.1f} hours. Max allowed is {allowed_max:.1f} hours."]
+                errors=[
+                    f"Cannot transfer {hours:.1f} hours. Max allowed is {allowed_max:.1f} hours."]
             )
-            
+
         try:
             self.model.add_carry_over(from_year, to_year, hours)
             return Result(ok=True, errors=[])

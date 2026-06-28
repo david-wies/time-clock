@@ -77,12 +77,26 @@ class TimeClockModel:
             conn.close()
 
     def get_open_records(self) -> list[TimeRecord]:
-        """Finds all records that are currently open (end_time is NULL)."""
+        """Finds all records that are currently open (end_time is NULL), across all dates."""
         conn = self.db.get_connection()
         try:
             cursor = conn.cursor()
             cursor.execute(
                 "SELECT * FROM time_record WHERE end_time IS NULL ORDER BY date DESC, start_time ASC;")
+            rows = cursor.fetchall()
+            return [self._row_to_record(row) for row in rows]
+        finally:
+            conn.close()
+
+    def get_open_records_for_today(self) -> list[TimeRecord]:
+        """Finds open records (end_time IS NULL) for today only (§10.4, §10.5)."""
+        conn = self.db.get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT * FROM time_record WHERE date = ? AND end_time IS NULL ORDER BY start_time ASC;",
+                (date.today().isoformat(),)
+            )
             rows = cursor.fetchall()
             return [self._row_to_record(row) for row in rows]
         finally:

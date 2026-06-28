@@ -99,10 +99,9 @@ def test_clock_in_out_flow(controller: TimeClockController) -> None:
 
 def test_clock_out_multiple_open_records(controller: TimeClockController) -> None:
     # Insert two open records with different start times to avoid overlap validation
-    r1 = TimeRecord(None, date(2026, 6, 26), time(
-        9, 0), None, 0, WorkType.REMOTE)
-    r2 = TimeRecord(None, date(2026, 6, 26), time(
-        10, 0), None, 0, WorkType.ROAD)
+    today = date.today()
+    r1 = TimeRecord(None, today, time(9, 0), None, 0, WorkType.REMOTE)
+    r2 = TimeRecord(None, today, time(10, 0), None, 0, WorkType.ROAD)
     controller.model.insert_record(r1)
     controller.model.insert_record(r2)
 
