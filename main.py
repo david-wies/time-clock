@@ -7,10 +7,16 @@ from db.database import Database
 from settings import SettingsManager
 from core.events import EventBus
 from models.time_clock_model import TimeClockModel
+from models.vacation_model import VacationModel
+from models.sickness_model import SicknessModel
 from controllers.time_clock_controller import TimeClockController
+from controllers.vacation_controller import VacationController
+from controllers.sickness_controller import SicknessController
 from theme.style import apply_theme
 from views.main_window import MainWindow
 from views.time_clock_tab import TimeClockTab
+from views.vacation_tab import VacationTab
+from views.sickness_tab import SicknessTab
 
 
 def main() -> None:
@@ -19,7 +25,12 @@ def main() -> None:
     bus = EventBus()
 
     time_model = TimeClockModel(db, bus)
+    vacation_model = VacationModel(db, bus)
+    sickness_model = SicknessModel(db, bus)
+
     time_ctrl = TimeClockController(time_model, settings)
+    vacation_ctrl = VacationController(vacation_model)
+    sickness_ctrl = SicknessController(sickness_model)
 
     root = tk.Tk()
     root.title("Time Clock")
@@ -33,6 +44,24 @@ def main() -> None:
         window.time_clock_frame,
         controller=time_ctrl,
         model=time_model,
+        settings=settings,
+        bus=bus,
+        root=root,
+    )
+
+    VacationTab(
+        window.vacation_frame,
+        controller=vacation_ctrl,
+        model=vacation_model,
+        settings=settings,
+        bus=bus,
+        root=root,
+    )
+
+    SicknessTab(
+        window.sickness_frame,
+        controller=sickness_ctrl,
+        model=sickness_model,
         settings=settings,
         bus=bus,
         root=root,
