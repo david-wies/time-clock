@@ -9,4 +9,5 @@ def to_hebrew_label(d: date) -> str | None:
     or None if the hdate package is not installed.
     Callers must hide the column/label when None is returned.
     """
-    return str(HebrewDate.from_gdate(d))
+    # Reverse string so tkinter's LTR-only rendering displays Hebrew RTL correctly.
+    return str(HebrewDate.from_gdate(d))[::-1]

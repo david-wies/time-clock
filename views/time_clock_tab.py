@@ -210,28 +210,28 @@ class TimeClockTab(ttk.Frame):
             style="TimeClock.Treeview",
         )
 
-        self._tree.column("#0", width=310, minwidth=200, stretch=False)
-        self._tree.heading("#0", text="Period / Date", anchor="w")
+        self._tree.column("#0", width=400, minwidth=250, stretch=False)
+        self._tree.heading("#0", text="Period / Date", anchor="center")
 
         self._tree.column("time_range", width=130,
-                          minwidth=100, stretch=False, anchor="w")
-        self._tree.heading("time_range", text="Time", anchor="w")
+                          minwidth=100, stretch=False, anchor="center")
+        self._tree.heading("time_range", text="Time", anchor="center")
 
         self._tree.column("break", width=55, minwidth=40,
                           stretch=False, anchor="center")
         self._tree.heading("break", text="Break", anchor="center")
 
         self._tree.column("type_office", width=170,
-                          minwidth=100, stretch=False, anchor="w")
-        self._tree.heading("type_office", text="Type / Office", anchor="w")
+                          minwidth=100, stretch=False, anchor="center")
+        self._tree.heading("type_office", text="Type / Office", anchor="center")
 
         self._tree.column("note", width=180, minwidth=60,
-                          stretch=True, anchor="w")
-        self._tree.heading("note", text="Note", anchor="w")
+                          stretch=True, anchor="center")
+        self._tree.heading("note", text="Note", anchor="center")
 
-        self._tree.column("duration", width=70, minwidth=50,
-                          stretch=False, anchor="e")
-        self._tree.heading("duration", text="Duration", anchor="e")
+        self._tree.column("duration", width=100, minwidth=50,
+                          stretch=False, anchor="center")
+        self._tree.heading("duration", text="Duration", anchor="center")
 
         vsb = ttk.Scrollbar(frame, orient="vertical", command=self._tree.yview)
         self._tree.configure(yscrollcommand=vsb.set)
