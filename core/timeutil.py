@@ -40,6 +40,11 @@ def time_to_minutes(t: Union[time, str]) -> int:
     return t_obj.hour * 60 + t_obj.minute
 
 
+def to_display_date(d: date) -> str:
+    """Converts a date object to the UI display format dd/mm/yyyy."""
+    return d.strftime("%d/%m/%Y")
+
+
 def duration(start: Union[time, str], end: Union[time, str], break_minutes: int) -> float:
     """
     Calculates the net duration of a shift in hours.
