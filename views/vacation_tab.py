@@ -269,7 +269,7 @@ class VacationTab(ttk.Frame):
             bal_color = c["success"]
 
         self._lbl_balance.config(
-            text=f"Vacation {year}: {_fmt_h(used)} / {_fmt_h(total_pool)} used  |  Remaining: {_fmt_h(remaining)}",
+            text=f"Vacation {year}: {_fmt_h(used)} / {_fmt_h(total_pool)} available  |  Remaining: {_fmt_h(remaining)}",
             foreground=bal_color,
         )
 

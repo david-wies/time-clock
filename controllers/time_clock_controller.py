@@ -122,7 +122,7 @@ class TimeClockController:
         Returns Result(ok=False, errors=["OPEN_RECORD_EXISTS"]) if a today-open record exists
         and force=False.
         """
-        open_today = self.model.get_open_records_for_today()
+        open_today = self.model.get_open_records_for_date(self._clock().date())
         if open_today and not force:
             return Result(ok=False, errors=["OPEN_RECORD_EXISTS"])
 
@@ -171,7 +171,7 @@ class TimeClockController:
         If multiple open records exist today and record_id is None, returns
         Result(ok=False, errors=["MULTIPLE_OPEN_RECORDS"]).
         """
-        open_today = self.model.get_open_records_for_today()
+        open_today = self.model.get_open_records_for_date(self._clock().date())
         if not open_today:
             return Result(ok=False, errors=["No active clock-in found."])
 

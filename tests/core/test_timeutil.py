@@ -1,6 +1,6 @@
 import pytest
 from datetime import date, time
-from core.timeutil import duration, str_to_time, time_to_str, date_to_iso, iso_to_date
+from core.timeutil import duration, str_to_time, time_to_str, date_to_iso, iso_to_date, to_display_date, now_hm
 
 
 @pytest.mark.parametrize("start,end,brk,expected", [
@@ -32,3 +32,17 @@ def test_date_conversions() -> None:
     d = date(2026, 6, 26)
     assert date_to_iso(d) == "2026-06-26"
     assert iso_to_date("2026-06-26") == d
+
+
+def test_to_display_date() -> None:
+    assert to_display_date(date(2026, 6, 26)) == "26/06/2026"
+    assert to_display_date(date(2026, 1, 1)) == "01/01/2026"
+
+
+def test_now_hm_format() -> None:
+    result = now_hm()
+    parts = result.split(":")
+    assert len(parts) == 2
+    assert parts[0].isdigit() and parts[1].isdigit()
+    assert 0 <= int(parts[0]) <= 23
+    assert 0 <= int(parts[1]) <= 59

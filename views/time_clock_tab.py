@@ -223,7 +223,8 @@ class TimeClockTab(ttk.Frame):
 
         self._tree.column("type_office", width=170,
                           minwidth=100, stretch=False, anchor="center")
-        self._tree.heading("type_office", text="Type / Office", anchor="center")
+        self._tree.heading(
+            "type_office", text="Type / Office", anchor="center")
 
         self._tree.column("note", width=180, minwidth=60,
                           stretch=True, anchor="center")
@@ -395,7 +396,7 @@ class TimeClockTab(ttk.Frame):
             self._lbl_remaining.config(text="✓ Done", foreground=c["success"])
         else:
             self._lbl_remaining.config(
-                text=f"⏎ +{_fmt_h(abs(remaining))} overtime",
+                text=f"⏎ −{_fmt_h(abs(remaining))} overtime",
                 foreground=c["overtime"],
             )
 
@@ -557,7 +558,7 @@ class TimeClockTab(ttk.Frame):
         if rec.end_time is not None:
             time_range = f"{start_str} – {time_to_str(rec.end_time)}"
         else:
-            time_range = f"{start_str} – …"
+            time_range = f"{start_str} – … [in progress]"
 
         break_str = f"{rec.break_minutes}m" if rec.break_minutes > 0 else "—"
 

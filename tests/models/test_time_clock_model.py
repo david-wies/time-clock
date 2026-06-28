@@ -83,6 +83,31 @@ def test_get_records_for_period(db: Database, event_bus: EventBus) -> None:
     assert open_records[0].date == date(2026, 6, 15)
 
 
+def test_get_records_by_date(db: Database, event_bus: EventBus) -> None:
+    model = TimeClockModel(db, event_bus)
+
+    r1 = TimeRecord(None, date(2026, 6, 26), time(
+        9, 0), time(12, 0), 0, WorkType.REMOTE)
+    r2 = TimeRecord(None, date(2026, 6, 26), time(
+        13, 0), time(17, 0), 0, WorkType.ROAD)
+    r3 = TimeRecord(None, date(2026, 6, 27), time(
+        9, 0), time(17, 0), 0, WorkType.REMOTE)
+
+    model.insert_record(r1)
+    model.insert_record(r2)
+    model.insert_record(r3)
+
+    june_26 = model.get_records_by_date(date(2026, 6, 26))
+    assert len(june_26) == 2
+    assert june_26[0].start_time == time(9, 0)
+    assert june_26[1].start_time == time(13, 0)
+
+    june_27 = model.get_records_by_date(date(2026, 6, 27))
+    assert len(june_27) == 1
+
+    assert model.get_records_by_date(date(2026, 6, 28)) == []
+
+
 def test_targets_and_exceptions(db: Database, event_bus: EventBus) -> None:
     model = TimeClockModel(db, event_bus)
 

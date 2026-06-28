@@ -88,19 +88,23 @@ class TimeClockModel:
         finally:
             conn.close()
 
-    def get_open_records_for_today(self) -> list[TimeRecord]:
-        """Finds open records (end_time IS NULL) for today only (§10.4, §10.5)."""
+    def get_open_records_for_date(self, d: date) -> list[TimeRecord]:
+        """Finds open records (end_time IS NULL) for a specific date (§10.4, §10.5)."""
         conn = self.db.get_connection()
         try:
             cursor = conn.cursor()
             cursor.execute(
                 "SELECT * FROM time_record WHERE date = ? AND end_time IS NULL ORDER BY start_time ASC;",
-                (date.today().isoformat(),)
+                (d.isoformat(),)
             )
             rows = cursor.fetchall()
             return [self._row_to_record(row) for row in rows]
         finally:
             conn.close()
+
+    def get_open_records_for_today(self) -> list[TimeRecord]:
+        """Finds open records (end_time IS NULL) for today only. Convenience wrapper."""
+        return self.get_open_records_for_date(date.today())
 
     def insert_record(self, record: TimeRecord) -> int:
         conn = self.db.get_connection()

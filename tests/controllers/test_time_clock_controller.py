@@ -10,9 +10,9 @@ from db.database import Database
 
 
 @pytest.fixture
-def controller(db: Database, event_bus: EventBus, settings_manager: SettingsManager) -> TimeClockController:
+def controller(db: Database, event_bus: EventBus, settings_manager: SettingsManager, fixed_clock) -> TimeClockController:
     model = TimeClockModel(db, event_bus)
-    return TimeClockController(model, settings_manager)
+    return TimeClockController(model, settings_manager, clock=fixed_clock)
 
 
 def test_save_valid_record(controller: TimeClockController) -> None:
@@ -97,9 +97,17 @@ def test_clock_in_out_flow(controller: TimeClockController) -> None:
     assert len(controller.model.get_open_records()) == 0
 
 
+def test_save_overnight_record(controller: TimeClockController) -> None:
+    rec = TimeRecord(None, date(2026, 6, 26), time(
+        22, 0), time(6, 0), 0, WorkType.REMOTE)
+    result = controller.save_record(rec)
+    assert result.ok is True
+    assert "OVERNIGHT_SHIFT_WARNING" in result.errors
+
+
 def test_clock_out_multiple_open_records(controller: TimeClockController) -> None:
     # Insert two open records with different start times to avoid overlap validation
-    today = date.today()
+    today = date(2026, 6, 26)
     r1 = TimeRecord(None, today, time(9, 0), None, 0, WorkType.REMOTE)
     r2 = TimeRecord(None, today, time(10, 0), None, 0, WorkType.ROAD)
     controller.model.insert_record(r1)

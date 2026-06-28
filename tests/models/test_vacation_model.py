@@ -54,6 +54,19 @@ def test_vacation_settings(db: Database, event_bus: EventBus) -> None:
     assert model.get_settings(2025) is None
 
 
+def test_unpaid_leave_not_counted_as_used(db: Database, event_bus: EventBus) -> None:
+    model = VacationModel(db, event_bus)
+    model.save_settings(2026, 160.0, 40.0)
+
+    rec = VacationRecord(None, date(2026, 7, 1), 8.0,
+                         VacationType.UNPAID_LEAVE)
+    model.insert_record(rec)
+
+    summary = model.calculate_vacation_summary(2026)
+    assert summary["used"] == 0.0
+    assert summary["remaining"] == 160.0
+
+
 def test_vacation_balance_and_carry_over(db: Database, event_bus: EventBus) -> None:
     model = VacationModel(db, event_bus)
 
