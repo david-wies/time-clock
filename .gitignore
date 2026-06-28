@@ -12,3 +12,5 @@ dist/
 AGENTS.md
 IMPLEMENTATION_PLAN.md
 IMPLEMENTATION_STATUS.md
+review/*
+.vscode/*
