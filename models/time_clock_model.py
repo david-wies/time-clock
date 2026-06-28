@@ -7,10 +7,12 @@ from core.events import EventBus, Event
 from core.timeutil import iso_to_date, str_to_time, date_to_iso, time_to_str
 from db.database import Database
 
+
 class TimeClockModel:
     def __init__(self, db: Database, bus: EventBus) -> None:
         self.db = db
         self.bus = bus
+        return
 
     def _row_to_record(self, row: sqlite3.Row) -> TimeRecord:
         return TimeRecord(
@@ -28,7 +30,8 @@ class TimeClockModel:
         conn = self.db.get_connection()
         try:
             cursor = conn.cursor()
-            cursor.execute("SELECT * FROM time_record WHERE id = ?;", (record_id,))
+            cursor.execute(
+                "SELECT * FROM time_record WHERE id = ?;", (record_id,))
             row = cursor.fetchone()
             return self._row_to_record(row) if row else None
         finally:
@@ -48,7 +51,7 @@ class TimeClockModel:
         finally:
             conn.close()
         return []
-
+    
     def get_records_for_period(self, year: int, month: Optional[int] = None) -> list[TimeRecord]:
         """
         Retrieves all time records for the given year and optionally month.
@@ -60,7 +63,8 @@ class TimeClockModel:
             if month is not None:
                 start_date = f"{year:04d}-{month:02d}-01"
                 # Handle end of month boundary simply using date math or like
-                end_date = f"{year:04d}-{month:02d}-31"  # SQLite string sorting is fine with this
+                # SQLite string sorting is fine with this
+                end_date = f"{year:04d}-{month:02d}-31"
                 cursor.execute(
                     "SELECT * FROM time_record WHERE date >= ? AND date <= ? ORDER BY date DESC, start_time ASC;",
                     (start_date, end_date)
@@ -82,7 +86,8 @@ class TimeClockModel:
         conn = self.db.get_connection()
         try:
             cursor = conn.cursor()
-            cursor.execute("SELECT * FROM time_record WHERE end_time IS NULL ORDER BY date DESC, start_time ASC;")
+            cursor.execute(
+                "SELECT * FROM time_record WHERE end_time IS NULL ORDER BY date DESC, start_time ASC;")
             rows = cursor.fetchall()
             return [self._row_to_record(row) for row in rows]
         finally:
@@ -101,7 +106,8 @@ class TimeClockModel:
                     (
                         date_to_iso(record.date),
                         time_to_str(record.start_time),
-                        time_to_str(record.end_time) if record.end_time else None,
+                        time_to_str(
+                            record.end_time) if record.end_time else None,
                         record.break_minutes,
                         record.work_type.value,
                         record.office,
@@ -113,6 +119,7 @@ class TimeClockModel:
             return record_id
         finally:
             conn.close()
+        return -1
 
     def update_record(self, record: TimeRecord) -> None:
         if record.id is None:
@@ -129,7 +136,8 @@ class TimeClockModel:
                     (
                         date_to_iso(record.date),
                         time_to_str(record.start_time),
-                        time_to_str(record.end_time) if record.end_time else None,
+                        time_to_str(
+                            record.end_time) if record.end_time else None,
                         record.break_minutes,
                         record.work_type.value,
                         record.office,
@@ -140,15 +148,18 @@ class TimeClockModel:
             self.bus.publish(Event.TIME_RECORDS_CHANGED)
         finally:
             conn.close()
+        return
 
     def delete_record(self, record_id: int) -> None:
         conn = self.db.get_connection()
         try:
             with conn:
-                conn.execute("DELETE FROM time_record WHERE id = ?;", (record_id,))
+                conn.execute(
+                    "DELETE FROM time_record WHERE id = ?;", (record_id,))
             self.bus.publish(Event.TIME_RECORDS_CHANGED)
         finally:
             conn.close()
+        return
 
     # --- Target Hours & Exceptions Queries ---
 
@@ -162,6 +173,7 @@ class TimeClockModel:
             return {row["day_of_week"]: row["hours"] for row in rows}
         finally:
             conn.close()
+        return {}
 
     def save_work_day_targets(self, targets: dict[int, float]) -> None:
         conn = self.db.get_connection()
@@ -178,6 +190,7 @@ class TimeClockModel:
             self.bus.publish(Event.SETTINGS_CHANGED)
         finally:
             conn.close()
+        return
 
     def get_date_exceptions(self, year: Optional[int] = None) -> list[dict[str, Any]]:
         """Returns work day exceptions. If year is specified, filters by that year."""
@@ -192,11 +205,13 @@ class TimeClockModel:
                     (start_date, end_date)
                 )
             else:
-                cursor.execute("SELECT id, date, hours, label FROM work_day_exception ORDER BY date ASC;")
+                cursor.execute(
+                    "SELECT id, date, hours, label FROM work_day_exception ORDER BY date ASC;")
             rows = cursor.fetchall()
             return [dict(row) for row in rows]
         finally:
             conn.close()
+        return []
 
     def save_date_exception(self, date_str: str, hours: float, label: Optional[str] = None) -> None:
         conn = self.db.get_connection()
@@ -212,21 +227,26 @@ class TimeClockModel:
             self.bus.publish(Event.SETTINGS_CHANGED)
         finally:
             conn.close()
+        return
 
     def delete_date_exception(self, exception_id: int) -> None:
         conn = self.db.get_connection()
         try:
             with conn:
-                conn.execute("DELETE FROM work_day_exception WHERE id = ?;", (exception_id,))
+                conn.execute(
+                    "DELETE FROM work_day_exception WHERE id = ?;", (exception_id,))
             self.bus.publish(Event.SETTINGS_CHANGED)
         finally:
             conn.close()
+        return
 
     def delete_date_exception_by_date(self, date_str: str) -> None:
         conn = self.db.get_connection()
         try:
             with conn:
-                conn.execute("DELETE FROM work_day_exception WHERE date = ?;", (date_str,))
+                conn.execute(
+                    "DELETE FROM work_day_exception WHERE date = ?;", (date_str,))
             self.bus.publish(Event.SETTINGS_CHANGED)
         finally:
             conn.close()
+        return
