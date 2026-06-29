@@ -2,21 +2,22 @@
 
 import tkinter as tk
 from datetime import date
+from tkinter import messagebox
 
-from db.database import Database
-from settings import SettingsManager
-from core.events import EventBus
-from models.time_clock_model import TimeClockModel
-from models.vacation_model import VacationModel
-from models.sickness_model import SicknessModel
+from controllers.sickness_controller import SicknessController
 from controllers.time_clock_controller import TimeClockController
 from controllers.vacation_controller import VacationController
-from controllers.sickness_controller import SicknessController
+from core.events import EventBus
+from db.database import Database
+from models.sickness_model import SicknessModel
+from models.time_clock_model import TimeClockModel
+from models.vacation_model import VacationModel
+from settings import SettingsManager
 from theme.style import apply_theme
 from views.main_window import MainWindow
+from views.sickness_tab import SicknessTab
 from views.time_clock_tab import TimeClockTab
 from views.vacation_tab import VacationTab
-from views.sickness_tab import SicknessTab
 
 
 def main() -> None:
@@ -38,7 +39,13 @@ def main() -> None:
     mode = settings.get("theme") or "light"
     apply_theme(root, mode)
 
-    window = MainWindow(root, bus)
+    window = MainWindow(
+        root, bus,
+        settings=settings,
+        model_tc=time_model,
+        model_vacation=vacation_model,
+        model_sickness=sickness_model,
+    )
 
     tab = TimeClockTab(
         window.time_clock_frame,
@@ -78,7 +85,6 @@ def _boot_checks(root: tk.Tk, model: TimeClockModel, ctrl: TimeClockController, 
     today = date.today()
     stale = [r for r in open_records if r.date < today]
     if stale:
-        from tkinter import messagebox
         names = "\n".join(
             f"  {r.date.isoformat()}  {r.start_time.strftime('%H:%M')}–open"
             for r in stale

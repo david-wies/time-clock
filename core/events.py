@@ -17,6 +17,7 @@ class EventBus:
 
     def subscribe(self, event: Event, handler: Callable) -> Callable:
         self._subscribers.setdefault(event, []).append(handler)
+
         def _unsub():
             try:
                 self._subscribers[event].remove(handler)

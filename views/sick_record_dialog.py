@@ -52,13 +52,7 @@ class SickRecordDialog(tk.Toplevel):
         date_row.pack(fill="x", pady=(0, 6))
         ttk.Label(date_row, text="Date:", width=8, anchor="e").pack(side="left")
 
-        dp_result = make_date_picker(date_row)
-        if isinstance(dp_result, tuple):
-            self._date_widget, self._get_date, self._set_date = dp_result
-        else:
-            self._date_widget = dp_result
-            self._get_date = dp_result.get_date
-            self._set_date = dp_result.set_date
+        self._date_widget, self._get_date, self._set_date = make_date_picker(date_row)
         self._date_widget.pack(side="left", padx=(4, 0))
 
         # ── Hours + live day-equivalent ───────────────────────────────────────

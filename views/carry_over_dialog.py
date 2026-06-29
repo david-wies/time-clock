@@ -3,9 +3,7 @@
 from __future__ import annotations
 
 import tkinter as tk
-from tkinter import ttk, messagebox
-from datetime import date
-from typing import Optional
+from tkinter import ttk
 
 from controllers.vacation_controller import VacationController
 from models.vacation_model import VacationModel

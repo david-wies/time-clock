@@ -1,19 +1,26 @@
 """MainWindow: ttk.Notebook tab container with menu bar and status bar."""
 
-from tkinter import ttk, Menu, StringVar
-from typing import Optional
-from core.events import EventBus, Event
-from theme.style import apply_theme
+from tkinter import Menu, StringVar, ttk
+
+from core.events import Event, EventBus
+from views.export_dialog import ExportDialog
 from views.help_viewer import open_help, show_about
+from views.report_dialog import ReportDialog
+from views.settings_dialog import SettingsDialog
 
 
 class MainWindow(ttk.Frame):
     """Root application window with notebook tabs, menu, and status bar."""
 
-    def __init__(self, root, bus: EventBus) -> None:
+    def __init__(self, root, bus: EventBus, settings=None, model_tc=None,
+                 model_vacation=None, model_sickness=None) -> None:
         super().__init__(root)
         self.root = root
         self.bus = bus
+        self._settings = settings
+        self._model_tc = model_tc
+        self._model_vacation = model_vacation
+        self._model_sickness = model_sickness
         self.status_var = StringVar(value="Ready")
         self._count_var = StringVar(value="")
         self._clock_var = StringVar(value="Idle")
@@ -40,7 +47,7 @@ class MainWindow(ttk.Frame):
                            self._on_clock_state_changed)
 
         root.bind_all("<F1>", lambda _: open_help())
-        root.bind_all("<Control-s>", lambda _: self._not_ready())
+        root.bind_all("<Control-s>", lambda _: self._open_settings())
 
         self._set_status("Ready — Double-click record to edit")
 
@@ -49,16 +56,20 @@ class MainWindow(ttk.Frame):
 
         file_menu = Menu(menubar, tearoff=0)
         file_menu.add_command(label="Export Time Records",
-                              command=self._not_ready)
-        file_menu.add_command(label="Export Vacation", command=self._not_ready)
-        file_menu.add_command(label="Export Sickness", command=self._not_ready)
+                              command=lambda: self._open_export("time"))
+        file_menu.add_command(label="Export Vacation",
+                              command=lambda: self._open_export("vacation"))
+        file_menu.add_command(label="Export Sickness",
+                              command=lambda: self._open_export("sickness"))
+        file_menu.add_separator()
+        file_menu.add_command(label="Reports", command=self._open_report)
         file_menu.add_separator()
         file_menu.add_command(label="Exit", command=root.quit)
         menubar.add_cascade(label="File", menu=file_menu)
 
         settings_menu = Menu(menubar, tearoff=0)
         settings_menu.add_command(
-            label="Settings", command=self._not_ready, accelerator="Ctrl+S")
+            label="Settings", command=self._open_settings, accelerator="Ctrl+S")
         menubar.add_cascade(label="Settings", menu=settings_menu)
 
         help_menu = Menu(menubar, tearoff=0)
@@ -68,6 +79,46 @@ class MainWindow(ttk.Frame):
         menubar.add_cascade(label="Help", menu=help_menu)
 
         root.config(menu=menubar)
+
+    def _open_settings(self) -> None:
+        if not all([self._settings, self._model_tc, self._model_vacation, self._model_sickness]):
+            self._set_status("Settings not available")
+            return
+
+        SettingsDialog(
+            self.root,
+            settings=self._settings,
+            model_tc=self._model_tc,
+            model_vacation=self._model_vacation,
+            model_sickness=self._model_sickness,
+            bus=self.bus,
+        )
+
+    def _open_export(self, tab: str = "time") -> None:
+        if not all([self._model_tc, self._model_vacation, self._model_sickness]):
+            self._set_status("Export not available")
+            return
+
+        ExportDialog(
+            self.root,
+            model_tc=self._model_tc,
+            model_vacation=self._model_vacation,
+            model_sickness=self._model_sickness,
+            tab=tab,
+        )
+
+    def _open_report(self) -> None:
+        if not all([self._settings, self._model_tc, self._model_vacation, self._model_sickness]):
+            self._set_status("Reports not available")
+            return
+
+        ReportDialog(
+            self.root,
+            model_tc=self._model_tc,
+            model_vacation=self._model_vacation,
+            model_sickness=self._model_sickness,
+            settings=self._settings,
+        )
 
     def _build_notebook(self) -> None:
         self.notebook = ttk.Notebook(self)
@@ -128,6 +179,3 @@ class MainWindow(ttk.Frame):
 
     def _on_clock_state_changed(self, clocked_in: bool = False, since: str = "", **_: object) -> None:
         self.set_clocked_in(clocked_in, since)
-
-    def _not_ready(self) -> None:
-        self._set_status("Not yet implemented")
