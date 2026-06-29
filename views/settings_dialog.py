@@ -11,8 +11,8 @@ import holidays
 
 from core.events import EventBus, Event
 from core.timeutil import to_display_date, date_to_iso, iso_to_date
-from domain.enums import WorkType
-from domain.types import WorkDayException
+from domain.enums import WorkType, VacationType
+from domain.types import WorkDayException, VacationRecord
 from models.sickness_model import SicknessModel
 from models.time_clock_model import TimeClockModel
 from models.vacation_model import VacationModel
@@ -145,12 +145,16 @@ class SettingsDialog(tk.Toplevel):
         lf_days.pack(fill="x", **pad)
 
         targets = self._model_tc.get_work_day_targets()
-        self._day_vars: list[tuple[tk.BooleanVar, tk.StringVar]] = []
+        self._day_vars: dict[int, tuple[tk.BooleanVar, tk.StringVar]] = {}
 
-        for i, day_name in enumerate(_DAY_NAMES):
+        week_start = int(self._settings.get("week_first_day") or 0)
+        day_order = [(week_start + i) % 7 for i in range(7)]
+
+        for day_idx in day_order:
+            day_name = _DAY_NAMES[day_idx]
             row = ttk.Frame(lf_days)
             row.pack(fill="x", pady=1)
-            hours = targets.get(i)
+            hours = targets.get(day_idx)
             enabled = hours is not None and hours > 0.0
             chk_var = tk.BooleanVar(value=enabled)
             hrs_var = tk.StringVar(value=f"{hours:.1f}" if hours else "8.0")
@@ -163,7 +167,7 @@ class SettingsDialog(tk.Toplevel):
             entry.pack(side="left", padx=(4, 2))
             ttk.Label(row, text="h").pack(side="left")
             entry.config(state="normal" if enabled else "disabled")
-            self._day_vars.append((chk_var, hrs_var))
+            self._day_vars[day_idx] = (chk_var, hrs_var)
 
         # ── Offices ───────────────────────────────────────────────────────────
         lf_offices = ttk.LabelFrame(inner, text="Offices", padding=(8, 4, 8, 8))
@@ -312,22 +316,31 @@ class SettingsDialog(tk.Toplevel):
             messagebox.showerror("Error", f"Could not load holidays for {country!r}: {exc}", parent=self)
             return
 
-        existing = self._model_tc.get_date_exceptions()
-        existing_dates = {exc.date for exc in existing}
+        existing_records = self._model_vacation.get_records_for_year(year)
+        existing_holiday_dates = {
+            r.date for r in existing_records
+            if r.vtype == VacationType.PUBLIC_HOLIDAY
+        }
 
         added = 0
         skipped = 0
         for h_date, h_name in sorted(hol_dict.items()):
-            date_str = h_date.isoformat() if hasattr(h_date, "isoformat") else str(h_date)
-            if date_str in existing_dates:
+            rec_date = h_date if isinstance(h_date, date) else iso_to_date(str(h_date))
+            if rec_date in existing_holiday_dates:
                 skipped += 1
             else:
-                self._model_tc.save_date_exception(date_str, 0.0, h_name)
+                self._model_vacation.insert_record(VacationRecord(
+                    id=None,
+                    date=rec_date,
+                    hours=0.0,
+                    vtype=VacationType.PUBLIC_HOLIDAY,
+                    note=h_name,
+                ))
                 added += 1
 
         self._settings.set("last_country_holiday", country)
         self._lbl_hol_status.config(
-            text=f"{added} added, {skipped} skipped (date already set)."
+            text=f"{added} added to Vacation tab, {skipped} skipped (already recorded)."
         )
 
     # ─────────────────────────── Tab 2: Date Exceptions ─────────────────────
@@ -573,15 +586,15 @@ class SettingsDialog(tk.Toplevel):
     def _on_save(self) -> None:
         # Day targets — unchecked days stored as 0.0 (treated as no-target in balance)
         targets: dict[int, float] = {}
-        for i, (chk_var, hrs_var) in enumerate(self._day_vars):
+        for day_idx, (chk_var, hrs_var) in self._day_vars.items():
             if chk_var.get():
                 try:
                     h = float(hrs_var.get())
                 except ValueError:
                     h = 8.0
-                targets[i] = max(0.0, h)
+                targets[day_idx] = max(0.0, h)
             else:
-                targets[i] = 0.0
+                targets[day_idx] = 0.0
         self._model_tc.save_work_day_targets(targets)
 
         self._settings.set("offices", self._get_offices())

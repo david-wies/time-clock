@@ -14,7 +14,7 @@ from models.time_clock_model import TimeClockModel
 from models.vacation_model import VacationModel
 from settings import SettingsManager
 from theme.style import apply_theme
-from tray import SystemTray
+from views.tray import SystemTray
 from views.main_window import MainWindow
 from views.sickness_tab import SicknessTab
 from views.time_clock_tab import TimeClockTab

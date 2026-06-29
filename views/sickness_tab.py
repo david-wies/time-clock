@@ -126,23 +126,23 @@ class SicknessTab(ttk.Frame):
 
         self._tree.column("date", width=110, minwidth=90,
                           stretch=False, anchor="w")
-        self._tree.heading("date", text="Date", anchor="w")
+        self._tree.heading("date", text="Date", anchor="center")
 
         self._tree.column("hebrew_date", width=150,
                           minwidth=120, stretch=False, anchor="w")
-        self._tree.heading("hebrew_date", text="Hebrew Date", anchor="w")
+        self._tree.heading("hebrew_date", text="Hebrew Date", anchor="center")
 
         self._tree.column("hours", width=70, minwidth=50,
                           stretch=False, anchor="e")
-        self._tree.heading("hours", text="Hours", anchor="e")
+        self._tree.heading("hours", text="Hours", anchor="center")
 
         self._tree.column("day_equiv", width=80, minwidth=60,
                           stretch=False, anchor="e")
-        self._tree.heading("day_equiv", text="Day-Equiv", anchor="e")
+        self._tree.heading("day_equiv", text="Day-Equiv", anchor="center")
 
         self._tree.column("note", width=200, minwidth=80,
                           stretch=True, anchor="w")
-        self._tree.heading("note", text="Note", anchor="w")
+        self._tree.heading("note", text="Note", anchor="center")
 
         vsb = ttk.Scrollbar(frame, orient="vertical", command=self._tree.yview)
         self._tree.configure(yscrollcommand=vsb.set)

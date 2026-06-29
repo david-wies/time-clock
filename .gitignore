@@ -1,17 +1,33 @@
+# Python
 .venv/
 __pycache__/
 *.pyc
 *.pyo
+*.egg-info/
+
+# Test & type-check artefacts
 .pytest_cache/
 .mypy_cache/
-*.db
+.coverage
+htmlcov/
+
+# Distribution
 dist/
+build/
 *.spec
-*.egg-info/
+
+# Database
+*.db
+
+# OS
 .DS_Store
+
+# IDE
+.vscode/
+
+# Dev-only docs (not part of public repo)
 AGENTS.md
+CLAUDE.md
 IMPLEMENTATION_PLAN.md
 IMPLEMENTATION_STATUS.md
-review/*
-.vscode/*
-CLAUDE.md
+review/

@@ -245,7 +245,15 @@
       <li><a href="#time-clock">Time Clock</a></li>
       <li><a href="#vacation">Vacation</a></li>
       <li><a href="#sickness">Sickness</a></li>
-      <li><a href="#settings">Settings</a></li>
+      <li><a href="#settings">Settings</a>
+        <ul style="margin:2px 0 2px 12px;">
+          <li><a href="#settings">↳ Time Clock tab</a></li>
+          <li><a href="#settings">↳ Date Exceptions tab</a></li>
+          <li><a href="#settings">↳ Vacation tab</a></li>
+          <li><a href="#settings">↳ Sickness tab</a></li>
+          <li><a href="#settings">↳ Display tab</a></li>
+        </ul>
+      </li>
       <li><a href="#export">Export</a></li>
       <li><a href="#shortcuts">Keyboard Shortcuts</a></li>
       <li><a href="#faq">FAQ</a></li>
@@ -287,9 +295,98 @@
 
     <section id="settings">
       <h2>Settings</h2>
-      <p>Access via <strong>Settings → Settings</strong> or <kbd>Ctrl+S</kbd>. Configure daily work targets per
-        day-of-week, date-specific exceptions, office list, vacation allowance and carry-over cap, and sickness days per
-        year.</p>
+      <p>Access via <strong>Settings → Settings</strong> or <kbd>Ctrl+S</kbd>. The dialog has five tabs:</p>
+
+      <h3>Time Clock tab</h3>
+      <table>
+        <tr><th>Section</th><th>What it does</th></tr>
+        <tr>
+          <td><strong>Daily Work Hours</strong></td>
+          <td>Enable each day with a checkbox and enter the target hours (e.g. 8.0 h). Disabled days count as rest days
+            in the balance calculation. The day order follows the <em>Week starts on</em> setting in the Display tab.
+          </td>
+        </tr>
+        <tr>
+          <td><strong>Offices</strong></td>
+          <td>Manage the list of office locations that appear in the time-record form's "Office" drop-down. Add, edit,
+            or remove locations here.</td>
+        </tr>
+        <tr>
+          <td><strong>Break Presets</strong></td>
+          <td>Up to four break-duration presets (in minutes). These appear as quick-pick buttons when clocking out or
+            editing a record, so you don't have to type the break length every time.</td>
+        </tr>
+        <tr>
+          <td><strong>Default Work Type</strong></td>
+          <td>Pre-selects <em>In Site</em>, <em>Road</em>, or <em>Remote</em> when adding a new time record.</td>
+        </tr>
+        <tr>
+          <td><strong>Overtime</strong></td>
+          <td>Sets the overtime rate multiplier (e.g. 1.5×) and the period over which overtime is calculated
+            (week / month / year). These values are used in the overtime balance display.</td>
+        </tr>
+        <tr>
+          <td><strong>Holiday Auto-Import</strong></td>
+          <td>Choose a country and year, then click <em>Import Holidays for Year</em>. Public holidays for that country
+            are added directly to the <strong>Vacation</strong> tab as <em>Public Holiday</em> records with 0 hours —
+            they appear in your calendar for reference but do not consume any vacation quota. Dates already recorded are
+            skipped.</td>
+        </tr>
+      </table>
+
+      <h3>Date Exceptions tab</h3>
+      <p>Override the standard daily work-hour target for a specific date. Use this for shortened working days (e.g. a
+        half-day before a holiday) or for any day where the normal weekly target does not apply. Set <strong>Hours =
+        0</strong> to mark the day as a non-working day entirely. The year filter at the top lets you browse exceptions
+        year by year.</p>
+
+      <h3>Vacation tab</h3>
+      <table>
+        <tr><th>Field</th><th>What it does</th></tr>
+        <tr>
+          <td><strong>Year</strong></td>
+          <td>Select the year whose vacation settings you want to view or edit. Each year has its own allowance and
+            carry-over cap.</td>
+        </tr>
+        <tr>
+          <td><strong>Hours per year</strong></td>
+          <td>Your total annual vacation allowance in hours (e.g. 160 h = 20 days × 8 h). This forms the base of the
+            vacation pool shown in the Vacation tab.</td>
+        </tr>
+        <tr>
+          <td><strong>Max carry-over</strong></td>
+          <td>The maximum number of unused vacation hours that can be carried forward from the previous year. Surplus
+            above this cap is forfeited when you run a carry-over transfer.</td>
+        </tr>
+      </table>
+
+      <h3>Sickness tab</h3>
+      <table>
+        <tr><th>Field</th><th>What it does</th></tr>
+        <tr>
+          <td><strong>Year</strong></td>
+          <td>Select the year whose sickness settings you want to view or edit.</td>
+        </tr>
+        <tr>
+          <td><strong>Days per year</strong></td>
+          <td>Your annual sick-day allowance (e.g. 10 days). Used to compute the remaining balance shown in the
+            Sickness tab. Hours are converted to day-equivalents using the daily work-hour target.</td>
+        </tr>
+      </table>
+
+      <h3>Display tab</h3>
+      <table>
+        <tr><th>Field</th><th>What it does</th></tr>
+        <tr>
+          <td><strong>Theme</strong></td>
+          <td>Switch between <em>Light</em>, <em>Dark</em>, or <em>System</em> (follows your OS preference).</td>
+        </tr>
+        <tr>
+          <td><strong>Week starts on</strong></td>
+          <td>Sets whether weeks begin on Monday or Sunday. This affects the date-picker calendar layout and the order
+            of days shown in the <em>Daily Work Hours</em> section of the Time Clock tab.</td>
+        </tr>
+      </table>
     </section>
 
     <section id="export">

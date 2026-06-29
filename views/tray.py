@@ -17,7 +17,7 @@ from settings import SettingsManager
 
 _ICON_SIZE = 64
 _BADGE_COLOR = (22, 163, 74, 255)   # success green
-_PNG_PATH = Path(__file__).parent / "time-clock.png"
+_PNG_PATH = Path(__file__).parent.parent / "resources" / "time-clock.png"
 
 
 def _load_base_icon() -> Image.Image:

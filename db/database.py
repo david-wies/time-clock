@@ -163,7 +163,7 @@ class Database:
             CREATE TABLE IF NOT EXISTS vacation_record (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
                 date        TEXT    NOT NULL,
-                hours       REAL    NOT NULL CHECK(hours > 0),
+                hours       REAL    NOT NULL CHECK(hours >= 0),
                 vtype       TEXT    NOT NULL CHECK(vtype IN ('annual_leave', 'public_holiday', 'unpaid_leave', 'special_leave', 'carry_over')),
                 note        TEXT,
                 created_at  TEXT    NOT NULL DEFAULT (datetime('now')),
@@ -246,6 +246,24 @@ class Database:
 
         # Migration logic (currently at version 1 after setup)
         if version == 0:
-            # Set to current schema version 1
             cursor.execute("PRAGMA user_version = 1;")
+
+        if version < 2:
+            # Relax vacation_record.hours constraint from > 0 to >= 0 (allow 0-hour holiday imports)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS vacation_record_v2 (
+                    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                    date        TEXT    NOT NULL,
+                    hours       REAL    NOT NULL CHECK(hours >= 0),
+                    vtype       TEXT    NOT NULL CHECK(vtype IN ('annual_leave', 'public_holiday', 'unpaid_leave', 'special_leave', 'carry_over')),
+                    note        TEXT,
+                    created_at  TEXT    NOT NULL DEFAULT (datetime('now')),
+                    updated_at  TEXT    NOT NULL DEFAULT (datetime('now'))
+                );
+            """)
+            conn.execute("INSERT OR IGNORE INTO vacation_record_v2 SELECT * FROM vacation_record;")
+            conn.execute("DROP TABLE vacation_record;")
+            conn.execute("ALTER TABLE vacation_record_v2 RENAME TO vacation_record;")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_vacation_record_date ON vacation_record(date);")
+            cursor.execute("PRAGMA user_version = 2;")
         return
