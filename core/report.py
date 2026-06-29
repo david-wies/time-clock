@@ -127,7 +127,7 @@ def period_summary(
     Assembles all report data for the requested period.
     No PDF rendering — returns a plain ReportData dataclass.
     """
-    overtime_rate = float(settings.get("overtime_rate") or 1.0)
+    overtime_rate = float(settings.get("overtime_rate", 1.0))
 
     start_date, end_date = _period_range(period_type, year, month, quarter)
     label = _period_label(period_type, year, month, quarter)

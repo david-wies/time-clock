@@ -3,8 +3,35 @@ from datetime import date
 from domain.types import SicknessRecord
 from models.sickness_model import SicknessModel
 from models.time_clock_model import TimeClockModel
-from core.events import EventBus
+from core.events import EventBus, Event
 from db.database import Database
+
+
+def test_sickness_events(db: Database, event_bus: EventBus) -> None:
+    model = SicknessModel(db, event_bus)
+
+    change_called = False
+
+    def on_change() -> None:
+        nonlocal change_called
+        change_called = True
+
+    event_bus.subscribe(Event.SICKNESS_CHANGED, on_change)
+
+    rec = SicknessRecord(None, date(2026, 2, 15), 8.0, "Flu")
+    rec_id = model.insert_record(rec)
+    assert change_called is True
+
+    change_called = False
+    fetched = model.get_record_by_id(rec_id)
+    assert fetched is not None
+    fetched.hours = 4.0
+    model.update_record(fetched)
+    assert change_called is True
+
+    change_called = False
+    model.delete_record(rec_id)
+    assert change_called is True
 
 
 def test_sickness_record_crud(db: Database, event_bus: EventBus) -> None:
@@ -106,7 +133,7 @@ def test_sickness_summary(db: Database, event_bus: EventBus) -> None:
     sick_model.insert_record(rec2)
 
     summary = sick_model.calculate_sickness_summary(2026)
-    assert summary["allowance"] == 10.0
-    assert summary["used_hours"] == 12.0
-    assert summary["used_days"] == 1.5
-    assert summary["remaining_days"] == 8.5
+    assert summary.allowance == 10.0
+    assert summary.used_hours == 12.0
+    assert summary.used_days == 1.5
+    assert summary.remaining_days == 8.5

@@ -17,18 +17,9 @@ from domain.types import VacationRecord
 from domain.enums import VacationType
 from theme.style import COLORS
 
-try:
-    from core.hebrew_date import to_hebrew_label as _hebrew_impl
-
-    def _safe_hebrew(d: date) -> Optional[str]:
-        try:
-            return _hebrew_impl(d)
-        except Exception:
-            return None
-
-except ImportError:
-    def _safe_hebrew(d: date) -> Optional[str]:  # type: ignore[misc]
-        return None
+from core.hebrew_date import to_hebrew_label as _safe_hebrew
+from views.vacation_record_dialog import VacationRecordDialog
+from views.carry_over_dialog import CarryOverDialog
 
 
 _MONTH_NAMES = [
@@ -72,8 +63,6 @@ class VacationTab(ttk.Frame):
         self._selected_year: int = today.year
         self._selected_month: int = 0  # 0 = All months
         self._unsubs: list[Callable] = []
-        self._hebrew_available: bool = _safe_hebrew(today) is not None
-
         self._build_ui()
         self._refresh()
 
@@ -140,9 +129,7 @@ class VacationTab(ttk.Frame):
         frame = ttk.Frame(self)
         frame.pack(fill="both", expand=True, padx=4, pady=4)
 
-        cols = ["date", "type", "hours", "note"]
-        if self._hebrew_available:
-            cols = ["date", "hebrew_date", "type", "hours", "note"]
+        cols = ["date", "hebrew_date", "type", "hours", "note"]
 
         self._tree = ttk.Treeview(
             frame,
@@ -155,10 +142,9 @@ class VacationTab(ttk.Frame):
                           stretch=False, anchor="w")
         self._tree.heading("date", text="Date", anchor="w")
 
-        if self._hebrew_available:
-            self._tree.column("hebrew_date", width=150,
-                              minwidth=120, stretch=False, anchor="w")
-            self._tree.heading("hebrew_date", text="Hebrew Date", anchor="w")
+        self._tree.column("hebrew_date", width=150,
+                          minwidth=120, stretch=False, anchor="w")
+        self._tree.heading("hebrew_date", text="Hebrew Date", anchor="w")
 
         self._tree.column("type", width=140, minwidth=100,
                           stretch=False, anchor="w")
@@ -254,11 +240,11 @@ class VacationTab(ttk.Frame):
         year = self._selected_year
         summary = self.model.calculate_vacation_summary(year)
 
-        used = summary["used"]
-        total_pool = summary["total_pool"]
-        remaining = summary["remaining"]
-        carry_over = summary["carry_over"]
-        allowance = summary["allowance"]
+        used = summary.used
+        total_pool = summary.total_pool
+        remaining = summary.remaining
+        carry_over = summary.carry_over
+        allowance = summary.allowance
 
         c = COLORS.get("light", COLORS["light"])
         if remaining < 0:
@@ -309,19 +295,13 @@ class VacationTab(ttk.Frame):
 
     def _make_row_values(self, rec: Optional[VacationRecord], override_date: str = "") -> tuple:
         if rec is None:
-            if self._hebrew_available:
-                return (override_date, "", "", "", "")
-            return (override_date, "", "", "")
+            return (override_date, "", "", "", "")
 
         disp = to_display_date(rec.date)
         type_label = _VTYPE_LABELS.get(rec.vtype, str(rec.vtype))
         hours_str = _fmt_h(rec.hours)
         note = rec.note or ""
-
-        if self._hebrew_available:
-            hebrew = _safe_hebrew(rec.date) or ""
-            return (disp, hebrew, type_label, hours_str, note)
-        return (disp, type_label, hours_str, note)
+        return (disp, _safe_hebrew(rec.date), type_label, hours_str, note)
 
     def _insert_record_row(self, rec: VacationRecord) -> None:
         tag: str
@@ -388,7 +368,6 @@ class VacationTab(ttk.Frame):
     # ─────────────────────────── Actions ────────────────────────────────────
 
     def _do_add(self) -> None:
-        from views.vacation_record_dialog import VacationRecordDialog
         VacationRecordDialog(
             self, controller=self.controller, model=self.model, record=None,
         )
@@ -397,7 +376,6 @@ class VacationTab(ttk.Frame):
         rec = self._get_selected_record()
         if rec is None:
             return
-        from views.vacation_record_dialog import VacationRecordDialog
         VacationRecordDialog(
             self, controller=self.controller, model=self.model, record=rec,
         )
@@ -419,7 +397,6 @@ class VacationTab(ttk.Frame):
                 result.errors), parent=self)
 
     def _do_carry_over(self) -> None:
-        from views.carry_over_dialog import CarryOverDialog
         CarryOverDialog(
             self, controller=self.controller, model=self.model,
             to_year=self._selected_year,

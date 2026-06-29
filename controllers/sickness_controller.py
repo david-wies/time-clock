@@ -38,8 +38,8 @@ class SicknessController:
             if old_rec:
                 old_days_equiv = self.model.get_day_equivalent(old_rec.date, old_rec.hours)
                 
-        projected_used_days = summary["used_days"] - old_days_equiv + self.model.get_day_equivalent(record.date, record.hours)
-        projected_remaining = summary["allowance"] - projected_used_days
+        projected_used_days = summary.used_days - old_days_equiv + self.model.get_day_equivalent(record.date, record.hours)
+        projected_remaining = summary.allowance - projected_used_days
         
         if projected_remaining < 0 and not confirm_over_balance:
             return Result(ok=False, errors=["OVER_BALANCE_WARNING"])

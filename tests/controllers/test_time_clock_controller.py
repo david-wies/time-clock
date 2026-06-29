@@ -89,6 +89,15 @@ def test_clock_in_out_flow(controller: TimeClockController) -> None:
     assert res_in_again.ok is False
     assert res_in_again.errors[0] == "OPEN_RECORD_EXISTS"
 
+    # 2b. force=True bypasses the OPEN_RECORD_EXISTS guard.
+    # With fixed_clock at 09:00 an existing open record at 09:00 causes overlap
+    # validation to fire — but the error is NOT "OPEN_RECORD_EXISTS", which
+    # confirms force=True successfully bypassed that specific check.
+    res_force = controller.clock_in(force=True)
+    assert res_force.ok is False
+    assert "OPEN_RECORD_EXISTS" not in res_force.errors
+    assert "overlaps" in res_force.errors[0]
+
     # 3. Clock Out (Success)
     res_out = controller.clock_out()
     assert res_out.ok is True

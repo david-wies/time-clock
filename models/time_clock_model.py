@@ -1,7 +1,7 @@
 import sqlite3
 from datetime import date, time
-from typing import Optional, Any
-from domain.types import TimeRecord
+from typing import Optional
+from domain.types import TimeRecord, WorkDayException
 from domain.enums import WorkType
 from core.events import EventBus, Event
 from core.timeutil import iso_to_date, str_to_time, date_to_iso, time_to_str
@@ -142,7 +142,8 @@ class TimeClockModel:
                 conn.execute(
                     """
                     UPDATE time_record
-                    SET date = ?, start_time = ?, end_time = ?, break_minutes = ?, work_type = ?, office = ?, note = ?
+                    SET date = ?, start_time = ?, end_time = ?, break_minutes = ?, work_type = ?, office = ?, note = ?,
+                        updated_at = datetime('now')
                     WHERE id = ?;
                     """,
                     (
@@ -200,7 +201,7 @@ class TimeClockModel:
         finally:
             conn.close()
 
-    def get_date_exceptions(self, year: Optional[int] = None) -> list[dict[str, Any]]:
+    def get_date_exceptions(self, year: Optional[int] = None) -> list[WorkDayException]:
         """Returns work day exceptions. If year is specified, filters by that year."""
         conn = self.db.get_connection()
         try:
@@ -216,7 +217,15 @@ class TimeClockModel:
                 cursor.execute(
                     "SELECT id, date, hours, label FROM work_day_exception ORDER BY date ASC;")
             rows = cursor.fetchall()
-            return [dict(row) for row in rows]
+            return [
+                WorkDayException(
+                    id=row["id"],
+                    date=row["date"],
+                    hours=row["hours"],
+                    label=row["label"],
+                )
+                for row in rows
+            ]
         finally:
             conn.close()
 

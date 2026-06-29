@@ -42,9 +42,11 @@ def test_time_record_crud(db: Database, event_bus: EventBus) -> None:
     assert fetched.work_type == WorkType.REMOTE
 
     # 3. Update
+    change_called = False
     fetched.note = "Updated note"
     fetched.break_minutes = 45
     model.update_record(fetched)
+    assert change_called is True
 
     updated = model.get_record_by_id(rec_id)
     assert updated is not None
@@ -52,7 +54,9 @@ def test_time_record_crud(db: Database, event_bus: EventBus) -> None:
     assert updated.break_minutes == 45
 
     # 4. Delete
+    change_called = False
     model.delete_record(rec_id)
+    assert change_called is True
     assert model.get_record_by_id(rec_id) is None
 
 
@@ -126,13 +130,13 @@ def test_targets_and_exceptions(db: Database, event_bus: EventBus) -> None:
 
     exceptions = model.get_date_exceptions(year=2026)
     assert len(exceptions) == 2
-    assert exceptions[0]["date"] == "2026-12-24"
-    assert exceptions[0]["hours"] == 4.0
-    assert exceptions[1]["date"] == "2026-12-25"
-    assert exceptions[1]["hours"] == 0.0
+    assert exceptions[0].date == "2026-12-24"
+    assert exceptions[0].hours == 4.0
+    assert exceptions[1].date == "2026-12-25"
+    assert exceptions[1].hours == 0.0
 
     # Delete exception
     model.delete_date_exception_by_date("2026-12-24")
     exceptions_after = model.get_date_exceptions(year=2026)
     assert len(exceptions_after) == 1
-    assert exceptions_after[0]["date"] == "2026-12-25"
+    assert exceptions_after[0].date == "2026-12-25"

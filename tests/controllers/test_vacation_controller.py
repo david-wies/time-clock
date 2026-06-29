@@ -59,6 +59,30 @@ def test_save_balance_warning_and_override(controller: VacationController) -> No
     assert res_override.ok is True
 
 
+def test_edit_path_over_balance_warning(controller: VacationController) -> None:
+    # Setup: 16h allowance for 2026
+    controller.model.save_settings(2026, 16.0, 10.0)
+
+    # Insert first record: 8h used (8h remaining)
+    rec = VacationRecord(None, date(2026, 7, 15), 8.0, VacationType.ANNUAL_LEAVE)
+    res = controller.save_record(rec)
+    assert res.ok is True
+
+    # Fetch and change hours to a value that exhausts the remaining balance:
+    # projected_remaining = 8 (remaining) + 8 (old_hours) - 20 (new_hours) = -4 → warning
+    fetched = controller.model.get_record_by_id(rec.id)
+    assert fetched is not None
+    fetched.hours = 20.0
+
+    res_edit = controller.save_record(fetched)
+    assert res_edit.ok is False
+    assert "OVER_BALANCE_WARNING" in res_edit.errors
+
+    # Confirm override succeeds
+    res_override = controller.save_record(fetched, confirm_over_balance=True)
+    assert res_override.ok is True
+
+
 def test_add_carry_over_validation(controller: VacationController) -> None:
     # 1. Setup settings
     controller.model.save_settings(2025, 40.0, 10.0)  # max carryover 10h
@@ -66,7 +90,7 @@ def test_add_carry_over_validation(controller: VacationController) -> None:
 
     # 2025 has 40h unused surplus
     allowance = controller.model.calculate_carry_over_allowance(2026)
-    assert allowance["allowed_transfer"] == 10.0  # clamped by max_carry_over
+    assert allowance.allowed_transfer == 10.0  # clamped by max_carry_over
 
     # 2. Try transferring 15h (Fails)
     res = controller.add_carry_over(2025, 2026, 15.0)

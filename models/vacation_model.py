@@ -1,7 +1,7 @@
 import sqlite3
 from datetime import date
 from typing import Optional, Any
-from domain.types import VacationRecord
+from domain.types import VacationRecord, VacationSummary, CarryOverAllowance, CarryOverLogEntry
 from domain.enums import VacationType
 from core.events import EventBus, Event
 from core.timeutil import iso_to_date, date_to_iso
@@ -88,7 +88,8 @@ class VacationModel:
                 conn.execute(
                     """
                     UPDATE vacation_record
-                    SET date = ?, hours = ?, vtype = ?, note = ?
+                    SET date = ?, hours = ?, vtype = ?, note = ?,
+                        updated_at = datetime('now')
                     WHERE id = ?;
                     """,
                     (
@@ -148,7 +149,7 @@ class VacationModel:
 
     # --- Carry-Over Calculations & Logging ---
 
-    def get_carry_over_history(self, to_year: int) -> list[dict[str, Any]]:
+    def get_carry_over_history(self, to_year: int) -> list[CarryOverLogEntry]:
         """Returns list of carry-over log details for the destination year."""
         conn = self.db.get_connection()
         try:
@@ -156,7 +157,16 @@ class VacationModel:
             cursor.execute(
                 "SELECT id, from_year, to_year, hours, transferred_at FROM carry_over_log WHERE to_year = ?;", (to_year,))
             rows = cursor.fetchall()
-            return [dict(row) for row in rows]
+            return [
+                CarryOverLogEntry(
+                    id=row["id"],
+                    from_year=row["from_year"],
+                    to_year=row["to_year"],
+                    hours=row["hours"],
+                    transferred_at=row["transferred_at"],
+                )
+                for row in rows
+            ]
         finally:
             conn.close()
 
@@ -174,7 +184,7 @@ class VacationModel:
         finally:
             conn.close()
 
-    def calculate_vacation_summary(self, year: int) -> dict[str, float]:
+    def calculate_vacation_summary(self, year: int) -> VacationSummary:
         """
         Calculates vacation totals for a year:
           - allowance: from settings
@@ -216,15 +226,15 @@ class VacationModel:
         total_pool = allowance + carry_over
         remaining = total_pool - used
 
-        return {
-            "allowance": allowance,
-            "carry_over": carry_over,
-            "total_pool": total_pool,
-            "used": used,
-            "remaining": remaining
-        }
+        return VacationSummary(
+            allowance=allowance,
+            carry_over=carry_over,
+            total_pool=total_pool,
+            used=used,
+            remaining=remaining,
+        )
 
-    def calculate_carry_over_allowance(self, to_year: int) -> dict[str, float]:
+    def calculate_carry_over_allowance(self, to_year: int) -> CarryOverAllowance:
         """
         Calculates the remaining carry-over hours available from the previous year (to_year - 1)
         taking into account:
@@ -237,7 +247,7 @@ class VacationModel:
         prev_year = to_year - 1
         prev_summary = self.calculate_vacation_summary(prev_year)
 
-        surplus = prev_summary["remaining"]
+        surplus = prev_summary.remaining
         if surplus < 0:
             surplus = 0.0
 
@@ -254,13 +264,13 @@ class VacationModel:
         if allowed_transfer < 0:
             allowed_transfer = 0.0
 
-        return {
-            "prev_surplus": surplus,
-            "max_carry_over": max_carry_over,
-            "already_transferred": already_transferred,
-            "available_surplus": available_surplus,
-            "allowed_transfer": allowed_transfer
-        }
+        return CarryOverAllowance(
+            prev_surplus=surplus,
+            max_carry_over=max_carry_over,
+            already_transferred=already_transferred,
+            available_surplus=available_surplus,
+            allowed_transfer=allowed_transfer,
+        )
 
     def add_carry_over(self, from_year: int, to_year: int, hours: float) -> None:
         """

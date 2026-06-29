@@ -16,18 +16,8 @@ from core.timeutil import to_display_date
 from domain.types import SicknessRecord
 from theme.style import COLORS
 
-try:
-    from core.hebrew_date import to_hebrew_label as _hebrew_impl
-
-    def _safe_hebrew(d: date) -> Optional[str]:
-        try:
-            return _hebrew_impl(d)
-        except Exception:
-            return None
-
-except ImportError:
-    def _safe_hebrew(d: date) -> Optional[str]:  # type: ignore[misc]
-        return None
+from core.hebrew_date import to_hebrew_label as _safe_hebrew
+from views.sick_record_dialog import SickRecordDialog
 
 
 _MONTH_NAMES = [
@@ -59,8 +49,6 @@ class SicknessTab(ttk.Frame):
         self._selected_year: int = today.year
         self._selected_month: int = 0  # 0 = All months
         self._unsubs: list[Callable] = []
-        self._hebrew_available: bool = _safe_hebrew(today) is not None
-
         self._build_ui()
         self._refresh()
 
@@ -127,9 +115,7 @@ class SicknessTab(ttk.Frame):
         frame = ttk.Frame(self)
         frame.pack(fill="both", expand=True, padx=4, pady=4)
 
-        cols = ["date", "hours", "day_equiv", "note"]
-        if self._hebrew_available:
-            cols = ["date", "hebrew_date", "hours", "day_equiv", "note"]
+        cols = ["date", "hebrew_date", "hours", "day_equiv", "note"]
 
         self._tree = ttk.Treeview(
             frame,
@@ -142,10 +128,9 @@ class SicknessTab(ttk.Frame):
                           stretch=False, anchor="w")
         self._tree.heading("date", text="Date", anchor="w")
 
-        if self._hebrew_available:
-            self._tree.column("hebrew_date", width=150,
-                              minwidth=120, stretch=False, anchor="w")
-            self._tree.heading("hebrew_date", text="Hebrew Date", anchor="w")
+        self._tree.column("hebrew_date", width=150,
+                          minwidth=120, stretch=False, anchor="w")
+        self._tree.heading("hebrew_date", text="Hebrew Date", anchor="w")
 
         self._tree.column("hours", width=70, minwidth=50,
                           stretch=False, anchor="e")
@@ -203,7 +188,9 @@ class SicknessTab(ttk.Frame):
             return _handler
 
         self.root.bind_all("<Control-Shift-S>", _guard(self._do_add), add=True)
-        self.root.bind_all("<F5>", _guard(self._refresh), add=True)
+        self.root.bind_all("<Control-e>",       _guard(self._do_edit), add=True)
+        self.root.bind_all("<Delete>",          _guard(self._do_delete), add=True)
+        self.root.bind_all("<F5>",              _guard(self._refresh), add=True)
 
     # ─────────────────────────── Period Filter ──────────────────────────────
 
@@ -226,10 +213,10 @@ class SicknessTab(ttk.Frame):
         year = self._selected_year
         summary = self.model.calculate_sickness_summary(year)
 
-        used_days = summary["used_days"]
-        allowance = summary["allowance"]
-        remaining = summary["remaining_days"]
-        used_hours = summary["used_hours"]
+        used_days = summary.used_days
+        allowance = summary.allowance
+        remaining = summary.remaining_days
+        used_hours = summary.used_hours
 
         c = COLORS.get("light", COLORS["light"])
         if remaining < 0:
@@ -257,20 +244,14 @@ class SicknessTab(ttk.Frame):
 
     def _make_row_values(self, rec: Optional[SicknessRecord], override_date: str = "") -> tuple:
         if rec is None:
-            if self._hebrew_available:
-                return (override_date, "", "", "", "")
-            return (override_date, "", "", "")
+            return (override_date, "", "", "", "")
 
         disp = to_display_date(rec.date)
         hours_str = f"{rec.hours:.1f}h"
         day_equiv = self.model.get_day_equivalent(rec.date, rec.hours)
         day_str = f"{day_equiv:.2f}d"
         note = rec.note or ""
-
-        if self._hebrew_available:
-            hebrew = _safe_hebrew(rec.date) or ""
-            return (disp, hebrew, hours_str, day_str, note)
-        return (disp, hours_str, day_str, note)
+        return (disp, _safe_hebrew(rec.date), hours_str, day_str, note)
 
     def _refresh_tree(self) -> None:
         self._clear_tree()
@@ -352,7 +333,6 @@ class SicknessTab(ttk.Frame):
     # ─────────────────────────── Actions ────────────────────────────────────
 
     def _do_add(self) -> None:
-        from views.sick_record_dialog import SickRecordDialog
         SickRecordDialog(
             self, controller=self.controller, model=self.model, record=None,
         )
@@ -361,7 +341,6 @@ class SicknessTab(ttk.Frame):
         rec = self._get_selected_record()
         if rec is None:
             return
-        from views.sick_record_dialog import SickRecordDialog
         SickRecordDialog(
             self, controller=self.controller, model=self.model, record=rec,
         )

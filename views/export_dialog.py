@@ -29,16 +29,7 @@ from models.time_clock_model import TimeClockModel
 from models.vacation_model import VacationModel
 from views.date_picker import make_date_picker
 
-try:
-    from core.hebrew_date import to_hebrew_label as _to_hebrew_label
-    _HEBREW_AVAILABLE = _to_hebrew_label(date.today()) is not None
-except Exception:
-    _HEBREW_AVAILABLE = False
-    def _to_hebrew_label(d): return None  # type: ignore[misc]
-
-
-def _safe_hebrew(d: date) -> str:
-    return _to_hebrew_label(d) or ""
+from core.hebrew_date import to_hebrew_label as _safe_hebrew
 
 # ── Label maps ───────────────────────────────────────────────────────────────
 
@@ -94,7 +85,6 @@ class ExportDialog(tk.Toplevel):
         self._var_data = tk.StringVar(value=tab)
         self._var_fmt = tk.StringVar(value="csv")
         self._var_group = tk.BooleanVar(value=True)
-        self._var_hebrew = tk.BooleanVar(value=False)
 
         self._build_ui()
         self.wait_window(self)
@@ -160,13 +150,6 @@ class ExportDialog(tk.Toplevel):
         ttk.Checkbutton(
             opts_frame, text="Group by month", variable=self._var_group
         ).pack(anchor="w")
-
-        if _HEBREW_AVAILABLE:
-            ttk.Checkbutton(
-                opts_frame,
-                text="Include Hebrew Date column",
-                variable=self._var_hebrew,
-            ).pack(anchor="w")
 
         # ── Buttons ──────────────────────────────────────────────────────────
         btn_row = ttk.Frame(outer)
@@ -251,26 +234,20 @@ class ExportDialog(tk.Toplevel):
 
     # ─────────────────────────── Column / Row Helpers ────────────────────────
 
-    def _columns(self, tab: str, incl_hebrew: bool) -> list[str]:
+    def _columns(self, tab: str) -> list[str]:
         """Return ordered column header list for the given data type."""
         if tab == "time":
-            cols = ["Date", "Start", "End",
+            cols = ["Date", "Hebrew Date", "Start", "End",
                     "Break (min)", "Type", "Office", "Note", "Net Hours"]
         elif tab == "vacation":
-            cols = ["Date", "Hours", "Type", "Note"]
+            cols = ["Date", "Hebrew Date", "Hours", "Type", "Note"]
         else:  # sickness
-            cols = ["Date", "Hours", "Note"]
-        if incl_hebrew:
-            cols.insert(1, "Hebrew Date")
+            cols = ["Date", "Hebrew Date", "Hours", "Note"]
         return cols
 
-    def _record_to_values(
-        self,
-        rec: _AnyRecord,
-        tab: str,
-        incl_hebrew: bool,
-    ) -> list:
+    def _record_to_values(self, rec: _AnyRecord, tab: str) -> list:
         """Convert a single record to a flat list of cell values (strings / numbers)."""
+        hebrew = _safe_hebrew(rec.date)
         if tab == "time":
             assert isinstance(rec, TimeRecord)
             net: str = (
@@ -278,8 +255,9 @@ class ExportDialog(tk.Toplevel):
                 if rec.end_time
                 else ""
             )
-            row: list = [
+            return [
                 to_display_date(rec.date),
+                hebrew,
                 rec.start_time.strftime("%H:%M"),
                 rec.end_time.strftime("%H:%M") if rec.end_time else "",
                 rec.break_minutes,
@@ -290,24 +268,21 @@ class ExportDialog(tk.Toplevel):
             ]
         elif tab == "vacation":
             assert isinstance(rec, VacationRecord)
-            row = [
+            return [
                 to_display_date(rec.date),
+                hebrew,
                 rec.hours,
                 _VTYPE_LABELS.get(rec.vtype, str(rec.vtype)),
                 rec.note or "",
             ]
         else:  # sickness
             assert isinstance(rec, SicknessRecord)
-            row = [
+            return [
                 to_display_date(rec.date),
+                hebrew,
                 rec.hours,
                 rec.note or "",
             ]
-
-        if incl_hebrew:
-            row.insert(1, _safe_hebrew(rec.date) or "")
-
-        return row
 
     def _compute_total(self, records: list[_AnyRecord], tab: str) -> float:
         """Return total net hours (time) or total hours (vacation/sickness)."""
@@ -335,12 +310,11 @@ class ExportDialog(tk.Toplevel):
 
     def _export_csv(self, records: list[_AnyRecord], path: str) -> None:
         tab = self._var_data.get()
-        incl_hebrew = bool(self._var_hebrew.get())
         group_by_month = bool(self._var_group.get())
 
         with open(path, "w", newline="", encoding="utf-8-sig") as f:
             writer = csv.writer(f)
-            writer.writerow(self._columns(tab, incl_hebrew))
+            writer.writerow(self._columns(tab))
 
             current_month: tuple[int, int] | None = None
             for rec in records:
@@ -350,17 +324,15 @@ class ExportDialog(tk.Toplevel):
                         writer.writerow([])  # blank separator between months
                     current_month = month_key
 
-                writer.writerow(self._record_to_values(rec, tab, incl_hebrew))
+                writer.writerow(self._record_to_values(rec, tab))
 
     # ─────────────────────────── Excel Export ───────────────────────────────
 
     def _export_excel(self, records: list[_AnyRecord], path: str) -> None:
 
         tab = self._var_data.get()
-        incl_hebrew = bool(self._var_hebrew.get())
-        columns = self._columns(tab, incl_hebrew)
-        rows = [self._record_to_values(rec, tab, incl_hebrew)
-                for rec in records]
+        columns = self._columns(tab)
+        rows = [self._record_to_values(rec, tab) for rec in records]
 
         df = pd.DataFrame(rows, columns=columns)
         df.to_excel(path, index=False, sheet_name="Records", engine="openpyxl")
@@ -370,9 +342,8 @@ class ExportDialog(tk.Toplevel):
     def _export_pdf(self, records: list[_AnyRecord], path: str) -> None:
 
         tab = self._var_data.get()
-        incl_hebrew = bool(self._var_hebrew.get())
         group_by_month = bool(self._var_group.get())
-        columns = self._columns(tab, incl_hebrew)
+        columns = self._columns(tab)
 
         # Time records have more columns — use landscape
         page_size = landscape(A4) if tab == "time" else A4
@@ -414,7 +385,7 @@ class ExportDialog(tk.Toplevel):
                     month_header_rows.add(len(table_data))
                     table_data.append(month_row)
 
-            table_data.append(self._record_to_values(rec, tab, incl_hebrew))
+            table_data.append(self._record_to_values(rec, tab))
 
             if tab == "time":
                 assert isinstance(rec, TimeRecord)

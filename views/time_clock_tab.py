@@ -19,22 +19,12 @@ from core.balance import (
     calculate_period_balance,
     get_month_range,
 )
-from domain.types import TimeRecord
+from domain.types import TimeRecord, WorkDayException
 from domain.enums import WorkType
 from theme.style import COLORS
 
-try:
-    from core.hebrew_date import to_hebrew_label as _hebrew_impl
-
-    def _safe_hebrew(d: date) -> Optional[str]:
-        try:
-            return _hebrew_impl(d)
-        except Exception:
-            return None
-
-except ImportError:
-    def _safe_hebrew(d: date) -> Optional[str]:  # type: ignore[misc]
-        return None
+from core.hebrew_date import to_hebrew_label as _safe_hebrew
+from views.time_record_dialog import TimeRecordDialog
 
 
 _MONTH_NAMES = [
@@ -61,13 +51,13 @@ def _now_time() -> time:
     return datetime.now().time().replace(second=0, microsecond=0)
 
 
-def _build_exc_dict(raw: list[dict]) -> dict[date, float]:
+def _build_exc_dict(raw: list[WorkDayException]) -> dict[date, float]:
     result: dict[date, float] = {}
     for exc in raw:
         try:
-            d = date.fromisoformat(exc["date"])
-            result[d] = float(exc["hours"])
-        except (KeyError, ValueError):
+            d = date.fromisoformat(exc.date)
+            result[d] = float(exc.hours)
+        except ValueError:
             pass
     return result
 
@@ -535,8 +525,7 @@ class TimeClockTab(ttk.Frame):
     ) -> str:
         day_name = _DAY_NAMES[day.weekday()]
         disp = to_display_date(day)
-        hebrew = _safe_hebrew(day)
-        heb_part = f" / {hebrew}" if hebrew else ""
+        heb_part = f" / {_safe_hebrew(day)}"
         label = f"── {day_name}, {disp}{heb_part}  ({_fmt_h(worked)} / {_fmt_h(target)}) ──"
         return self._tree.insert(
             parent, "end",
@@ -752,13 +741,6 @@ class TimeClockTab(ttk.Frame):
         dlg.wait_window()
 
     def _do_add(self) -> None:
-        try:
-            from views.time_record_dialog import TimeRecordDialog
-        except ImportError:
-            messagebox.showinfo(
-                "Not Available", "Time record dialog is not yet available.", parent=self
-            )
-            return
         TimeRecordDialog(
             self, controller=self.controller,
             settings=self.settings, record=None,
@@ -767,13 +749,6 @@ class TimeClockTab(ttk.Frame):
     def _do_edit(self) -> None:
         rec = self._get_selected_record()
         if rec is None:
-            return
-        try:
-            from views.time_record_dialog import TimeRecordDialog
-        except ImportError:
-            messagebox.showinfo(
-                "Not Available", "Time record dialog is not yet available.", parent=self
-            )
             return
         TimeRecordDialog(
             self, controller=self.controller,

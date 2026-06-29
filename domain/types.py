@@ -40,3 +40,46 @@ class SicknessRecord:
 class Result:
     ok: bool
     errors: list[str]
+
+
+@dataclass(slots=True)
+class VacationSummary:
+    allowance: float
+    carry_over: float
+    total_pool: float
+    used: float
+    remaining: float
+
+
+@dataclass(slots=True)
+class CarryOverAllowance:
+    prev_surplus: float
+    max_carry_over: float
+    already_transferred: float
+    available_surplus: float
+    allowed_transfer: float
+
+
+@dataclass(slots=True)
+class SicknessSummary:
+    allowance: float
+    used_hours: float
+    used_days: float
+    remaining_days: float
+
+
+@dataclass(slots=True)
+class WorkDayException:
+    id: int
+    date: str        # ISO 8601
+    hours: float
+    label: Optional[str]
+
+
+@dataclass(slots=True)
+class CarryOverLogEntry:
+    id: int
+    from_year: int
+    to_year: int
+    hours: float
+    transferred_at: str  # UTC datetime string

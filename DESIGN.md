@@ -296,7 +296,7 @@ Two prominent one-click buttons above the record list:
 - Selected row highlighted
 - Double-click any row → opens edit dialog for that record
 - Each workday can have multiple records (contiguous blocks with breaks) — no break field within a single record needed since break is per-record
-- Hebrew date display depends on `hdate` library (optional dep; see §21.7). If absent, Hebrew date portion of day header is omitted silently.
+- Hebrew date always shown in day headers: `── Monday, June 1 / י"ז סיוון תשפ"ו (7.5h) ──`
 
 ### 5.4 Daily Target Calculation
 
@@ -395,7 +395,7 @@ If `end_time < start_time` (e.g., 22:00 → 06:00):
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
-- Hebrew Date column populated by `core/hebrew_date.py` (see §21.7). Column hidden if `hdate` unavailable.
+- Hebrew Date column always shown, populated by `core/hebrew_date.py`.
 
 ### 6.3 Add/Edit Vacation Record Dialog
 
@@ -463,7 +463,7 @@ If `end_time < start_time` (e.g., 22:00 → 06:00):
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
-- Hebrew Date column populated by `core/hebrew_date.py` (see §21.7). Column hidden if `hdate` unavailable.
+- Hebrew Date column always shown, populated by `core/hebrew_date.py`.
 
 - Hours-to-days conversion: `days = hours / daily_target` (average), or display both
 - Grouped by month with collapsible headers, same pattern as Time Clock
@@ -1098,27 +1098,23 @@ The following were originally deferred but are now in scope for v1.
 
 ### 21.7 Hebrew Calendar Date Display
 
-Entirely optional — app functions identically without it.
+Always shown — `hdate` is a required dependency.
 
-- **Dependency**: `hdate` (PyPI: `hdate`). If not installed, all Hebrew date columns/labels are silently hidden; no warning shown.
-- **Conversion utility**: `core/hebrew_date.py` — single function `to_hebrew_label(d: date) -> str | None` that returns a formatted Hebrew date string (e.g., `"י"ז סיוון תשפ"ו"`) or `None` if `hdate` is unavailable.
+- **Dependency**: `hdate` (PyPI: `hdate`). Listed in `requirements.txt`; imported unconditionally.
+- **Conversion utility**: `core/hebrew_date.py` — single function `to_hebrew_label(d: date) -> str` that always returns a formatted Hebrew date string (e.g., `"י"ז סיוון תשפ"ו"`).
 - **Display locations**:
   - Time Clock grouped list day headers: `── Monday, June 1 / י"ז סיוון תשפ"ו (7.5h) ──`
-  - Vacation list: "Hebrew Date" column next to "Date" column
-  - Sickness list: "Hebrew Date" column next to "Date" column
-  - Export: optional "Hebrew Date" column in CSV/Excel/PDF (checkbox in export dialog, hidden if dep missing)
+  - Vacation list: "Hebrew Date" column next to "Date" column (always visible)
+  - Sickness list: "Hebrew Date" column next to "Date" column (always visible)
+  - Export: "Hebrew Date" column always included in CSV/Excel/PDF
 - **Column width**: fixed monospace-aligned column; uses the same `Consolas` font as time columns (§16.3).
-- **Settings toggle**: Settings → General → "Show Hebrew dates" checkbox (default: on when `hdate` is installed, irrelevant when absent). Stored in `app_config`.
+- **No settings toggle**: Hebrew dates are always shown; no `show_hebrew_dates` setting.
 - **No schema change**: Hebrew dates are always computed on the fly from the stored Gregorian ISO date. Never persisted.
 
 ```python
 # core/hebrew_date.py
-def to_hebrew_label(d: date) -> str | None:
-    try:
-        from hdate import HDate
-        return str(HDate(d))
-    except ImportError:
-        return None
+def to_hebrew_label(d: date) -> str:
+    return str(HebrewDate.from_gdate(d))[::-1]
 ```
 
 ## 22. Future Considerations (non-goal for v1)

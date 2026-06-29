@@ -29,6 +29,9 @@ class VacationController:
 
     def save_record(self, record: VacationRecord, confirm_over_balance: bool = False) -> Result:
         """Validates and saves a VacationRecord."""
+        if record.vtype == VacationType.CARRY_OVER:
+            return Result(ok=False, errors=["Use add_carry_over() to record carry-over hours."])
+
         errors = validate_vacation_record(record)
         if errors:
             return Result(ok=False, errors=errors)
@@ -55,7 +58,7 @@ class VacationController:
                 ):
                     old_hours = old_rec.hours
 
-            projected_remaining = summary["remaining"] + \
+            projected_remaining = summary.remaining + \
                 old_hours - record.hours
 
             if projected_remaining < 0 and not confirm_over_balance:
@@ -77,7 +80,7 @@ class VacationController:
             return Result(ok=False, errors=["Hours to transfer must be greater than zero."])
 
         allowance = self.model.calculate_carry_over_allowance(to_year)
-        allowed_max = allowance["allowed_transfer"]
+        allowed_max = allowance.allowed_transfer
 
         if hours > allowed_max:
             return Result(

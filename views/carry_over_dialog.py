@@ -44,10 +44,10 @@ class CarryOverDialog(tk.Toplevel):
         outer.pack(fill="both", expand=True)
 
         a = self._allowance
-        prev_surplus = a["prev_surplus"]
-        max_carry_over = a["max_carry_over"]
-        already_transferred = a["already_transferred"]
-        allowed = a["allowed_transfer"]
+        prev_surplus = a.prev_surplus
+        max_carry_over = a.max_carry_over
+        already_transferred = a.already_transferred
+        allowed = a.allowed_transfer
 
         # ── Info rows ─────────────────────────────────────────────────────────
         info_frame = ttk.Frame(outer)
@@ -121,7 +121,7 @@ class CarryOverDialog(tk.Toplevel):
                 text="Please enter a valid number of hours.")
             return
 
-        allowed = self._allowance["allowed_transfer"]
+        allowed = self._allowance.allowed_transfer
         if hours <= 0:
             self._lbl_error.config(text="Hours must be greater than zero.")
             return

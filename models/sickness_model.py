@@ -1,7 +1,7 @@
 import sqlite3
 from datetime import date
-from typing import Optional, Any
-from domain.types import SicknessRecord
+from typing import Optional
+from domain.types import SicknessRecord, SicknessSummary
 from core.events import EventBus, Event
 from core.timeutil import iso_to_date, date_to_iso
 from db.database import Database
@@ -85,7 +85,8 @@ class SicknessModel:
                 conn.execute(
                     """
                     UPDATE sickness_record
-                    SET date = ?, hours = ?, note = ?
+                    SET date = ?, hours = ?, note = ?,
+                        updated_at = datetime('now')
                     WHERE id = ?;
                     """,
                     (
@@ -166,7 +167,7 @@ class SicknessModel:
             return min(1.0, hours / 8.0)
         return hours / target_hours
 
-    def calculate_sickness_summary(self, year: int) -> dict[str, float]:
+    def calculate_sickness_summary(self, year: int) -> SicknessSummary:
         """
         Calculates sickness totals for a year:
           - allowance: from settings
@@ -188,9 +189,9 @@ class SicknessModel:
 
         remaining_days = allowance - used_days
 
-        return {
-            "allowance": allowance,
-            "used_hours": used_hours,
-            "used_days": used_days,
-            "remaining_days": remaining_days
-        }
+        return SicknessSummary(
+            allowance=allowance,
+            used_hours=used_hours,
+            used_days=used_days,
+            remaining_days=remaining_days,
+        )

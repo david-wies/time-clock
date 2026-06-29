@@ -7,9 +7,12 @@ from tkinter import ttk, messagebox, simpledialog
 from datetime import date
 from typing import Callable, Optional
 
+import holidays
+
 from core.events import EventBus, Event
 from core.timeutil import to_display_date, date_to_iso, iso_to_date
 from domain.enums import WorkType
+from domain.types import WorkDayException
 from models.sickness_model import SicknessModel
 from models.time_clock_model import TimeClockModel
 from models.vacation_model import VacationModel
@@ -254,23 +257,11 @@ class SettingsDialog(tk.Toplevel):
             from_=cur_year - 2, to=cur_year + 2, increment=1, width=6,
         ).pack(side="left", padx=(4, 12))
 
-        try:
-            import holidays as _h  # noqa: F401
-            hol_available = True
-        except ImportError:
-            hol_available = False
-
         self._btn_import_hol = ttk.Button(
             hol_row, text="Import Holidays for Year",
             command=self._import_holidays,
-            state="normal" if hol_available else "disabled",
         )
         self._btn_import_hol.pack(side="left")
-
-        if not hol_available:
-            ttk.Label(lf_hol, text="Install 'holidays' package to enable", foreground="gray").pack(
-                anchor="w", pady=(2, 0)
-            )
 
         self._lbl_hol_status = ttk.Label(lf_hol, text="")
         self._lbl_hol_status.pack(anchor="w", pady=(4, 0))
@@ -308,12 +299,6 @@ class SettingsDialog(tk.Toplevel):
     # ── Holiday import ────────────────────────────────────────────────────────
 
     def _import_holidays(self) -> None:
-        try:
-            import holidays
-        except ImportError:
-            messagebox.showerror("Error", "The 'holidays' package is not installed.", parent=self)
-            return
-
         country = self._var_country.get()
         try:
             year = int(self._var_hol_year.get())
@@ -328,7 +313,7 @@ class SettingsDialog(tk.Toplevel):
             return
 
         existing = self._model_tc.get_date_exceptions()
-        existing_dates = {exc["date"] for exc in existing}
+        existing_dates = {exc.date for exc in existing}
 
         added = 0
         skipped = 0
@@ -397,10 +382,10 @@ class SettingsDialog(tk.Toplevel):
         except ValueError:
             return
         for exc in self._model_tc.get_date_exceptions(year):
-            d = iso_to_date(exc["date"])
+            d = iso_to_date(exc.date)
             self._exc_tree.insert(
-                "", "end", iid=str(exc["id"]),
-                values=(to_display_date(d), f"{exc['hours']:.1f}", exc["label"] or ""),
+                "", "end", iid=str(exc.id),
+                values=(to_display_date(d), f"{exc.hours:.1f}", exc.label or ""),
             )
 
     def _exc_add(self) -> None:
@@ -416,7 +401,7 @@ class SettingsDialog(tk.Toplevel):
             year = int(self._exc_year_var.get())
         except ValueError:
             return
-        exc = next((e for e in self._model_tc.get_date_exceptions(year) if e["id"] == exc_id), None)
+        exc = next((e for e in self._model_tc.get_date_exceptions(year) if e.id == exc_id), None)
         if exc is None:
             return
         _ExceptionDialog(self, self._model_tc, exc=exc, on_saved=self._exc_load)
@@ -555,14 +540,6 @@ class SettingsDialog(tk.Toplevel):
         outer = ttk.Frame(parent, padding=(16, 12, 16, 8))
         outer.pack(fill="both", expand=True)
 
-        hebrew_val = self._settings.get("show_hebrew_dates")
-        self._var_hebrew = tk.BooleanVar(value=True if hebrew_val is None else bool(hebrew_val))
-        ttk.Checkbutton(
-            outer,
-            text="Show Hebrew dates (requires 'hdate' package)",
-            variable=self._var_hebrew,
-        ).pack(anchor="w", pady=(0, 14))
-
         lf_theme = ttk.LabelFrame(outer, text="Theme", padding=(8, 4, 8, 8))
         lf_theme.pack(fill="x")
         self._var_theme = tk.StringVar(value=self._settings.get("theme") or "system")
@@ -608,7 +585,6 @@ class SettingsDialog(tk.Toplevel):
         self._settings.set("overtime_rate", rate)
         self._settings.set("overtime_period", self._var_ot_period.get())
 
-        self._settings.set("show_hebrew_dates", self._var_hebrew.get())
         self._settings.set("theme", self._var_theme.get())
 
         self._bus.publish(Event.SETTINGS_CHANGED)
@@ -624,7 +600,7 @@ class _ExceptionDialog(tk.Toplevel):
         self,
         parent,
         model_tc: TimeClockModel,
-        exc: Optional[dict],
+        exc: Optional[WorkDayException],
         on_saved: Callable,
     ) -> None:
         super().__init__(parent)
@@ -677,10 +653,10 @@ class _ExceptionDialog(tk.Toplevel):
         ttk.Button(btn_row, text="Cancel", command=self.destroy).pack(side="right", padx=(6, 0))
         ttk.Button(btn_row, text="Save", command=self._on_save).pack(side="right")
 
-    def _populate(self, exc: dict) -> None:
-        self._set_date(iso_to_date(exc["date"]))
-        self._var_hours.set(f"{exc['hours']:.1f}")
-        self._var_label.set(exc["label"] or "")
+    def _populate(self, exc: WorkDayException) -> None:
+        self._set_date(iso_to_date(exc.date))
+        self._var_hours.set(f"{exc.hours:.1f}")
+        self._var_label.set(exc.label or "")
 
     def _on_save(self) -> None:
         self._lbl_error.config(text="")
@@ -699,7 +675,7 @@ class _ExceptionDialog(tk.Toplevel):
         label: Optional[str] = self._var_label.get().strip() or None
 
         if self._exc is not None:
-            self._model_tc.delete_date_exception(self._exc["id"])
+            self._model_tc.delete_date_exception(self._exc.id)
         self._model_tc.save_date_exception(date_str, hours, label)
 
         self._on_saved()

@@ -22,7 +22,7 @@ class SettingsManager:
         self.db = db
         return
 
-    def get(self, key: str) -> Any:
+    def get(self, key: str, default: Any = None) -> Any:
         """Retrieves a configuration value. Falls back to default if not set."""
         conn = self.db.get_connection()
         try:
@@ -38,7 +38,7 @@ class SettingsManager:
         finally:
             conn.close()
 
-        return self.DEFAULTS.get(key)
+        return self.DEFAULTS.get(key, default)
 
     def set(self, key: str, value: Any) -> None:
         """Stores a configuration value as JSON-serialized text."""
