@@ -548,6 +548,26 @@ class SettingsDialog(tk.Toplevel):
                 anchor="w", pady=2
             )
 
+        lf_cal = ttk.LabelFrame(outer, text="Calendar", padding=(8, 4, 8, 8))
+        lf_cal.pack(fill="x", pady=(8, 0))
+        row = ttk.Frame(lf_cal)
+        row.pack(anchor="w")
+        ttk.Label(row, text="Week starts on:").pack(side="left", padx=(0, 8))
+        # _WEEK_FIRST_DAY_OPTIONS maps display label → Python weekday int (0=Mon, 6=Sun)
+        self._WEEK_FIRST_DAY_OPTIONS = {"Monday": 0, "Sunday": 6}
+        current_wfd = int(self._settings.get("week_first_day", 0))
+        current_label = next(
+            (k for k, v in self._WEEK_FIRST_DAY_OPTIONS.items() if v == current_wfd), "Monday"
+        )
+        self._var_week_first_day = tk.StringVar(value=current_label)
+        ttk.Combobox(
+            row,
+            textvariable=self._var_week_first_day,
+            values=list(self._WEEK_FIRST_DAY_OPTIONS.keys()),
+            width=10,
+            state="readonly",
+        ).pack(side="left")
+
     # ─────────────────────────── Save ────────────────────────────────────────
 
     def _on_save(self) -> None:
@@ -586,6 +606,10 @@ class SettingsDialog(tk.Toplevel):
         self._settings.set("overtime_period", self._var_ot_period.get())
 
         self._settings.set("theme", self._var_theme.get())
+        wfd_label = self._var_week_first_day.get()
+        self._settings.set(
+            "week_first_day", self._WEEK_FIRST_DAY_OPTIONS.get(wfd_label, 0)
+        )
 
         self._bus.publish(Event.SETTINGS_CHANGED)
         self.destroy()

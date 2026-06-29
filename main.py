@@ -14,6 +14,7 @@ from models.time_clock_model import TimeClockModel
 from models.vacation_model import VacationModel
 from settings import SettingsManager
 from theme.style import apply_theme
+from tray import SystemTray
 from views.main_window import MainWindow
 from views.sickness_tab import SicknessTab
 from views.time_clock_tab import TimeClockTab
@@ -75,6 +76,9 @@ def main() -> None:
     )
 
     _boot_checks(root, time_model, time_ctrl, tab)
+
+    tray = SystemTray(root, time_ctrl, time_model, settings, bus)
+    tray.start()
 
     root.mainloop()
 

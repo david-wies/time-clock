@@ -12,19 +12,19 @@ class Event(Enum):
 
 
 class EventBus:
-    def __init__(self):
-        self._subscribers: dict[Event, list[Callable]] = {}
+    def __init__(self) -> None:
+        self._subscribers: dict[Event, list[Callable[..., None]]] = {}
 
-    def subscribe(self, event: Event, handler: Callable) -> Callable:
+    def subscribe(self, event: Event, handler: Callable[..., None]) -> Callable[[], None]:
         self._subscribers.setdefault(event, []).append(handler)
 
-        def _unsub():
+        def _unsub() -> None:
             try:
                 self._subscribers[event].remove(handler)
             except ValueError:
                 pass
         return _unsub
 
-    def publish(self, event: Event, **payload) -> None:
+    def publish(self, event: Event, **payload: object) -> None:
         for handler in self._subscribers.get(event, []):
             handler(**payload)

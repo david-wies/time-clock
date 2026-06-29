@@ -85,8 +85,7 @@ class TimeClockTab(ttk.Frame):
         self._view_mode: str = self.settings.get("view_mode") or "month"
         self._selected_year: int = today.year
         self._selected_month: int = today.month
-        self._selected_week_start: date = today - \
-            timedelta(days=today.weekday())
+        self._selected_week_start: date = self._week_start_for(today)
         self._after_id: Optional[str] = None
         self._unsubs: list[Callable] = []
 
@@ -104,6 +103,22 @@ class TimeClockTab(ttk.Frame):
 
         self.bind("<Destroy>", self._on_destroy)
         self.pack(fill="both", expand=True)
+
+    # ──────────────────────── Week helpers ──────────────────────────────────
+
+    def _week_first_day(self) -> int:
+        """Returns the configured first day of the week as Python weekday (0=Mon, 6=Sun)."""
+        raw = self.settings.get("week_first_day", 0)
+        try:
+            return int(raw)
+        except (TypeError, ValueError):
+            return 0
+
+    def _week_start_for(self, d: date) -> date:
+        """Returns the start of the week containing d, respecting the configured first day."""
+        first_day = self._week_first_day()
+        offset = (d.weekday() - first_day + 7) % 7
+        return d - timedelta(days=offset)
 
     # ─────────────────────────── UI Construction ────────────────────────────
 
@@ -585,6 +600,9 @@ class TimeClockTab(ttk.Frame):
         self._update_button_states()
 
     def _on_event(self, **_kw: object) -> None:
+        # Re-anchor week start in case week_first_day setting changed.
+        mid = self._selected_week_start + timedelta(days=3)
+        self._selected_week_start = self._week_start_for(mid)
         self._refresh()
         if self.model.get_open_records() and self._after_id is None:
             self._start_auto_refresh()

@@ -141,7 +141,7 @@ def period_summary(
     targets = model_tc.get_work_day_targets()
 
     exceptions: dict[date, float] = {
-        iso_to_date(d["date"]): float(d["hours"])
+        iso_to_date(d.date): d.hours
         for d in model_tc.get_date_exceptions(year)
     }
 
@@ -186,14 +186,14 @@ def period_summary(
         time_balance=bal["balance"],
         weighted_overtime=bal["weighted_overtime"],
         overtime_rate=overtime_rate,
-        vac_allowance=vac["allowance"],
-        vac_carry_over=vac["carry_over"],
-        vac_total_pool=vac["total_pool"],
-        vac_used=vac["used"],
-        vac_remaining=vac["remaining"],
-        sick_allowance_days=sick["allowance"],
-        sick_used_days=sick["used_days"],
-        sick_remaining_days=sick["remaining_days"],
-        sick_used_hours=sick["used_hours"],
+        vac_allowance=vac.allowance,
+        vac_carry_over=vac.carry_over,
+        vac_total_pool=vac.total_pool,
+        vac_used=vac.used,
+        vac_remaining=vac.remaining,
+        sick_allowance_days=sick.allowance,
+        sick_used_days=sick.used_days,
+        sick_remaining_days=sick.remaining_days,
+        sick_used_hours=sick.used_hours,
         monthly_rows=monthly_rows,
     )
