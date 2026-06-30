@@ -21,7 +21,7 @@ MONTH_NAMES = [
 ]
 
 
-@dataclass
+@dataclass(slots=True)
 class MonthlyRow:
     month: int        # 1-12
     year: int
@@ -30,7 +30,7 @@ class MonthlyRow:
     balance: float    # positive = overtime, negative = deficit
 
 
-@dataclass
+@dataclass(slots=True)
 class ReportData:
     period_label: str         # e.g. "June 2026", "Q2 2026", "2026"
     period_type: str          # "month" | "quarter" | "year"
@@ -115,7 +115,7 @@ def _period_label(
 def period_summary(
     period_type: str,  # "month" | "quarter" | "year"
     year: int,
-    # required for "month"; for "quarter" pass first month (1,4,7,10)
+    # required when period_type="month"; pass None for "quarter" and "year"
     month: Optional[int],
     quarter: Optional[int],  # 1-4, required for "quarter"
     model_tc: TimeClockModel,

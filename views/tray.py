@@ -2,6 +2,7 @@
 
 import threading
 import tkinter as tk
+import tkinter.messagebox
 from datetime import date
 from pathlib import Path
 from typing import Optional
@@ -57,7 +58,16 @@ class SystemTray:
         self._model = model
         self._settings = settings
         self._icon: Optional[pystray.Icon] = None
-        self._base_icon: Image.Image = _load_base_icon()
+        try:
+            self._base_icon: Image.Image = _load_base_icon()
+        except (FileNotFoundError, OSError):
+            print(
+                f"[SystemTray] Warning: icon file not found at {_PNG_PATH!r};"
+                " using fallback icon."
+            )
+            self._base_icon = Image.new(
+                "RGBA", (_ICON_SIZE, _ICON_SIZE), (80, 120, 200, 255)
+            )
         self._unsubs = [
             bus.subscribe(Event.CLOCK_STATE_CHANGED, self._on_records_changed),
             bus.subscribe(Event.TIME_RECORDS_CHANGED, self._on_records_changed),
@@ -140,10 +150,26 @@ class SystemTray:
     # ─────────────────── Main-thread actions ───────────────────────────────
 
     def _do_clock_in(self) -> None:
-        self._controller.clock_in()
+        result = self._controller.clock_in()
+        if not result.ok and result.errors != ["OPEN_RECORD_EXISTS"]:
+            errors = result.errors
+            self._root.after(
+                0,
+                lambda: tk.messagebox.showerror(
+                    "Clock In Failed", "\n".join(errors)
+                ),
+            )
 
     def _do_clock_out(self) -> None:
-        self._controller.clock_out()
+        result = self._controller.clock_out()
+        if not result.ok:
+            errors = result.errors
+            self._root.after(
+                0,
+                lambda: tk.messagebox.showerror(
+                    "Clock Out Failed", "\n".join(errors)
+                ),
+            )
 
     def _do_open(self) -> None:
         self._root.deiconify()

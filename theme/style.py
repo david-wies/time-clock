@@ -1,7 +1,8 @@
 """Semantic ttk style system with graceful sv-ttk fallback."""
 
 from tkinter import ttk
-from typing import Optional
+
+import sv_ttk
 
 COLORS = {
     "light": {
@@ -36,12 +37,7 @@ def apply_theme(root, mode: str = "light") -> str:
     if mode == "system":
         mode = "light"
 
-    try:
-        import sv_ttk
-        sv_ttk.set_theme(mode)
-    except ImportError:
-        style = ttk.Style()
-        style.theme_use("clam")
+    sv_ttk.set_theme(mode)
 
     _configure_named_styles(root, mode)
     return mode

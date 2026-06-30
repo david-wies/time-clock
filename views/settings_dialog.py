@@ -324,24 +324,35 @@ class SettingsDialog(tk.Toplevel):
 
         added = 0
         skipped = 0
+        insert_errors: list[str] = []
         for h_date, h_name in sorted(hol_dict.items()):
             rec_date = h_date if isinstance(h_date, date) else iso_to_date(str(h_date))
             if rec_date in existing_holiday_dates:
                 skipped += 1
             else:
-                self._model_vacation.insert_record(VacationRecord(
-                    id=None,
-                    date=rec_date,
-                    hours=0.0,
-                    vtype=VacationType.PUBLIC_HOLIDAY,
-                    note=h_name,
-                ))
-                added += 1
+                try:
+                    self._model_vacation.insert_record(VacationRecord(
+                        id=None,
+                        date=rec_date,
+                        hours=0.0,
+                        vtype=VacationType.PUBLIC_HOLIDAY,
+                        note=h_name,
+                    ))
+                    added += 1
+                except Exception as exc:
+                    insert_errors.append(f"{rec_date}: {exc}")
 
         self._settings.set("last_country_holiday", country)
         self._lbl_hol_status.config(
             text=f"{added} added to Vacation tab, {skipped} skipped (already recorded)."
         )
+        if insert_errors:
+            messagebox.showwarning(
+                "Holiday Import",
+                f"{len(insert_errors)} holiday(s) could not be imported:\n"
+                + "\n".join(insert_errors),
+                parent=self,
+            )
 
     # ─────────────────────────── Tab 2: Date Exceptions ─────────────────────
 
@@ -425,7 +436,11 @@ class SettingsDialog(tk.Toplevel):
             messagebox.showwarning("Remove", "Select an exception to remove.", parent=self)
             return
         if messagebox.askyesno("Remove", "Remove this date exception?", parent=self):
-            self._model_tc.delete_date_exception(int(sel[0]))
+            try:
+                self._model_tc.delete_date_exception(int(sel[0]))
+            except Exception as exc:
+                messagebox.showerror("Error", f"Could not remove exception: {exc}", parent=self)
+                return
             self._exc_load()
 
     # ─────────────────────────── Tab 3: Vacation ─────────────────────────────
@@ -492,7 +507,11 @@ class SettingsDialog(tk.Toplevel):
         except ValueError:
             messagebox.showerror("Error", "Invalid values.", parent=self)
             return
-        self._model_vacation.save_settings(year, hours, carry)
+        try:
+            self._model_vacation.save_settings(year, hours, carry)
+        except Exception as exc:
+            messagebox.showerror("Error", f"Could not save vacation settings: {exc}", parent=self)
+            return
         self._lbl_vac_status.config(text=f"Saved vacation settings for {year}.")
 
     # ─────────────────────────── Tab 4: Sickness ─────────────────────────────
@@ -544,7 +563,11 @@ class SettingsDialog(tk.Toplevel):
         except ValueError:
             messagebox.showerror("Error", "Invalid values.", parent=self)
             return
-        self._model_sickness.save_settings(year, days)
+        try:
+            self._model_sickness.save_settings(year, days)
+        except Exception as exc:
+            messagebox.showerror("Error", f"Could not save sickness settings: {exc}", parent=self)
+            return
         self._lbl_sick_status.config(text=f"Saved sickness settings for {year}.")
 
     # ─────────────────────────── Tab 5: Display ──────────────────────────────
@@ -595,10 +618,6 @@ class SettingsDialog(tk.Toplevel):
                 targets[day_idx] = max(0.0, h)
             else:
                 targets[day_idx] = 0.0
-        self._model_tc.save_work_day_targets(targets)
-
-        self._settings.set("offices", self._get_offices())
-
         presets: list[int] = []
         for v in self._break_vars:
             try:
@@ -607,22 +626,29 @@ class SettingsDialog(tk.Toplevel):
                     presets.append(val)
             except ValueError:
                 pass
-        self._settings.set("break_presets", presets)
-
-        self._settings.set("default_work_type", self._var_work_type.get())
 
         try:
             rate = float(self._var_ot_rate.get())
         except ValueError:
             rate = 1.0
-        self._settings.set("overtime_rate", rate)
-        self._settings.set("overtime_period", self._var_ot_period.get())
 
-        self._settings.set("theme", self._var_theme.get())
         wfd_label = self._var_week_first_day.get()
-        self._settings.set(
-            "week_first_day", self._WEEK_FIRST_DAY_OPTIONS.get(wfd_label, 0)
-        )
+
+        try:
+            self._model_tc.save_work_day_targets(targets)
+
+            self._settings.set("offices", self._get_offices())
+            self._settings.set("break_presets", presets)
+            self._settings.set("default_work_type", self._var_work_type.get())
+            self._settings.set("overtime_rate", rate)
+            self._settings.set("overtime_period", self._var_ot_period.get())
+            self._settings.set("theme", self._var_theme.get())
+            self._settings.set(
+                "week_first_day", self._WEEK_FIRST_DAY_OPTIONS.get(wfd_label, 0)
+            )
+        except Exception as exc:
+            messagebox.showerror("Error", f"Could not save settings: {exc}", parent=self)
+            return
 
         self._bus.publish(Event.SETTINGS_CHANGED)
         self.destroy()
@@ -711,9 +737,13 @@ class _ExceptionDialog(tk.Toplevel):
         date_str = date_to_iso(d)
         label: Optional[str] = self._var_label.get().strip() or None
 
-        if self._exc is not None:
-            self._model_tc.delete_date_exception(self._exc.id)
-        self._model_tc.save_date_exception(date_str, hours, label)
+        try:
+            if self._exc is not None:
+                self._model_tc.delete_date_exception(self._exc.id)
+            self._model_tc.save_date_exception(date_str, hours, label)
+        except Exception as exc:
+            messagebox.showerror("Error", f"Could not save exception: {exc}", parent=self)
+            return
 
         self._on_saved()
         self.destroy()

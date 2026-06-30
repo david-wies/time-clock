@@ -249,7 +249,8 @@ class ExportDialog(tk.Toplevel):
         """Convert a single record to a flat list of cell values (strings / numbers)."""
         hebrew = _safe_hebrew(rec.date)
         if tab == "time":
-            assert isinstance(rec, TimeRecord)
+            if not isinstance(rec, TimeRecord):
+                raise TypeError(f"Expected TimeRecord, got {type(rec).__name__}")
             net: str = (
                 f"{duration(rec.start_time, rec.end_time, rec.break_minutes):.2f}"
                 if rec.end_time
@@ -267,7 +268,8 @@ class ExportDialog(tk.Toplevel):
                 net,
             ]
         elif tab == "vacation":
-            assert isinstance(rec, VacationRecord)
+            if not isinstance(rec, VacationRecord):
+                raise TypeError(f"Expected VacationRecord, got {type(rec).__name__}")
             return [
                 to_display_date(rec.date),
                 hebrew,
@@ -276,7 +278,8 @@ class ExportDialog(tk.Toplevel):
                 rec.note or "",
             ]
         else:  # sickness
-            assert isinstance(rec, SicknessRecord)
+            if not isinstance(rec, SicknessRecord):
+                raise TypeError(f"Expected SicknessRecord, got {type(rec).__name__}")
             return [
                 to_display_date(rec.date),
                 hebrew,
@@ -289,12 +292,14 @@ class ExportDialog(tk.Toplevel):
         total = 0.0
         for rec in records:
             if tab == "time":
-                assert isinstance(rec, TimeRecord)
+                if not isinstance(rec, TimeRecord):
+                    raise TypeError(f"Expected TimeRecord, got {type(rec).__name__}")
                 if rec.end_time:
                     total += duration(rec.start_time,
                                       rec.end_time, rec.break_minutes)
             else:
-                assert isinstance(rec, (VacationRecord, SicknessRecord))
+                if not isinstance(rec, (VacationRecord, SicknessRecord)):
+                    raise TypeError(f"Expected VacationRecord or SicknessRecord, got {type(rec).__name__}")
                 total += rec.hours
         return total
 
@@ -388,12 +393,14 @@ class ExportDialog(tk.Toplevel):
             table_data.append(self._record_to_values(rec, tab))
 
             if tab == "time":
-                assert isinstance(rec, TimeRecord)
+                if not isinstance(rec, TimeRecord):
+                    raise TypeError(f"Expected TimeRecord, got {type(rec).__name__}")
                 if rec.end_time:
                     total += duration(rec.start_time,
                                       rec.end_time, rec.break_minutes)
             else:
-                assert isinstance(rec, (VacationRecord, SicknessRecord))
+                if not isinstance(rec, (VacationRecord, SicknessRecord)):
+                    raise TypeError(f"Expected VacationRecord or SicknessRecord, got {type(rec).__name__}")
                 total += rec.hours
 
         # ── Total row ────────────────────────────────────────────────────────

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from datetime import date, datetime, time, timedelta
 from typing import Optional, Callable
 
@@ -58,7 +59,7 @@ def _build_exc_dict(raw: list[WorkDayException]) -> dict[date, float]:
             d = date.fromisoformat(exc.date)
             result[d] = float(exc.hours)
         except ValueError:
-            pass
+            print(f"WARNING: skipping date exception with bad date: {exc}", file=sys.stderr)
     return result
 
 
@@ -292,7 +293,7 @@ class TimeClockTab(ttk.Frame):
                 try:
                     if self.winfo_exists():
                         fn()
-                except Exception:
+                except tk.TclError:
                     pass
             return _handler
 
@@ -474,15 +475,8 @@ class TimeClockTab(ttk.Frame):
         today = date.today()
         now_t = _now_time()
 
-        # Fetch records — may span two calendar months
-        records: list[TimeRecord] = []
-        seen_ids: set[int] = set()
-        for fetch_date in {week_start, week_end}:
-            for rec in self.model.get_records_for_period(fetch_date.year, fetch_date.month):
-                rid = rec.id
-                if rid not in seen_ids and week_start <= rec.date <= week_end:
-                    seen_ids.add(rid)  # type: ignore[arg-type]
-                    records.append(rec)
+        # Fetch records — single date-range query handles cross-month weeks correctly
+        records = self.model.get_records_for_date_range(week_start, week_end)
 
         targets = self.model.get_work_day_targets()
         exceptions = _build_exc_dict(

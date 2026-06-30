@@ -1,4 +1,6 @@
 """Simple synchronous pub/sub event bus."""
+import sys
+import traceback
 from enum import Enum
 from typing import Callable
 
@@ -26,5 +28,15 @@ class EventBus:
         return _unsub
 
     def publish(self, event: Event, **payload: object) -> None:
-        for handler in self._subscribers.get(event, []):
-            handler(**payload)
+        # Snapshot the list so an unsub inside a handler doesn't mutate
+        # the iterable mid-loop.
+        for handler in list(self._subscribers.get(event, [])):
+            try:
+                handler(**payload)
+            except Exception:
+                print(
+                    f"EventBus: unhandled exception in handler {handler!r} "
+                    f"for event {event!r}:",
+                    file=sys.stderr,
+                )
+                traceback.print_exc(file=sys.stderr)

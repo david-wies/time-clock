@@ -9,6 +9,19 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 from tkinter.filedialog import asksaveasfilename
 
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib.units import cm
+from reportlab.platypus import (
+    HRFlowable,
+    Paragraph,
+    SimpleDocTemplate,
+    Spacer,
+    Table,
+    TableStyle,
+)
+
 from core.report import period_summary, ReportData, MONTH_NAMES
 from models.time_clock_model import TimeClockModel
 from models.vacation_model import VacationModel
@@ -316,16 +329,6 @@ class ReportDialog(tk.Toplevel):
     # ─────────────────────────── PDF Export ─────────────────────────────────
 
     def _do_export_pdf(self) -> None:
-        try:
-            import reportlab  # noqa: F401
-        except ImportError:
-            messagebox.showinfo(
-                "Missing Dependency",
-                "Install reportlab to enable PDF export.\npip install reportlab",
-                parent=self,
-            )
-            return
-
         data = self._get_report_data()
         if data is None:
             return
@@ -355,19 +358,6 @@ class ReportDialog(tk.Toplevel):
         )
 
     def _generate_pdf(self, data: ReportData, filepath: str) -> None:
-        from reportlab.platypus import (
-            SimpleDocTemplate,
-            Paragraph,
-            Spacer,
-            Table,
-            TableStyle,
-            HRFlowable,
-        )
-        from reportlab.lib.styles import getSampleStyleSheet
-        from reportlab.lib import colors
-        from reportlab.lib.pagesizes import A4
-        from reportlab.lib.units import cm
-
         styles = getSampleStyleSheet()
 
         def kv_table(rows: list[list[str]]) -> Table:

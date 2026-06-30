@@ -141,6 +141,16 @@ class SicknessModel:
 
     # --- Sickness Calculations & Summaries ---
 
+    def get_work_day_targets(self) -> dict[int, float]:
+        """Returns a dict mapping day_of_week (0-6) to hours."""
+        conn = self.db.get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("SELECT day_of_week, hours FROM work_day_target;")
+            return {row["day_of_week"]: row["hours"] for row in cursor.fetchall()}
+        finally:
+            conn.close()
+
     def get_day_equivalent(self, record_date: date, hours: float) -> float:
         """
         Converts sick hours on a given date to day-equivalent.
@@ -181,11 +191,18 @@ class SicknessModel:
 
         records = self.get_records_for_year(year)
 
+        targets = self.get_work_day_targets()
+
         used_hours = 0.0
         used_days = 0.0
         for rec in records:
             used_hours += rec.hours
-            used_days += self.get_day_equivalent(rec.date, rec.hours)
+            target_hours = targets.get(rec.date.weekday(), 8.0)
+            if target_hours == 0.0:
+                day_equiv = min(1.0, rec.hours / 8.0)
+            else:
+                day_equiv = rec.hours / target_hours
+            used_days += day_equiv
 
         remaining_days = allowance - used_days
 

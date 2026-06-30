@@ -76,6 +76,20 @@ class TimeClockModel:
         finally:
             conn.close()
 
+    def get_records_for_date_range(self, start: date, end: date) -> list[TimeRecord]:
+        """Returns all time records whose date falls in [start, end], ordered by date ASC, start_time ASC."""
+        conn = self.db.get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT * FROM time_record WHERE date >= ? AND date <= ? "
+                "ORDER BY date ASC, start_time ASC;",
+                (date_to_iso(start), date_to_iso(end)),
+            )
+            return [self._row_to_record(r) for r in cursor.fetchall()]
+        finally:
+            conn.close()
+
     def get_open_records(self) -> list[TimeRecord]:
         """Finds all records that are currently open (end_time is NULL), across all dates."""
         conn = self.db.get_connection()

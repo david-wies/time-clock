@@ -1,5 +1,7 @@
 import json
-from typing import Any, Optional
+import sqlite3
+import sys
+from typing import Any
 from db.database import Database
 
 
@@ -20,7 +22,6 @@ class SettingsManager:
 
     def __init__(self, db: Database) -> None:
         self.db = db
-        return
 
     def get(self, key: str, default: Any = None) -> Any:
         """Retrieves a configuration value. Falls back to default if not set."""
@@ -32,9 +33,10 @@ class SettingsManager:
             row = cursor.fetchone()
             if row:
                 return json.loads(row["value"])
-        except Exception:
-            # Fall back to default if query fails (e.g. table doesn't exist yet or connection issue)
-            pass
+        except json.JSONDecodeError as exc:
+            print(f"WARNING: SettingsManager: corrupted value for key {key!r}, using default: {exc}", file=sys.stderr)
+        except sqlite3.Error as exc:
+            print(f"ERROR: SettingsManager: DB read failed for key {key!r}: {exc}", file=sys.stderr)
         finally:
             conn.close()
 
@@ -52,4 +54,3 @@ class SettingsManager:
                 )
         finally:
             conn.close()
-        return

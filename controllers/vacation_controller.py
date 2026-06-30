@@ -8,14 +8,12 @@ def validate_vacation_record(record: VacationRecord) -> list[str]:
     """Pure validation function for VacationRecord (enforces §6.5 table)."""
     errors = []
 
-    if record.date is None:
-        errors.append("Please enter a valid date.")
-
-    if record.vtype is None:
-        errors.append("Please select a vacation type.")
-
-    if record.hours < 0.5 or record.hours > 24.0:
-        errors.append("Hours must be between 0.5 and 24.")
+    if record.vtype == VacationType.PUBLIC_HOLIDAY:
+        if record.hours < 0 or record.hours > 24.0:
+            errors.append("Hours must be between 0 and 24.")
+    else:
+        if record.hours < 0.5 or record.hours > 24.0:
+            errors.append("Hours must be between 0.5 and 24.")
 
     if record.note and len(record.note) > 500:
         errors.append("Note is too long (max 500 characters).")

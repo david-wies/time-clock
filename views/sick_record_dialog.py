@@ -120,7 +120,7 @@ class SickRecordDialog(tk.Toplevel):
             hours = float(self._var_hours.get())
             equiv = self._model.get_day_equivalent(rec_date, hours)
             self._lbl_day_equiv.config(text=f"= {equiv:.2f} day(s)")
-        except Exception:
+        except (ValueError, tk.TclError):
             self._lbl_day_equiv.config(text="= --")
 
     # ─────────────────────────── Validation ─────────────────────────────────

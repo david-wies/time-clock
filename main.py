@@ -101,7 +101,13 @@ def _boot_checks(root: tk.Tk, model: TimeClockModel, ctrl: TimeClockController, 
         )
         if choice:
             for r in stale:
-                ctrl.delete_record(r.id)
+                result = ctrl.delete_record(r.id)
+                if not result.ok:
+                    messagebox.showwarning(
+                        "Delete Failed",
+                        f"Could not delete record from {r.date.isoformat()}: "
+                        + "; ".join(result.errors),
+                    )
 
 
 if __name__ == "__main__":

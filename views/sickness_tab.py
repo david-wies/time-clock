@@ -183,7 +183,7 @@ class SicknessTab(ttk.Frame):
                 try:
                     if self.winfo_exists():
                         fn()
-                except Exception:
+                except tk.TclError:
                     pass
             return _handler
 

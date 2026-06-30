@@ -1,5 +1,4 @@
 """Help viewer — opens documentation in the default browser."""
-import os
 import webbrowser
 from pathlib import Path
 from tkinter import messagebox
@@ -8,12 +7,13 @@ from tkinter import messagebox
 def open_help() -> None:
     """Opens the help documentation in the default web browser."""
     help_path = Path(__file__).parent.parent / 'help' / 'index.html'
-    if help_path.exists():
+    if not help_path.exists():
+        messagebox.showwarning("Help Not Found", f"Help file not found:\n{help_path}")
+        return
+    try:
         webbrowser.open(help_path.as_uri())
-    else:
-        # Fallback: try absolute path
-        webbrowser.open(f'file://{help_path.resolve()}')
-    return
+    except webbrowser.Error as exc:
+        messagebox.showerror("Help Error", f"Could not open help file:\n{exc}")
 
 
 def show_about(parent=None) -> None:

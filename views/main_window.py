@@ -35,17 +35,20 @@ class MainWindow(ttk.Frame):
 
         self.pack(fill="both", expand=True)
 
-        self.bus.subscribe(Event.TIME_RECORDS_CHANGED, lambda **
-                           _: self._set_status("Records updated"))
-        self.bus.subscribe(Event.VACATION_CHANGED, lambda **
-                           _: self._set_status("Vacation records updated"))
-        self.bus.subscribe(Event.SICKNESS_CHANGED, lambda **
-                           _: self._set_status("Sick records updated"))
-        self.bus.subscribe(Event.SETTINGS_CHANGED, lambda **
-                           _: self._set_status("Settings changed"))
-        self.bus.subscribe(Event.CLOCK_STATE_CHANGED,
-                           self._on_clock_state_changed)
+        self._unsubs: list = [
+            self.bus.subscribe(Event.TIME_RECORDS_CHANGED, lambda **
+                               _: self._set_status("Records updated")),
+            self.bus.subscribe(Event.VACATION_CHANGED, lambda **
+                               _: self._set_status("Vacation records updated")),
+            self.bus.subscribe(Event.SICKNESS_CHANGED, lambda **
+                               _: self._set_status("Sick records updated")),
+            self.bus.subscribe(Event.SETTINGS_CHANGED, lambda **
+                               _: self._set_status("Settings changed")),
+            self.bus.subscribe(Event.CLOCK_STATE_CHANGED,
+                               self._on_clock_state_changed),
+        ]
 
+        root.bind("<Destroy>", self._on_destroy)
         root.bind_all("<F1>", lambda _: open_help())
         root.bind_all("<Control-s>", lambda _: self._open_settings())
 
@@ -176,6 +179,10 @@ class MainWindow(ttk.Frame):
         idx = self.notebook.index("current")
         names = ["Time Clock", "Vacation", "Sickness"]
         self._tab_var.set(names[idx] if idx < len(names) else "")
+
+    def _on_destroy(self, _event: object = None) -> None:
+        for fn in self._unsubs:
+            fn()
 
     def _on_clock_state_changed(self, clocked_in: bool = False, since: str = "", **_: object) -> None:
         self.set_clocked_in(clocked_in, since)
