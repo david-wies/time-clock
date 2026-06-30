@@ -226,14 +226,13 @@ def test_carry_over_flow(
 def test_sickness_add_and_convert(
     sick_ctrl: SicknessController, sick_model: SicknessModel
 ) -> None:
-    sick_model.save_settings(year=2026, days_per_year=10.0)
+    sick_model.save_settings(year=2026, hours_per_year=80.0)
     r = SicknessRecord(id=None, date=date(2026, 6, 10), hours=8.0, note="Flu")
     result = sick_ctrl.save_record(r)
     assert result.ok
 
     summary = sick_model.calculate_sickness_summary(2026)
     assert summary.used_hours == 8.0
-    assert summary.used_days == pytest.approx(1.0)
 
 
 # ─────────────────── Report integration ───────────────────────────────────────
@@ -249,7 +248,7 @@ def populated_db(
     sick_ctrl: SicknessController,
 ) -> tuple[TimeClockModel, VacationModel, SicknessModel, SettingsManager]:
     vac_model.save_settings(year=2026, hours_per_year=160.0, max_carry_over=40.0)
-    sick_model.save_settings(year=2026, days_per_year=10.0)
+    sick_model.save_settings(year=2026, hours_per_year=80.0)
     settings.set("overtime_rate", 1.0)
 
     # Add two time records

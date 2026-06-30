@@ -266,4 +266,51 @@ class Database:
             conn.execute("ALTER TABLE vacation_record_v2 RENAME TO vacation_record;")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_vacation_record_date ON vacation_record(date);")
             cursor.execute("PRAGMA user_version = 2;")
+
+        if version < 3:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS sickness_settings_v3 (
+                    year           INTEGER PRIMARY KEY,
+                    hours_per_year REAL    NOT NULL CHECK(hours_per_year >= 0)
+                )
+            """)
+            conn.execute(
+                "INSERT OR IGNORE INTO sickness_settings_v3 (year, hours_per_year) "
+                "SELECT year, days_per_year * 8.0 FROM sickness_settings"
+            )
+            conn.execute("DROP TABLE IF EXISTS sickness_settings")
+            conn.execute("ALTER TABLE sickness_settings_v3 RENAME TO sickness_settings")
+            cursor.execute("PRAGMA user_version = 3")
+
+        if version < 4:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS miliuim_settings (
+                    year           INTEGER PRIMARY KEY,
+                    hours_per_year REAL    NOT NULL CHECK(hours_per_year >= 0)
+                )
+            """)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS miliuim_record (
+                    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                    date        TEXT    NOT NULL,
+                    hours       REAL    NOT NULL CHECK(hours > 0),
+                    note        TEXT,
+                    created_at  TEXT    NOT NULL DEFAULT (datetime('now')),
+                    updated_at  TEXT    NOT NULL DEFAULT (datetime('now'))
+                )
+            """)
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_miliuim_record_date ON miliuim_record(date);")
+            conn.execute("""
+                CREATE TRIGGER IF NOT EXISTS trg_miliuim_record_updated_at AFTER UPDATE ON miliuim_record
+                BEGIN
+                    UPDATE miliuim_record SET updated_at = datetime('now') WHERE id = NEW.id;
+                END;
+            """)
+            cursor.execute("PRAGMA user_version = 4")
+
+        if version < 5:
+            conn.execute("ALTER TABLE sickness_record ADD COLUMN document_path TEXT;")
+            conn.execute("ALTER TABLE miliuim_record ADD COLUMN document_path TEXT;")
+            cursor.execute("PRAGMA user_version = 5")
         return

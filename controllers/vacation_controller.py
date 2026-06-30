@@ -4,16 +4,16 @@ from domain.enums import VacationType
 from models.vacation_model import VacationModel
 
 
-def validate_vacation_record(record: VacationRecord) -> list[str]:
+def validate_vacation_record(record: VacationRecord, max_hours: float = 24.0) -> list[str]:
     """Pure validation function for VacationRecord (enforces §6.5 table)."""
     errors = []
 
     if record.vtype == VacationType.PUBLIC_HOLIDAY:
-        if record.hours < 0 or record.hours > 24.0:
-            errors.append("Hours must be between 0 and 24.")
+        if record.hours < 0 or record.hours > max_hours:
+            errors.append(f"Hours must be between 0 and {max_hours:.1f}.")
     else:
-        if record.hours < 0.5 or record.hours > 24.0:
-            errors.append("Hours must be between 0.5 and 24.")
+        if record.hours < 0.5 or record.hours > max_hours:
+            errors.append(f"Hours must be between 0.5 and {max_hours:.1f}.")
 
     if record.note and len(record.note) > 500:
         errors.append("Note is too long (max 500 characters).")
@@ -30,7 +30,11 @@ class VacationController:
         if record.vtype == VacationType.CARRY_OVER:
             return Result(ok=False, errors=["Use add_carry_over() to record carry-over hours."])
 
-        errors = validate_vacation_record(record)
+        max_hours = self.model.get_daily_target_for_date(record.date)
+        if max_hours == 0.0:
+            max_hours = 8.0  # weekend/day-off: use 8h as reference cap
+
+        errors = validate_vacation_record(record, max_hours)
         if errors:
             return Result(ok=False, errors=errors)
 

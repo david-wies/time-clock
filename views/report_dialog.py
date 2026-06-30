@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import calendar
+import os
 from datetime import date
+from pathlib import Path
 from typing import Optional
 
 import tkinter as tk
@@ -15,17 +18,20 @@ from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib.units import cm
 from reportlab.platypus import (
     HRFlowable,
+    Image as RLImage,
     Paragraph,
     SimpleDocTemplate,
     Spacer,
     Table,
     TableStyle,
 )
+from pypdf import PdfWriter, PdfReader
 
 from core.report import period_summary, ReportData, MONTH_NAMES
 from models.time_clock_model import TimeClockModel
 from models.vacation_model import VacationModel
 from models.sickness_model import SicknessModel
+from models.miliuim_model import MiliuimModel
 from settings import SettingsManager
 
 
@@ -51,12 +57,14 @@ class ReportDialog(tk.Toplevel):
         model_vacation: VacationModel,
         model_sickness: SicknessModel,
         settings: SettingsManager,
+        model_miliuim: Optional[MiliuimModel] = None,
     ) -> None:
         super().__init__(parent)
         self._model_tc = model_tc
         self._model_vacation = model_vacation
         self._model_sickness = model_sickness
         self._settings = settings
+        self._model_miliuim = model_miliuim
 
         self.title("Generate Report")
         self.minsize(480, 400)
@@ -305,12 +313,9 @@ class ReportDialog(tk.Toplevel):
         lines.append("")
 
         lines.append(f"SICKNESS ({data.year})")
-        lines.append(f"  Allowance:           {data.sick_allowance_days:>9.1f} days")
-        lines.append(
-            f"  Used:                {data.sick_used_days:>9.1f} days"
-            f"  ({data.sick_used_hours:.1f} h)"
-        )
-        lines.append(f"  Remaining:           {data.sick_remaining_days:>9.1f} days")
+        lines.append(f"  Allowance:           {data.sick_allowance_hours:>9.1f} h")
+        lines.append(f"  Used:                {data.sick_used_hours:>9.1f} h")
+        lines.append(f"  Remaining:           {data.sick_remaining_hours:>9.1f} h")
 
         if data.monthly_rows:
             lines.append("")
@@ -325,6 +330,50 @@ class ReportDialog(tk.Toplevel):
                 )
 
         return "\n".join(lines)
+
+    # ─────────────────────────── Document Collection ─────────────────────────
+
+    def _collect_documents(
+        self, data: ReportData
+    ) -> tuple[list[tuple[str, date, str]], list[tuple[str, date, str]]]:
+        """Returns (image_docs, pdf_docs) for records in the report period.
+        Each element: (type_label, record_date, file_path).
+        Only includes paths that actually exist on disk.
+        """
+        if data.period_type == "month" and data.month:
+            start = date(data.year, data.month, 1)
+            end = date(data.year, data.month, calendar.monthrange(data.year, data.month)[1])
+        elif data.period_type == "quarter" and data.quarter:
+            m_start = (data.quarter - 1) * 3 + 1
+            m_end = m_start + 2
+            start = date(data.year, m_start, 1)
+            end = date(data.year, m_end, calendar.monthrange(data.year, m_end)[1])
+        else:
+            start = date(data.year, 1, 1)
+            end = date(data.year, 12, 31)
+
+        image_exts = {".png", ".jpg", ".jpeg", ".bmp", ".tiff", ".tif", ".gif"}
+        image_docs: list[tuple[str, date, str]] = []
+        pdf_docs: list[tuple[str, date, str]] = []
+
+        for rec in self._model_sickness.get_records_in_date_range(start, end):
+            if rec.document_path and Path(rec.document_path).exists():
+                ext = Path(rec.document_path).suffix.lower()
+                if ext == ".pdf":
+                    pdf_docs.append(("Sickness", rec.date, rec.document_path))
+                elif ext in image_exts:
+                    image_docs.append(("Sickness", rec.date, rec.document_path))
+
+        if self._model_miliuim is not None:
+            for rec in self._model_miliuim.get_records_in_date_range(start, end):
+                if rec.document_path and Path(rec.document_path).exists():
+                    ext = Path(rec.document_path).suffix.lower()
+                    if ext == ".pdf":
+                        pdf_docs.append(("Miliuim", rec.date, rec.document_path))
+                    elif ext in image_exts:
+                        image_docs.append(("Miliuim", rec.date, rec.document_path))
+
+        return image_docs, pdf_docs
 
     # ─────────────────────────── PDF Export ─────────────────────────────────
 
@@ -443,9 +492,9 @@ class ReportDialog(tk.Toplevel):
         story.append(Paragraph(f"Sickness ({data.year})", styles["Heading1"]))
         story.append(Spacer(1, 0.2 * cm))
         story.append(kv_table([
-            ["Allowance", f"{data.sick_allowance_days:.1f} days"],
-            ["Used", f"{data.sick_used_days:.1f} days  ({data.sick_used_hours:.1f} h)"],
-            ["Remaining", f"{data.sick_remaining_days:.1f} days"],
+            ["Allowance", f"{data.sick_allowance_hours:.1f} h"],
+            ["Used", f"{data.sick_used_hours:.1f} h"],
+            ["Remaining", f"{data.sick_remaining_hours:.1f} h"],
         ]))
 
         # ── Monthly Breakdown ─────────────────────────────────────────────────
@@ -466,4 +515,38 @@ class ReportDialog(tk.Toplevel):
                 ])
             story.append(monthly_table(table_rows))
 
+        # ── Attached Documents (images) ───────────────────────────────────────
+        image_docs, pdf_docs = self._collect_documents(data)
+
+        if image_docs:
+            story.append(Spacer(1, 0.5 * cm))
+            story.append(HRFlowable(width="100%", thickness=1, color=colors.grey))
+            story.append(Spacer(1, 0.4 * cm))
+            story.append(Paragraph("Attached Documents", styles["Heading1"]))
+            for type_label, rec_date, doc_path in image_docs:
+                story.append(Spacer(1, 0.3 * cm))
+                story.append(Paragraph(
+                    f"{type_label} — {rec_date.isoformat()} — {os.path.basename(doc_path)}",
+                    styles["Heading2"],
+                ))
+                story.append(Spacer(1, 0.2 * cm))
+                img = RLImage(doc_path, width=15 * cm, height=20 * cm, kind="proportional")
+                story.append(img)
+
         doc.build(story)
+
+        # ── Attached Documents (PDF pages appended) ───────────────────────────
+        if pdf_docs:
+            writer = PdfWriter()
+            main_reader = PdfReader(filepath)
+            for page in main_reader.pages:
+                writer.add_page(page)
+            for _type_label, _rec_date, doc_path in pdf_docs:
+                try:
+                    att_reader = PdfReader(doc_path)
+                    for page in att_reader.pages:
+                        writer.add_page(page)
+                except Exception:
+                    pass
+            with open(filepath, "wb") as f:
+                writer.write(f)
