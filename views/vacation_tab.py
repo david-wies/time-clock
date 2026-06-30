@@ -125,6 +125,27 @@ class VacationTab(ttk.Frame):
             self._frm_balance, text="", foreground="gray")
         self._lbl_breakdown.pack(side="left", padx=10, pady=5)
 
+        self._build_legend()
+
+    def _build_legend(self) -> None:
+        c = COLORS.get("light", COLORS["light"])
+        legend_frame = ttk.Frame(self)
+        legend_frame.pack(fill="x", padx=10, pady=(2, 0))
+
+        items = [
+            ("● Used", c["fg.default"], "normal"),
+            ("● Planned", c["accent"], "italic"),
+            ("● Employer (Holiday)", c["success"], "normal"),
+            ("● Unpaid", c["fg.muted"], "normal"),
+        ]
+        for text, color, style_modifier in items:
+            ttk.Label(
+                legend_frame,
+                text=text,
+                foreground=color,
+                font=("Helvetica", 8, style_modifier),
+            ).pack(side="left", padx=(0, 12))
+
     def _build_treeview(self) -> None:
         frame = ttk.Frame(self)
         frame.pack(fill="both", expand=True, padx=4, pady=4)
@@ -167,6 +188,11 @@ class VacationTab(ttk.Frame):
         self._tree.bind("<<TreeviewSelect>>", self._on_tree_select)
 
         c = COLORS.get("light", COLORS["light"])
+        self._tree.tag_configure("employer", foreground=c["success"])
+        self._tree.tag_configure(
+            "planned", foreground=c["accent"],
+            font=("Helvetica", 9, "italic"),
+        )
         self._tree.tag_configure("carry_over", foreground=c["accent"])
         self._tree.tag_configure("unpaid", foreground=c["fg.muted"])
 
@@ -304,11 +330,14 @@ class VacationTab(ttk.Frame):
         return (disp, _safe_hebrew(rec.date), type_label, hours_str, note)
 
     def _insert_record_row(self, rec: VacationRecord) -> None:
-        tag: str
-        if rec.vtype == VacationType.CARRY_OVER:
+        if rec.vtype == VacationType.PUBLIC_HOLIDAY:
+            tag = "employer"
+        elif rec.vtype == VacationType.CARRY_OVER:
             tag = "carry_over"
         elif rec.vtype == VacationType.UNPAID_LEAVE:
             tag = "unpaid"
+        elif rec.date > date.today():
+            tag = "planned"
         else:
             tag = ""
 
