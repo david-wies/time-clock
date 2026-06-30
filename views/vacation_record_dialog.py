@@ -62,6 +62,7 @@ class VacationRecordDialog(tk.Toplevel):
 
         self._date_widget, self._get_date, self._set_date = make_date_picker(date_row)
         self._date_widget.pack(side="left", padx=(4, 0))
+        self._date_widget.bind("<<DateEntrySelected>>", lambda _e: self._update_hours_cap())
 
         # ── Hours ─────────────────────────────────────────────────────────────
         hours_row = ttk.Frame(outer)
@@ -74,6 +75,8 @@ class VacationRecordDialog(tk.Toplevel):
             format="%.1f",
         )
         self._spn_hours.pack(side="left", padx=(4, 0))
+        self._lbl_hours_hint = ttk.Label(hours_row, text="", foreground="gray")
+        self._lbl_hours_hint.pack(side="left", padx=(6, 0))
 
         # ── Vacation Type ─────────────────────────────────────────────────────
         type_lbl_row = ttk.Frame(outer)
@@ -130,6 +133,24 @@ class VacationRecordDialog(tk.Toplevel):
             self._var_hours.set(f"{record.hours:.1f}")
             self._var_vtype.set(str(record.vtype))
             self._var_note.set(record.note or "")
+        self._update_hours_cap()
+
+    def _update_hours_cap(self) -> None:
+        try:
+            d = self._get_date()
+            cap = self._model.get_daily_target_for_date(d)
+            if cap == 0.0:
+                cap = 8.0
+            self._spn_hours.config(to=cap)
+            self._lbl_hours_hint.config(text=f"(max {cap:.1f}h for this day)")
+            try:
+                current = float(self._var_hours.get())
+                if current > cap:
+                    self._var_hours.set(f"{cap:.1f}")
+            except ValueError:
+                pass
+        except Exception:
+            pass
 
     # ─────────────────────────── Validation ─────────────────────────────────
 

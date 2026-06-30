@@ -3,6 +3,7 @@ from datetime import date
 from domain.types import VacationRecord
 from domain.enums import VacationType
 from models.vacation_model import VacationModel
+from models.time_clock_model import TimeClockModel
 from controllers.vacation_controller import VacationController
 from core.events import EventBus
 from db.database import Database
@@ -38,9 +39,12 @@ def test_save_invalid_hours(controller: VacationController) -> None:
     assert controller.save_record(rec_high).ok is False
 
 
-def test_save_balance_warning_and_override(controller: VacationController) -> None:
+def test_save_balance_warning_and_override(controller: VacationController, event_bus: EventBus) -> None:
     # 1. Setup year settings: 16h allowance, 0h carry-over
     controller.model.save_settings(2026, 16.0, 10.0)
+    # Configure daily targets high enough so hours validation does not block these records
+    tc_model = TimeClockModel(controller.model.db, event_bus)
+    tc_model.save_work_day_targets({i: 24.0 for i in range(7)})
 
     # 2. Add 8h vacation (Remaining: 8h)
     rec1 = VacationRecord(None, date(2026, 7, 15), 8.0,
@@ -59,9 +63,12 @@ def test_save_balance_warning_and_override(controller: VacationController) -> No
     assert res_override.ok is True
 
 
-def test_edit_path_over_balance_warning(controller: VacationController) -> None:
+def test_edit_path_over_balance_warning(controller: VacationController, event_bus: EventBus) -> None:
     # Setup: 16h allowance for 2026
     controller.model.save_settings(2026, 16.0, 10.0)
+    # Configure daily targets high enough so hours validation does not block these records
+    tc_model = TimeClockModel(controller.model.db, event_bus)
+    tc_model.save_work_day_targets({i: 24.0 for i in range(7)})
 
     # Insert first record: 8h used (8h remaining)
     rec = VacationRecord(None, date(2026, 7, 15), 8.0, VacationType.ANNUAL_LEAVE)
@@ -100,3 +107,21 @@ def test_add_carry_over_validation(controller: VacationController) -> None:
     # 3. Try transferring 10h (Succeeds)
     res_ok = controller.add_carry_over(2025, 2026, 10.0)
     assert res_ok.ok is True
+
+
+def test_save_hours_exceed_daily_target(controller: VacationController, event_bus: EventBus) -> None:
+    """Hours cannot exceed the daily target for that weekday."""
+    tc_model = TimeClockModel(controller.model.db, event_bus)
+    tc_model.save_work_day_targets({0: 8.0, 1: 8.0, 2: 8.0, 3: 8.0, 4: 8.0, 5: 0.0, 6: 0.0})
+    controller.model.save_settings(2026, 160.0, 40.0)
+
+    # Monday 2026-06-22, target = 8h, trying to add 10h → should fail
+    rec = VacationRecord(None, date(2026, 6, 22), 10.0, VacationType.ANNUAL_LEAVE, None)
+    res = controller.save_record(rec)
+    assert res.ok is False
+    assert any("8.0" in e for e in res.errors)
+
+    # Exactly 8h → should pass
+    rec2 = VacationRecord(None, date(2026, 6, 22), 8.0, VacationType.ANNUAL_LEAVE, None)
+    res2 = controller.save_record(rec2)
+    assert res2.ok is True

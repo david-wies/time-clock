@@ -1,4 +1,4 @@
-__all__ = ["TimeRecord", "VacationRecord", "SicknessRecord", "Result"]
+__all__ = ["TimeRecord", "VacationRecord", "SicknessRecord", "MiliuimRecord", "MiliuimSummary", "Result"]
 
 from dataclasses import dataclass
 from datetime import date, time
@@ -35,6 +35,7 @@ class SicknessRecord:
     date: date
     hours: float
     note: Optional[str] = None
+    document_path: Optional[str] = None
 
 @dataclass(slots=True)
 class Result:
@@ -62,10 +63,9 @@ class CarryOverAllowance:
 
 @dataclass(slots=True)
 class SicknessSummary:
-    allowance: float
+    allowance_hours: float
     used_hours: float
-    used_days: float
-    remaining_days: float
+    remaining_hours: float
 
 
 @dataclass(slots=True)
@@ -83,3 +83,19 @@ class CarryOverLogEntry:
     to_year: int
     hours: float
     transferred_at: str  # UTC datetime string
+
+
+@dataclass(slots=True)
+class MiliuimRecord:
+    id: Optional[int]
+    date: date
+    hours: float
+    note: Optional[str] = None
+    document_path: Optional[str] = None
+
+
+@dataclass(slots=True)
+class MiliuimSummary:
+    allowance_hours: float   # 0.0 means unlimited/no cap
+    used_hours: float
+    remaining_hours: float   # can be negative if over allowance; meaningless when allowance=0

@@ -272,6 +272,21 @@ class VacationModel:
             allowed_transfer=allowed_transfer,
         )
 
+    def get_work_day_targets(self) -> dict[int, float]:
+        """Returns dict mapping day_of_week (0=Mon..6=Sun) to configured hours."""
+        conn = self.db.get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("SELECT day_of_week, hours FROM work_day_target;")
+            return {row["day_of_week"]: row["hours"] for row in cursor.fetchall()}
+        finally:
+            conn.close()
+
+    def get_daily_target_for_date(self, d: date) -> float:
+        """Returns the target hours for the weekday of d. Fallback 8.0 if not configured."""
+        targets = self.get_work_day_targets()
+        return targets.get(d.weekday(), 8.0)
+
     def add_carry_over(self, from_year: int, to_year: int, hours: float) -> None:
         """
         Records a carry-over transfer:
