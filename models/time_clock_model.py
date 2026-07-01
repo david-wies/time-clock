@@ -22,7 +22,8 @@ class TimeClockModel:
             break_minutes=row["break_minutes"],
             work_type=WorkType(row["work_type"]),
             office=row["office"],
-            note=row["note"]
+            note=row["note"],
+            document_path=row["document_path"],
         )
 
     def get_record_by_id(self, record_id: int) -> Optional[TimeRecord]:
@@ -127,8 +128,8 @@ class TimeClockModel:
                 cursor = conn.cursor()
                 cursor.execute(
                     """
-                    INSERT INTO time_record (date, start_time, end_time, break_minutes, work_type, office, note)
-                    VALUES (?, ?, ?, ?, ?, ?, ?);
+                    INSERT INTO time_record (date, start_time, end_time, break_minutes, work_type, office, note, document_path)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?);
                     """,
                     (
                         date_to_iso(record.date),
@@ -138,7 +139,8 @@ class TimeClockModel:
                         record.break_minutes,
                         record.work_type.value,
                         record.office,
-                        record.note
+                        record.note,
+                        record.document_path,
                     )
                 )
                 record_id = cursor.lastrowid or 0
@@ -157,7 +159,7 @@ class TimeClockModel:
                     """
                     UPDATE time_record
                     SET date = ?, start_time = ?, end_time = ?, break_minutes = ?, work_type = ?, office = ?, note = ?,
-                        updated_at = datetime('now')
+                        document_path = ?, updated_at = datetime('now')
                     WHERE id = ?;
                     """,
                     (
@@ -169,7 +171,8 @@ class TimeClockModel:
                         record.work_type.value,
                         record.office,
                         record.note,
-                        record.id
+                        record.document_path,
+                        record.id,
                     )
                 )
             self.bus.publish(Event.TIME_RECORDS_CHANGED)

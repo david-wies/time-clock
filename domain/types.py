@@ -1,10 +1,12 @@
-__all__ = ["TimeRecord", "VacationRecord", "SicknessRecord", "MiliuimRecord", "MiliuimSummary", "Result"]
+__all__ = ["TimeRecord", "VacationRecord", "SicknessRecord",
+           "MiliuimRecord", "MiliuimSummary", "Result"]
 
 from dataclasses import dataclass
 from datetime import date, time
 from typing import Optional
 
 from domain.enums import WorkType, VacationType
+
 
 @dataclass(slots=True)
 class TimeRecord:
@@ -16,10 +18,12 @@ class TimeRecord:
     work_type: WorkType
     office: Optional[str] = None
     note: Optional[str] = None
+    document_path: Optional[str] = None
 
     @property
     def is_open(self) -> bool:
         return self.end_time is None
+
 
 @dataclass(slots=True)
 class VacationRecord:
@@ -29,6 +33,7 @@ class VacationRecord:
     vtype: VacationType
     note: Optional[str] = None
 
+
 @dataclass(slots=True)
 class SicknessRecord:
     id: Optional[int]
@@ -36,6 +41,7 @@ class SicknessRecord:
     hours: float
     note: Optional[str] = None
     document_path: Optional[str] = None
+
 
 @dataclass(slots=True)
 class Result:

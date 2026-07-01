@@ -345,4 +345,9 @@ class Database:
                 END;
             """)
             cursor.execute("PRAGMA user_version = 6")
+
+        if version < 7:
+            conn.execute(
+                "ALTER TABLE time_record ADD COLUMN document_path TEXT;")
+            cursor.execute("PRAGMA user_version = 7")
         return
