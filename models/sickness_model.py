@@ -90,6 +90,23 @@ class SicknessModel:
         finally:
             conn.close()
 
+    def insert_records_bulk(self, records: list[SicknessRecord]) -> None:
+        if not records:
+            return
+        conn = self.db.get_connection()
+        try:
+            with conn:
+                for record in records:
+                    conn.execute(
+                        "INSERT INTO sickness_record (date, hours, note, document_path)"
+                        " VALUES (?, ?, ?, ?);",
+                        (date_to_iso(record.date), record.hours,
+                         record.note, record.document_path),
+                    )
+            self.bus.publish(Event.SICKNESS_CHANGED)
+        finally:
+            conn.close()
+
     def update_record(self, record: SicknessRecord) -> None:
         if record.id is None:
             raise ValueError("Cannot update a record without an ID.")

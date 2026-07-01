@@ -581,12 +581,12 @@ class SettingsDialog(tk.Toplevel):
 
         dpy_row = ttk.Frame(outer)
         dpy_row.pack(fill="x", pady=(0, 6))
-        ttk.Label(dpy_row, text="Days per year:",
+        ttk.Label(dpy_row, text="Hours per year:",
                   width=18, anchor="e").pack(side="left")
-        self._var_sick_days = tk.StringVar(value="10.0")
+        self._var_sick_days = tk.StringVar(value="80.0")
         ttk.Spinbox(
             dpy_row, textvariable=self._var_sick_days,
-            from_=0.0, to=365.0, increment=1.0, width=8, format="%.1f",
+            from_=0.0, to=3000.0, increment=8.0, width=8, format="%.1f",
         ).pack(side="left", padx=(4, 0))
 
         ttk.Button(outer, text="Save Sickness Settings",
@@ -603,7 +603,7 @@ class SettingsDialog(tk.Toplevel):
         except ValueError:
             return
         days = self._model_sickness.get_settings(year)
-        self._var_sick_days.set(f"{days:.1f}" if days is not None else "10.0")
+        self._var_sick_days.set(f"{days:.1f}" if days is not None else "80.0")
         self._lbl_sick_status.config(text="")
 
     def _sick_save(self) -> None:

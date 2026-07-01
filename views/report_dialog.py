@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import calendar
 import os
+import shutil
+import tempfile
 from datetime import date
 from pathlib import Path
 from typing import Optional
@@ -28,6 +30,7 @@ from reportlab.platypus import (
 from pypdf import PdfWriter, PdfReader
 
 from core.report import period_summary, ReportData, MONTH_NAMES
+from core.timeutil import to_display_date
 from models.time_clock_model import TimeClockModel
 from models.vacation_model import VacationModel
 from models.sickness_model import SicknessModel
@@ -270,6 +273,7 @@ class ReportDialog(tk.Toplevel):
                 model_tc=self._model_tc,
                 model_vacation=self._model_vacation,
                 model_sickness=self._model_sickness,
+                model_miliuim=self._model_miliuim,
                 settings=self._settings,
             )
         except Exception as exc:
@@ -556,7 +560,7 @@ class ReportDialog(tk.Toplevel):
             for type_label, rec_date, doc_path in image_docs:
                 story.append(Spacer(1, 0.3 * cm))
                 story.append(Paragraph(
-                    f"{type_label} — {rec_date.isoformat()} — {os.path.basename(doc_path)}",
+                    f"{type_label} — {to_display_date(rec_date)} — {os.path.basename(doc_path)}",
                     styles["Heading2"],
                 ))
                 story.append(Spacer(1, 0.2 * cm))
@@ -572,12 +576,31 @@ class ReportDialog(tk.Toplevel):
             main_reader = PdfReader(filepath)
             for page in main_reader.pages:
                 writer.add_page(page)
+            failed_attachments: list[str] = []
             for _type_label, _rec_date, doc_path in pdf_docs:
                 try:
                     att_reader = PdfReader(doc_path)
                     for page in att_reader.pages:
                         writer.add_page(page)
+                except Exception as exc:
+                    failed_attachments.append(
+                        f"{os.path.basename(doc_path)}: {exc}")
+            tmp_fd, tmp_path = tempfile.mkstemp(suffix=".pdf")
+            try:
+                os.close(tmp_fd)
+                with open(tmp_path, "wb") as f:
+                    writer.write(f)
+                shutil.move(tmp_path, filepath)
+            except Exception:
+                try:
+                    os.unlink(tmp_path)
                 except Exception:
                     pass
-            with open(filepath, "wb") as f:
-                writer.write(f)
+                raise
+            if failed_attachments:
+                messagebox.showwarning(
+                    "Attachment Warning",
+                    "Some attachments could not be merged:\n" +
+                    "\n".join(failed_attachments),
+                    parent=self,
+                )

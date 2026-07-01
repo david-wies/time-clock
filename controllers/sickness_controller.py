@@ -84,15 +84,19 @@ class SicknessController:
             dates.append(cur)
             cur += timedelta(days=1)
 
-        year = start_date.year
-        summary = self.model.calculate_sickness_summary(year)
-        total_new = hours * len(dates)
-        if summary.remaining_hours - total_new < 0 and not confirm_over_balance:
-            return Result(ok=False, errors=["OVER_BALANCE_WARNING"])
-
-        try:
+        if not confirm_over_balance:
+            year_date_counts: dict[int, int] = {}
             for d in dates:
-                self.model.insert_record(SicknessRecord(id=None, date=d, hours=hours, note=note))
+                year_date_counts[d.year] = year_date_counts.get(d.year, 0) + 1
+            for yr, count in year_date_counts.items():
+                summary = self.model.calculate_sickness_summary(yr)
+                if summary.remaining_hours - hours * count < 0:
+                    return Result(ok=False, errors=["OVER_BALANCE_WARNING"])
+
+        records = [SicknessRecord(
+            id=None, date=d, hours=hours, note=note) for d in dates]
+        try:
+            self.model.insert_records_bulk(records)
             return Result(ok=True, errors=[])
         except Exception as e:
             return Result(ok=False, errors=[f"Database error: {str(e)}"])
