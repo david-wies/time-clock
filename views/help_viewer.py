@@ -21,10 +21,13 @@ def show_about(parent=None) -> None:
     messagebox.showinfo(
         'About Time Clock',
         'Time Clock Application\n'
-        'Version 1.0.0\n\n'
+        'Version 1.1.0\n\n'
         'A desktop time tracking application\n'
         'for managing work hours, vacation,\n'
-        'and sick leave.\n\n'
+        'sick leave, miliuim (reserve duty)\n'
+        'date-range periods, and road time\n'
+        'records with document attachments.\n\n'
+        'GitHub: github.com/david-wies/time-clock\n\n'
         'Built with Python & tkinter.',
         parent=parent
     )
