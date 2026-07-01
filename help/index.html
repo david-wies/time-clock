@@ -164,6 +164,10 @@
       color: #9CA3AF;
     }
 
+    footer a {
+      color: #1D4ED8;
+    }
+
     @media (prefers-color-scheme: dark) {
       body {
         background: #1E1E1E;
@@ -176,6 +180,10 @@
       }
 
       nav#toc a {
+        color: #60A5FA;
+      }
+
+      footer a {
         color: #60A5FA;
       }
 
@@ -245,6 +253,7 @@
       <li><a href="#time-clock">Time Clock</a></li>
       <li><a href="#vacation">Vacation</a></li>
       <li><a href="#sickness">Sickness</a></li>
+      <li><a href="#miliuim">Miliuim</a></li>
       <li><a href="#settings">Settings</a>
         <ul style="margin:2px 0 2px 12px;">
           <li><a href="#settings">↳ Time Clock tab</a></li>
@@ -275,6 +284,8 @@
         to start tracking and <strong>■ Clock Out</strong> to stop. Add manual records via <strong>+ Add
           Record</strong>. Double-click any record to edit. The header shows today's target, worked hours, and remaining
         balance.</p>
+      <p>The <strong>Road</strong> work type supports attaching a document (e.g. a scanned receipt or travel form) to
+        the record.</p>
       <h3>Overnight Shifts</h3>
       <p>If end time is before start time (e.g. 22:00 → 06:00), the app treats it as an overnight shift. Duration is
         computed as <code>(24:00 - start) + end - break</code>. A warning is shown when saving.</p>
@@ -291,6 +302,13 @@
       <h2>Sickness</h2>
       <p>Sick days are tracked in hours and converted to day-equivalents based on your daily target. Weekend sick days
         are capped at 1.0 day. Sick days reset each year.</p>
+    </section>
+
+    <section id="miliuim">
+      <h2>Miliuim</h2>
+      <p>Miliuim (reserve duty) is tracked as date-range periods rather than hours or a budget. Each record simply
+        records a start date and an end date for the period served. There is no separate hours target or balance
+        calculation for miliuim.</p>
     </section>
 
     <section id="settings">
@@ -463,7 +481,8 @@
         timestamps, not for clock-in/out times.</p>
     </section>
 
-    <footer>Time Clock App v1.0.0</footer>
+    <footer>Time Clock App v1.1.0 &middot; <a href="https://github.com/david-wies/time-clock" target="_blank"
+        rel="noopener">GitHub repository</a></footer>
   </main>
   <script>
     function clearHighlights() {

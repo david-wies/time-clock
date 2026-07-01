@@ -1,10 +1,12 @@
-__all__ = ["TimeRecord", "VacationRecord", "SicknessRecord", "Result"]
+__all__ = ["TimeRecord", "VacationRecord", "SicknessRecord",
+           "MiliuimRecord", "MiliuimSummary", "Result"]
 
 from dataclasses import dataclass
 from datetime import date, time
 from typing import Optional
 
 from domain.enums import WorkType, VacationType
+
 
 @dataclass(slots=True)
 class TimeRecord:
@@ -16,10 +18,12 @@ class TimeRecord:
     work_type: WorkType
     office: Optional[str] = None
     note: Optional[str] = None
+    document_path: Optional[str] = None
 
     @property
     def is_open(self) -> bool:
         return self.end_time is None
+
 
 @dataclass(slots=True)
 class VacationRecord:
@@ -29,12 +33,15 @@ class VacationRecord:
     vtype: VacationType
     note: Optional[str] = None
 
+
 @dataclass(slots=True)
 class SicknessRecord:
     id: Optional[int]
     date: date
     hours: float
     note: Optional[str] = None
+    document_path: Optional[str] = None
+
 
 @dataclass(slots=True)
 class Result:
@@ -62,10 +69,9 @@ class CarryOverAllowance:
 
 @dataclass(slots=True)
 class SicknessSummary:
-    allowance: float
+    allowance_hours: float
     used_hours: float
-    used_days: float
-    remaining_days: float
+    remaining_hours: float
 
 
 @dataclass(slots=True)
@@ -83,3 +89,18 @@ class CarryOverLogEntry:
     to_year: int
     hours: float
     transferred_at: str  # UTC datetime string
+
+
+@dataclass(slots=True)
+class MiliuimRecord:
+    id: Optional[int]
+    start_date: date
+    end_date: date
+    note: Optional[str] = None
+    document_path: Optional[str] = None
+
+
+@dataclass(slots=True)
+class MiliuimSummary:
+    period_count: int
+    total_days: int

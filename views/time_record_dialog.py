@@ -13,6 +13,7 @@ from domain.enums import WorkType
 from domain.types import TimeRecord
 from settings import SettingsManager
 from views.date_picker import make_date_picker
+from views.document_attachment import make_document_picker
 
 _OVERNIGHT_BG = "#FEF3C7"
 
@@ -75,6 +76,7 @@ class TimeRecordDialog(tk.Toplevel):
         self.minsize(420, 380)
         self.transient(parent)
         self.grab_set()
+        self.bind("<Escape>", lambda e: self.destroy())
 
         self._build_ui()
         self._populate(record)
@@ -95,7 +97,8 @@ class TimeRecordDialog(tk.Toplevel):
         ttk.Label(date_row, text="Date:", width=8,
                   anchor="e").pack(side="left")
 
-        self._date_widget, self._get_date, self._set_date = make_date_picker(date_row)
+        self._date_widget, self._get_date, self._set_date = make_date_picker(
+            date_row)
         self._date_widget.pack(side="left", padx=(4, 0))
 
         # ── Start / End ───────────────────────────────────────────────────────
@@ -169,7 +172,8 @@ class TimeRecordDialog(tk.Toplevel):
             ).pack(side="left", padx=(4, 0))
 
         # ── Office ────────────────────────────────────────────────────────────
-        office_row = ttk.Frame(outer)
+        self._frm_office = ttk.Frame(outer)
+        office_row = self._frm_office
         office_row.pack(fill="x", pady=(0, 6))
         ttk.Label(office_row, text="Office:", width=8,
                   anchor="e").pack(side="left")
@@ -183,6 +187,14 @@ class TimeRecordDialog(tk.Toplevel):
             width=24,
         )
         self._cbo_office.pack(side="left", padx=(4, 0))
+
+        # ── Document (Road only, hidden until Road selected) ──────────────────
+        self._frm_doc = ttk.Frame(outer)
+        ttk.Label(self._frm_doc, text="Document:", width=8,
+                  anchor="e").pack(side="left")
+        self._doc_widget, self._get_doc_path, self._set_doc_path = make_document_picker(
+            self._frm_doc)
+        self._doc_widget.pack(side="left", padx=(4, 0))
 
         # ── Note ──────────────────────────────────────────────────────────────
         note_row = ttk.Frame(outer)
@@ -242,6 +254,7 @@ class TimeRecordDialog(tk.Toplevel):
             self._var_work_type.set(str(record.work_type))
             self._var_office.set(record.office or "")
             self._var_note.set(record.note or "")
+            self._set_doc_path(record.document_path)
 
     # ─────────────────────────── Widget Callbacks ────────────────────────────
 
@@ -256,6 +269,12 @@ class TimeRecordDialog(tk.Toplevel):
         self._cbo_office.config(
             state="readonly" if wt == str(WorkType.IN_SITE) else "disabled"
         )
+        is_road = wt == str(WorkType.ROAD)
+        is_mapped = self._frm_doc.winfo_ismapped()
+        if is_road and not is_mapped:
+            self._frm_doc.pack(fill="x", pady=(0, 6), after=self._frm_office)
+        elif not is_road and is_mapped:
+            self._frm_doc.pack_forget()
 
     def _update_duration(self) -> None:
         start_s = self._var_start.get().strip()
@@ -341,6 +360,10 @@ class TimeRecordDialog(tk.Toplevel):
             o = self._var_office.get().strip()
             office = o or None
 
+        document_path: Optional[str] = None
+        if work_type == WorkType.ROAD:
+            document_path = self._get_doc_path()
+
         note_s = self._var_note.get().strip()
         note: Optional[str] = note_s or None
 
@@ -353,6 +376,7 @@ class TimeRecordDialog(tk.Toplevel):
             work_type=work_type,
             office=office,
             note=note,
+            document_path=document_path,
         )
 
         result = self._controller.save_record(record)

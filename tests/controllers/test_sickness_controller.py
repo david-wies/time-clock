@@ -2,16 +2,17 @@ import pytest
 from datetime import date
 from domain.types import SicknessRecord
 from models.sickness_model import SicknessModel
-from models.time_clock_model import TimeClockModel
 from controllers.sickness_controller import SicknessController
 from core.events import EventBus
 from db.database import Database
+
 
 @pytest.fixture
 def controller(db: Database, event_bus: EventBus) -> SicknessController:
     # Sickness controller depends on sickness model
     model = SicknessModel(db, event_bus)
     return SicknessController(model)
+
 
 def test_save_valid_record(controller: SicknessController) -> None:
     rec = SicknessRecord(
@@ -23,6 +24,7 @@ def test_save_valid_record(controller: SicknessController) -> None:
     res = controller.save_record(rec)
     assert res.ok is True
 
+
 def test_save_invalid_hours(controller: SicknessController) -> None:
     rec_low = SicknessRecord(None, date(2026, 2, 15), 0.4, "Low hours")
     assert controller.save_record(rec_low).ok is False
@@ -30,50 +32,37 @@ def test_save_invalid_hours(controller: SicknessController) -> None:
     rec_high = SicknessRecord(None, date(2026, 2, 15), 24.1, "High hours")
     assert controller.save_record(rec_high).ok is False
 
-def test_save_balance_warning_and_override(controller: SicknessController, event_bus: EventBus) -> None:
-    # 1. Setup settings & daily targets
-    # 10 days allowance. Monday target is 8.0h (1 day)
-    controller.model.save_settings(2026, 2.0)  # low allowance: 2 days
 
-    tc_model = TimeClockModel(controller.model.db, event_bus)
-    tc_model.save_work_day_targets({0: 8.0, 1: 8.0, 2: 8.0, 3: 8.0, 4: 8.0, 5: 0.0, 6: 0.0})
+def test_save_balance_warning_and_override(controller: SicknessController) -> None:
+    # Allowance = 16h (2 days × 8h); two records of 8h each exhaust it.
+    controller.model.save_settings(2026, 16.0)
 
-    # Monday June 22 (Mon = 0, target 8.0h = 1 day)
-    # Monday June 29 (Mon = 0, target 8.0h = 1 day)
-    # Total sick used = 2 days
-
-    rec1 = SicknessRecord(None, date(2026, 6, 22), 8.0, "Used 1 day")
+    rec1 = SicknessRecord(None, date(2026, 6, 22), 8.0, "Used 8h")
     assert controller.save_record(rec1).ok is True
 
-    rec2 = SicknessRecord(None, date(2026, 6, 29), 8.0, "Used 1 day")
+    rec2 = SicknessRecord(None, date(2026, 6, 29), 8.0, "Used 8h")
     assert controller.save_record(rec2).ok is True
 
-    # 3. Add third record (causes -1 day remaining)
+    # Third record pushes used to 24h, remaining to -8h
     rec3 = SicknessRecord(None, date(2026, 7, 6), 8.0, "Causes over balance")
     res = controller.save_record(rec3)
     assert res.ok is False
     assert res.errors[0] == "OVER_BALANCE_WARNING"
 
-    # 4. Override
+    # Override saves successfully
     res_override = controller.save_record(rec3, confirm_over_balance=True)
     assert res_override.ok is True
 
 
-def test_edit_path_over_balance_warning(controller: SicknessController, event_bus: EventBus) -> None:
-    # Setup: allowance = 2 days; Monday target = 8h (= 1 day)
-    controller.model.save_settings(2026, 2.0)
-    tc_model = TimeClockModel(controller.model.db, event_bus)
-    tc_model.save_work_day_targets(
-        {0: 8.0, 1: 8.0, 2: 8.0, 3: 8.0, 4: 8.0, 5: 0.0, 6: 0.0})
+def test_edit_path_over_balance_warning(controller: SicknessController) -> None:
+    # Allowance = 16h; one record of 8h leaves 8h remaining.
+    controller.model.save_settings(2026, 16.0)
 
-    # Insert one record: Monday 8h (= 1 day used, 1 day remaining)
-    mon_date = date(2026, 6, 22)  # Monday
-    rec = SicknessRecord(None, mon_date, 8.0, "First sick day")
+    rec = SicknessRecord(None, date(2026, 6, 22), 8.0, "First sick day")
     res = controller.save_record(rec)
     assert res.ok is True
 
-    # Fetch and raise hours to 24h (= 3 day equiv on Monday)
-    # projected_used_days = 1.0 - 1.0 + 3.0 = 3.0 → projected_remaining = 2.0 - 3.0 = -1.0
+    # Raise hours to 24h: projected_used = 16h - 8h + 24h = 32h → remaining = -16h
     fetched = controller.model.get_record_by_id(rec.id)
     assert fetched is not None
     fetched.hours = 24.0
@@ -82,6 +71,61 @@ def test_edit_path_over_balance_warning(controller: SicknessController, event_bu
     assert res_edit.ok is False
     assert "OVER_BALANCE_WARNING" in res_edit.errors
 
-    # Confirm override succeeds
     res_override = controller.save_record(fetched, confirm_over_balance=True)
     assert res_override.ok is True
+
+
+def test_edit_across_year_boundary_credits_correct_year(controller: SicknessController) -> None:
+    # 2026 allowance = 8h, already fully used by a record we are about to edit.
+    controller.model.save_settings(2026, 8.0)
+    # 2027 allowance = 8h, already fully used by a different record.
+    controller.model.save_settings(2027, 8.0)
+
+    rec = SicknessRecord(None, date(2026, 12, 31), 8.0, "2026 sick day")
+    assert controller.save_record(rec).ok is True
+
+    other_2027 = SicknessRecord(None, date(2027, 1, 15), 8.0, "2027 sick day")
+    assert controller.save_record(other_2027).ok is True
+
+    # Move the 2026 record into 2027: its old hours must NOT be credited back
+    # against 2027's balance (it was never counted there), so this should
+    # trip the over-balance warning (8h existing + 8h moved-in > 8h allowance).
+    fetched = controller.model.get_record_by_id(rec.id)
+    assert fetched is not None
+    fetched.date = date(2027, 1, 20)
+
+    res_edit = controller.save_record(fetched)
+    assert res_edit.ok is False
+    assert "OVER_BALANCE_WARNING" in res_edit.errors
+
+    res_override = controller.save_record(fetched, confirm_over_balance=True)
+    assert res_override.ok is True
+
+
+def test_save_range_rejects_overlapping_existing_record(controller: SicknessController) -> None:
+    existing = SicknessRecord(None, date(2026, 6, 10), 8.0, "Existing")
+    assert controller.save_record(existing).ok is True
+
+    res = controller.save_range(
+        date(2026, 6, 8), date(2026, 6, 12), 8.0, "Range overlaps",
+    )
+    assert res.ok is False
+    assert "2026-06-10" in res.errors[0]
+
+    # No extra records were inserted for the conflicting date.
+    records = controller.model.get_records_in_date_range(
+        date(2026, 6, 8), date(2026, 6, 12))
+    assert len(records) == 1
+
+
+def test_save_range_threads_document_path(controller: SicknessController) -> None:
+    res = controller.save_range(
+        date(2026, 6, 8), date(2026, 6, 10), 8.0, "Range with doc",
+        document_path="/tmp/sick_note.pdf",
+    )
+    assert res.ok is True
+
+    records = controller.model.get_records_in_date_range(
+        date(2026, 6, 8), date(2026, 6, 10))
+    assert len(records) == 3
+    assert all(r.document_path == "/tmp/sick_note.pdf" for r in records)

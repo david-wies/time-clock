@@ -43,6 +43,7 @@ class VacationRecordDialog(tk.Toplevel):
         self.minsize(400, 320)
         self.transient(parent)
         self.grab_set()
+        self.bind("<Escape>", lambda e: self.destroy())
 
         self._build_ui()
         self._populate(record)
@@ -58,15 +59,20 @@ class VacationRecordDialog(tk.Toplevel):
         # ── Date ──────────────────────────────────────────────────────────────
         date_row = ttk.Frame(outer)
         date_row.pack(fill="x", pady=(0, 6))
-        ttk.Label(date_row, text="Date:", width=8, anchor="e").pack(side="left")
+        ttk.Label(date_row, text="Date:", width=8,
+                  anchor="e").pack(side="left")
 
-        self._date_widget, self._get_date, self._set_date = make_date_picker(date_row)
+        self._date_widget, self._get_date, self._set_date = make_date_picker(
+            date_row)
         self._date_widget.pack(side="left", padx=(4, 0))
+        self._date_widget.bind("<<DateEntrySelected>>",
+                               lambda _e: self._update_hours_cap())
 
         # ── Hours ─────────────────────────────────────────────────────────────
         hours_row = ttk.Frame(outer)
         hours_row.pack(fill="x", pady=(0, 6))
-        ttk.Label(hours_row, text="Hours:", width=8, anchor="e").pack(side="left")
+        ttk.Label(hours_row, text="Hours:", width=8,
+                  anchor="e").pack(side="left")
         self._var_hours = tk.StringVar(value="8.0")
         self._spn_hours = ttk.Spinbox(
             hours_row, textvariable=self._var_hours,
@@ -74,11 +80,14 @@ class VacationRecordDialog(tk.Toplevel):
             format="%.1f",
         )
         self._spn_hours.pack(side="left", padx=(4, 0))
+        self._lbl_hours_hint = ttk.Label(hours_row, text="", foreground="gray")
+        self._lbl_hours_hint.pack(side="left", padx=(6, 0))
 
         # ── Vacation Type ─────────────────────────────────────────────────────
         type_lbl_row = ttk.Frame(outer)
         type_lbl_row.pack(fill="x", pady=(0, 2))
-        ttk.Label(type_lbl_row, text="Type:", width=8, anchor="e").pack(side="left")
+        ttk.Label(type_lbl_row, text="Type:", width=8,
+                  anchor="e").pack(side="left")
 
         self._var_vtype = tk.StringVar(value=str(VacationType.ANNUAL_LEAVE))
         for vt, label in _VTYPE_OPTIONS:
@@ -92,7 +101,8 @@ class VacationRecordDialog(tk.Toplevel):
         # ── Note ──────────────────────────────────────────────────────────────
         note_row = ttk.Frame(outer)
         note_row.pack(fill="x", pady=(0, 10))
-        ttk.Label(note_row, text="Note:", width=8, anchor="e").pack(side="left")
+        ttk.Label(note_row, text="Note:", width=8,
+                  anchor="e").pack(side="left")
         vcmd = (self.register(self._validate_note), "%P")
         self._var_note = tk.StringVar()
         ttk.Entry(
@@ -115,7 +125,8 @@ class VacationRecordDialog(tk.Toplevel):
         ttk.Button(btn_row, text="Cancel", command=self.destroy).pack(
             side="right", padx=(6, 0)
         )
-        ttk.Button(btn_row, text="Save", command=self._on_save).pack(side="right")
+        ttk.Button(btn_row, text="Save",
+                   command=self._on_save).pack(side="right")
 
     # ─────────────────────────── Data Population ────────────────────────────
 
@@ -130,6 +141,24 @@ class VacationRecordDialog(tk.Toplevel):
             self._var_hours.set(f"{record.hours:.1f}")
             self._var_vtype.set(str(record.vtype))
             self._var_note.set(record.note or "")
+        self._update_hours_cap()
+
+    def _update_hours_cap(self) -> None:
+        try:
+            d = self._get_date()
+            cap = self._model.get_daily_target_for_date(d)
+            if cap == 0.0:
+                cap = 8.0
+            self._spn_hours.config(to=cap)
+            self._lbl_hours_hint.config(text=f"(max {cap:.1f}h for this day)")
+            try:
+                current = float(self._var_hours.get())
+                if current > cap:
+                    self._var_hours.set(f"{cap:.1f}")
+            except ValueError:
+                pass
+        except Exception:
+            pass
 
     # ─────────────────────────── Validation ─────────────────────────────────
 
@@ -174,7 +203,8 @@ class VacationRecordDialog(tk.Toplevel):
             note=note_s or None,
         )
 
-        result = self._controller.save_record(record, confirm_over_balance=confirm_over_balance)
+        result = self._controller.save_record(
+            record, confirm_over_balance=confirm_over_balance)
         if result.ok:
             self.destroy()
         elif "OVER_BALANCE_WARNING" in result.errors:

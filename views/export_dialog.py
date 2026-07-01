@@ -77,6 +77,7 @@ class ExportDialog(tk.Toplevel):
         self.minsize(400, 320)
         self.transient(parent)
         self.grab_set()
+        self.bind("<Escape>", lambda e: self.destroy())
 
         today = date.today()
         self._default_from = date(today.year, 1, 1)
@@ -250,7 +251,8 @@ class ExportDialog(tk.Toplevel):
         hebrew = _safe_hebrew(rec.date)
         if tab == "time":
             if not isinstance(rec, TimeRecord):
-                raise TypeError(f"Expected TimeRecord, got {type(rec).__name__}")
+                raise TypeError(
+                    f"Expected TimeRecord, got {type(rec).__name__}")
             net: str = (
                 f"{duration(rec.start_time, rec.end_time, rec.break_minutes):.2f}"
                 if rec.end_time
@@ -269,7 +271,8 @@ class ExportDialog(tk.Toplevel):
             ]
         elif tab == "vacation":
             if not isinstance(rec, VacationRecord):
-                raise TypeError(f"Expected VacationRecord, got {type(rec).__name__}")
+                raise TypeError(
+                    f"Expected VacationRecord, got {type(rec).__name__}")
             return [
                 to_display_date(rec.date),
                 hebrew,
@@ -279,7 +282,8 @@ class ExportDialog(tk.Toplevel):
             ]
         else:  # sickness
             if not isinstance(rec, SicknessRecord):
-                raise TypeError(f"Expected SicknessRecord, got {type(rec).__name__}")
+                raise TypeError(
+                    f"Expected SicknessRecord, got {type(rec).__name__}")
             return [
                 to_display_date(rec.date),
                 hebrew,
@@ -293,13 +297,15 @@ class ExportDialog(tk.Toplevel):
         for rec in records:
             if tab == "time":
                 if not isinstance(rec, TimeRecord):
-                    raise TypeError(f"Expected TimeRecord, got {type(rec).__name__}")
+                    raise TypeError(
+                        f"Expected TimeRecord, got {type(rec).__name__}")
                 if rec.end_time:
                     total += duration(rec.start_time,
                                       rec.end_time, rec.break_minutes)
             else:
                 if not isinstance(rec, (VacationRecord, SicknessRecord)):
-                    raise TypeError(f"Expected VacationRecord or SicknessRecord, got {type(rec).__name__}")
+                    raise TypeError(
+                        f"Expected VacationRecord or SicknessRecord, got {type(rec).__name__}")
                 total += rec.hours
         return total
 
@@ -394,13 +400,15 @@ class ExportDialog(tk.Toplevel):
 
             if tab == "time":
                 if not isinstance(rec, TimeRecord):
-                    raise TypeError(f"Expected TimeRecord, got {type(rec).__name__}")
+                    raise TypeError(
+                        f"Expected TimeRecord, got {type(rec).__name__}")
                 if rec.end_time:
                     total += duration(rec.start_time,
                                       rec.end_time, rec.break_minutes)
             else:
                 if not isinstance(rec, (VacationRecord, SicknessRecord)):
-                    raise TypeError(f"Expected VacationRecord or SicknessRecord, got {type(rec).__name__}")
+                    raise TypeError(
+                        f"Expected VacationRecord or SicknessRecord, got {type(rec).__name__}")
                 total += rec.hours
 
         # ── Total row ────────────────────────────────────────────────────────

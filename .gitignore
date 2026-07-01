@@ -24,6 +24,7 @@ build/
 
 # IDE
 .vscode/
+.idea/
 
 # Dev-only docs (not part of public repo)
 AGENTS.md

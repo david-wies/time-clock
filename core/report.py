@@ -9,6 +9,7 @@ from typing import Optional
 
 from core.balance import calculate_period_balance
 from core.timeutil import iso_to_date
+from models.miliuim_model import MiliuimModel
 from models.time_clock_model import TimeClockModel
 from models.vacation_model import VacationModel
 from models.sickness_model import SicknessModel
@@ -53,10 +54,13 @@ class ReportData:
     vac_remaining: float
 
     # Sickness
-    sick_allowance_days: float
-    sick_used_days: float
-    sick_remaining_days: float
+    sick_allowance_hours: float
     sick_used_hours: float
+    sick_remaining_hours: float
+
+    # Miliuim
+    miliuim_period_count: int
+    miliuim_total_days: int
 
     # Monthly breakdown (for quarter/year reports)
     monthly_rows: list[MonthlyRow] = field(default_factory=list)
@@ -77,7 +81,7 @@ def _month_range(year: int, month: int) -> tuple[date, date]:
     return first, last
 
 
-def _period_range(
+def period_range(
     period_type: str,
     year: int,
     month: Optional[int],
@@ -95,6 +99,9 @@ def _period_range(
     if period_type == "year":
         return date(year, 1, 1), date(year, 12, 31)
     raise ValueError(f"Unknown period_type: {period_type!r}")
+
+
+_period_range = period_range
 
 
 def _period_label(
@@ -122,6 +129,7 @@ def period_summary(
     model_vacation: VacationModel,
     model_sickness: SicknessModel,
     settings: SettingsManager,
+    model_miliuim: Optional[MiliuimModel] = None,
 ) -> ReportData:
     """
     Assembles all report data for the requested period.
@@ -129,7 +137,7 @@ def period_summary(
     """
     overtime_rate = float(settings.get("overtime_rate", 1.0))
 
-    start_date, end_date = _period_range(period_type, year, month, quarter)
+    start_date, end_date = period_range(period_type, year, month, quarter)
     label = _period_label(period_type, year, month, quarter)
 
     # Fetch records once for the full year so monthly rows can reuse them
@@ -174,6 +182,8 @@ def period_summary(
     # Vacation and sickness summaries are always year-level
     vac = model_vacation.calculate_vacation_summary(year)
     sick = model_sickness.calculate_sickness_summary(year)
+    miliuim = model_miliuim.calculate_summary(
+        year) if model_miliuim is not None else None
 
     return ReportData(
         period_label=label,
@@ -191,9 +201,10 @@ def period_summary(
         vac_total_pool=vac.total_pool,
         vac_used=vac.used,
         vac_remaining=vac.remaining,
-        sick_allowance_days=sick.allowance,
-        sick_used_days=sick.used_days,
-        sick_remaining_days=sick.remaining_days,
+        sick_allowance_hours=sick.allowance_hours,
         sick_used_hours=sick.used_hours,
+        sick_remaining_hours=sick.remaining_hours,
+        miliuim_period_count=miliuim.period_count if miliuim is not None else 0,
+        miliuim_total_days=miliuim.total_days if miliuim is not None else 0,
         monthly_rows=monthly_rows,
     )

@@ -59,7 +59,8 @@ def _build_exc_dict(raw: list[WorkDayException]) -> dict[date, float]:
             d = date.fromisoformat(exc.date)
             result[d] = float(exc.hours)
         except ValueError:
-            print(f"WARNING: skipping date exception with bad date: {exc}", file=sys.stderr)
+            print(
+                f"WARNING: skipping date exception with bad date: {exc}", file=sys.stderr)
     return result
 
 
@@ -708,6 +709,7 @@ class TimeClockTab(ttk.Frame):
         dlg.resizable(False, False)
         dlg.transient(self.winfo_toplevel())
         dlg.grab_set()
+        dlg.bind("<Escape>", lambda e: dlg.destroy())
 
         ttk.Label(
             dlg,

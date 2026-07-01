@@ -11,6 +11,7 @@ from controllers.sickness_controller import SicknessController
 from models.sickness_model import SicknessModel
 from domain.types import SicknessRecord
 from views.date_picker import make_date_picker
+from views.document_attachment import make_document_picker
 
 
 class SickRecordDialog(tk.Toplevel):
@@ -34,54 +35,89 @@ class SickRecordDialog(tk.Toplevel):
         self.minsize(400, 300)
         self.transient(parent)
         self.grab_set()
+        self.bind("<Escape>", lambda e: self.destroy())
 
-        self._build_ui()
+        self._build_ui(editing)
         self._populate(record)
-        self._update_day_equiv()
 
         self.wait_window(self)
 
     # ─────────────────────────── UI Construction ────────────────────────────
 
-    def _build_ui(self) -> None:
+    def _build_ui(self, editing: bool) -> None:
         outer = ttk.Frame(self, padding=(16, 12, 16, 8))
         outer.pack(fill="both", expand=True)
 
         # ── Date ──────────────────────────────────────────────────────────────
         date_row = ttk.Frame(outer)
         date_row.pack(fill="x", pady=(0, 6))
-        ttk.Label(date_row, text="Date:", width=8, anchor="e").pack(side="left")
+        ttk.Label(date_row, text="Date:", width=10,
+                  anchor="e").pack(side="left")
 
-        self._date_widget, self._get_date, self._set_date = make_date_picker(date_row)
+        self._date_widget, self._get_date, self._set_date = make_date_picker(
+            date_row)
         self._date_widget.pack(side="left", padx=(4, 0))
 
-        # ── Hours + live day-equivalent ───────────────────────────────────────
-        hours_row = ttk.Frame(outer)
+        # ── Multi-day checkbox (hidden in edit mode) ───────────────────────────
+        self._var_multiday = tk.BooleanVar(value=False)
+        if not editing:
+            self._chk_multiday = ttk.Checkbutton(
+                outer,
+                text="Multi-day range",
+                variable=self._var_multiday,
+                command=self._on_multiday_toggled,
+            )
+            self._chk_multiday.pack(anchor="w", pady=(0, 4))
+
+        # ── End date row (revealed when multi-day is checked) ─────────────────
+        self._frm_end_date = ttk.Frame(outer)
+        ttk.Label(self._frm_end_date, text="End date:",
+                  width=10, anchor="e").pack(side="left")
+        self._end_date_widget, self._get_end_date, self._set_end_date = make_date_picker(
+            self._frm_end_date
+        )
+        self._end_date_widget.pack(side="left", padx=(4, 0))
+        # Pack it into the layout immediately so its position is fixed, then hide it.
+        self._frm_end_date.pack(fill="x", pady=(0, 6))
+        self._frm_end_date.pack_forget()
+
+        # ── Hours ──────────────────────────────────────────────────────────────
+        self._hours_row = ttk.Frame(outer)
+        hours_row = self._hours_row
         hours_row.pack(fill="x", pady=(0, 6))
-        ttk.Label(hours_row, text="Hours:", width=8, anchor="e").pack(side="left")
+        ttk.Label(hours_row, text="Hours:", width=10,
+                  anchor="e").pack(side="left")
         self._var_hours = tk.StringVar(value="8.0")
         self._spn_hours = ttk.Spinbox(
             hours_row, textvariable=self._var_hours,
             from_=0.5, to=24.0, increment=0.5, width=8,
             format="%.1f",
         )
-        self._spn_hours.pack(side="left", padx=(4, 8))
-        self._lbl_day_equiv = ttk.Label(hours_row, text="= --", foreground="gray")
-        self._lbl_day_equiv.pack(side="left")
+        self._spn_hours.pack(side="left", padx=(4, 0))
 
         # ── Note ──────────────────────────────────────────────────────────────
         note_row = ttk.Frame(outer)
-        note_row.pack(fill="x", pady=(0, 10))
-        ttk.Label(note_row, text="Note:", width=8, anchor="e").pack(side="left")
+        note_row.pack(fill="x", pady=(0, 6))
+        ttk.Label(note_row, text="Note:", width=10,
+                  anchor="e").pack(side="left")
         vcmd = (self.register(self._validate_note), "%P")
         self._var_note = tk.StringVar()
         ttk.Entry(
             note_row,
             textvariable=self._var_note,
-            width=38,
+            width=36,
             validate="key",
             validatecommand=vcmd,
         ).pack(side="left", padx=(4, 0), fill="x", expand=True)
+
+        # ── Document ──────────────────────────────────────────────────────────
+        doc_row = ttk.Frame(outer)
+        doc_row.pack(fill="x", pady=(0, 6))
+        ttk.Label(doc_row, text="Document:", width=10,
+                  anchor="e").pack(side="left")
+        self._doc_widget, self._get_doc_path, self._set_doc_path = make_document_picker(
+            doc_row)
+        self._doc_widget.pack(side="left", padx=(4, 0))
 
         # ── Error label ───────────────────────────────────────────────────────
         self._lbl_error = ttk.Label(
@@ -95,33 +131,33 @@ class SickRecordDialog(tk.Toplevel):
         ttk.Button(btn_row, text="Cancel", command=self.destroy).pack(
             side="right", padx=(6, 0)
         )
-        ttk.Button(btn_row, text="Save", command=self._on_save).pack(side="right")
+        ttk.Button(btn_row, text="Save",
+                   command=self._on_save).pack(side="right")
 
-        # ── Live-update traces ────────────────────────────────────────────────
-        self._var_hours.trace_add("write", lambda *_: self._update_day_equiv())
+    # ─────────────────────────── Multi-day Toggle ────────────────────────────
+
+    def _on_multiday_toggled(self) -> None:
+        if self._var_multiday.get():
+            self._frm_end_date.pack(
+                fill="x", pady=(0, 6), before=self._hours_row)
+        else:
+            self._frm_end_date.pack_forget()
 
     # ─────────────────────────── Data Population ────────────────────────────
 
     def _populate(self, record: Optional[SicknessRecord]) -> None:
         if record is None:
             self._set_date(date.today())
+            self._set_end_date(date.today())
             self._var_hours.set("8.0")
             self._var_note.set("")
         else:
             self._set_date(record.date)
+            self._set_end_date(record.date)
             self._var_hours.set(f"{record.hours:.1f}")
             self._var_note.set(record.note or "")
-
-    # ─────────────────────────── Live Update ────────────────────────────────
-
-    def _update_day_equiv(self) -> None:
-        try:
-            rec_date = self._get_date()
-            hours = float(self._var_hours.get())
-            equiv = self._model.get_day_equivalent(rec_date, hours)
-            self._lbl_day_equiv.config(text=f"= {equiv:.2f} day(s)")
-        except (ValueError, tk.TclError):
-            self._lbl_day_equiv.config(text="= --")
+        doc = record.document_path if record is not None else None
+        self._set_doc_path(doc)
 
     # ─────────────────────────── Validation ─────────────────────────────────
 
@@ -135,10 +171,10 @@ class SickRecordDialog(tk.Toplevel):
         field_errors: list[str] = []
 
         try:
-            rec_date: Optional[date] = self._get_date()
+            start_date: Optional[date] = self._get_date()
         except Exception:
             field_errors.append("Invalid date.")
-            rec_date = None
+            start_date = None
 
         try:
             hours = float(self._var_hours.get())
@@ -151,20 +187,38 @@ class SickRecordDialog(tk.Toplevel):
             return
 
         note_s = self._var_note.get().strip()
-        record = SicknessRecord(
-            id=self._record.id if self._record is not None else None,
-            date=rec_date,
-            hours=hours,
-            note=note_s or None,
-        )
+        note = note_s or None
 
-        result = self._controller.save_record(record, confirm_over_balance=confirm_over_balance)
+        multiday = self._var_multiday.get() if hasattr(self, "_var_multiday") else False
+
+        if multiday:
+            try:
+                end_date = self._get_end_date()
+            except Exception:
+                self._lbl_error.config(text="Invalid end date.")
+                return
+            result = self._controller.save_range(
+                start_date, end_date, hours, note,
+                confirm_over_balance=confirm_over_balance,
+                document_path=self._get_doc_path(),
+            )
+        else:
+            record = SicknessRecord(
+                id=self._record.id if self._record is not None else None,
+                date=start_date,
+                hours=hours,
+                note=note,
+                document_path=self._get_doc_path(),
+            )
+            result = self._controller.save_record(
+                record, confirm_over_balance=confirm_over_balance)
+
         if result.ok:
             self.destroy()
         elif "OVER_BALANCE_WARNING" in result.errors:
             if messagebox.askyesno(
                 "Balance Exceeded",
-                "This exceeds your remaining sick day balance.\nSave anyway?",
+                "This exceeds your remaining sick hour balance.\nSave anyway?",
                 parent=self,
             ):
                 self._on_save(confirm_over_balance=True)

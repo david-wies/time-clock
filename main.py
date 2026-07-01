@@ -4,11 +4,13 @@ import tkinter as tk
 from datetime import date
 from tkinter import messagebox
 
+from controllers.miliuim_controller import MiliuimController
 from controllers.sickness_controller import SicknessController
 from controllers.time_clock_controller import TimeClockController
 from controllers.vacation_controller import VacationController
 from core.events import EventBus
 from db.database import Database
+from models.miliuim_model import MiliuimModel
 from models.sickness_model import SicknessModel
 from models.time_clock_model import TimeClockModel
 from models.vacation_model import VacationModel
@@ -16,6 +18,7 @@ from settings import SettingsManager
 from theme.style import apply_theme
 from views.tray import SystemTray
 from views.main_window import MainWindow
+from views.miliuim_tab import MiliuimTab
 from views.sickness_tab import SicknessTab
 from views.time_clock_tab import TimeClockTab
 from views.vacation_tab import VacationTab
@@ -29,10 +32,12 @@ def main() -> None:
     time_model = TimeClockModel(db, bus)
     vacation_model = VacationModel(db, bus)
     sickness_model = SicknessModel(db, bus)
+    miliuim_model = MiliuimModel(db, bus)
 
     time_ctrl = TimeClockController(time_model, settings)
     vacation_ctrl = VacationController(vacation_model)
     sickness_ctrl = SicknessController(sickness_model)
+    miliuim_ctrl = MiliuimController(miliuim_model)
 
     root = tk.Tk()
     root.title("Time Clock")
@@ -46,6 +51,7 @@ def main() -> None:
         model_tc=time_model,
         model_vacation=vacation_model,
         model_sickness=sickness_model,
+        model_miliuim=miliuim_model,
     )
 
     tab = TimeClockTab(
@@ -70,6 +76,15 @@ def main() -> None:
         window.sickness_frame,
         controller=sickness_ctrl,
         model=sickness_model,
+        settings=settings,
+        bus=bus,
+        root=root,
+    )
+
+    MiliuimTab(
+        window.miliuim_frame,
+        controller=miliuim_ctrl,
+        model=miliuim_model,
         settings=settings,
         bus=bus,
         root=root,

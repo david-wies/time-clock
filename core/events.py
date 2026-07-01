@@ -9,6 +9,7 @@ class Event(Enum):
     TIME_RECORDS_CHANGED = "time_records_changed"
     VACATION_CHANGED = "vacation_changed"
     SICKNESS_CHANGED = "sickness_changed"
+    MILIUIM_CHANGED = "miliuim_changed"
     SETTINGS_CHANGED = "settings_changed"
     CLOCK_STATE_CHANGED = "clock_state_changed"
 

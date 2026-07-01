@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+import os
+import shutil
+import tempfile
 from datetime import date
+from pathlib import Path
 from typing import Optional
 
 import tkinter as tk
@@ -15,17 +19,21 @@ from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib.units import cm
 from reportlab.platypus import (
     HRFlowable,
+    Image as RLImage,
     Paragraph,
     SimpleDocTemplate,
     Spacer,
     Table,
     TableStyle,
 )
+from pypdf import PdfWriter, PdfReader
 
-from core.report import period_summary, ReportData, MONTH_NAMES
+from core.report import period_summary, period_range, ReportData, MONTH_NAMES
+from core.timeutil import to_display_date
 from models.time_clock_model import TimeClockModel
 from models.vacation_model import VacationModel
 from models.sickness_model import SicknessModel
+from models.miliuim_model import MiliuimModel
 from settings import SettingsManager
 
 
@@ -51,18 +59,21 @@ class ReportDialog(tk.Toplevel):
         model_vacation: VacationModel,
         model_sickness: SicknessModel,
         settings: SettingsManager,
+        model_miliuim: Optional[MiliuimModel] = None,
     ) -> None:
         super().__init__(parent)
         self._model_tc = model_tc
         self._model_vacation = model_vacation
         self._model_sickness = model_sickness
         self._settings = settings
+        self._model_miliuim = model_miliuim
 
         self.title("Generate Report")
         self.minsize(480, 400)
         self.resizable(True, True)
         self.transient(parent)
         self.grab_set()
+        self.bind("<Escape>", lambda e: self.destroy())
 
         self._build_ui()
         self._on_period_changed()  # set initial visibility
@@ -138,7 +149,8 @@ class ReportDialog(tk.Toplevel):
 
         # Quarter combobox (shown only for Quarter mode)
         self._lbl_quarter = ttk.Label(frm, text="Quarter:")
-        self._lbl_quarter.grid(row=3, column=0, sticky="w", padx=(0, 8), pady=3)
+        self._lbl_quarter.grid(
+            row=3, column=0, sticky="w", padx=(0, 8), pady=3)
         self._var_quarter = tk.StringVar(value="Q1")
         self._cbo_quarter = ttk.Combobox(
             frm,
@@ -174,11 +186,13 @@ class ReportDialog(tk.Toplevel):
         )
         self._txt_preview.grid(row=0, column=0, sticky="nsew")
 
-        vsb = ttk.Scrollbar(frm_txt, orient="vertical", command=self._txt_preview.yview)
+        vsb = ttk.Scrollbar(frm_txt, orient="vertical",
+                            command=self._txt_preview.yview)
         vsb.grid(row=0, column=1, sticky="ns")
         self._txt_preview.configure(yscrollcommand=vsb.set)
 
-        hsb = ttk.Scrollbar(frm_txt, orient="horizontal", command=self._txt_preview.xview)
+        hsb = ttk.Scrollbar(frm_txt, orient="horizontal",
+                            command=self._txt_preview.xview)
         hsb.grid(row=1, column=0, sticky="ew")
         self._txt_preview.configure(xscrollcommand=hsb.set)
 
@@ -258,6 +272,7 @@ class ReportDialog(tk.Toplevel):
                 model_tc=self._model_tc,
                 model_vacation=self._model_vacation,
                 model_sickness=self._model_sickness,
+                model_miliuim=self._model_miliuim,
                 settings=self._settings,
             )
         except Exception as exc:
@@ -289,7 +304,8 @@ class ReportDialog(tk.Toplevel):
         lines.append("TIME CLOCK")
         lines.append(f"  Worked:              {data.worked_hours:>9.2f} h")
         lines.append(f"  Target:              {data.target_hours:>9.2f} h")
-        lines.append(f"  Balance:             {_signed(data.time_balance):>9} h")
+        lines.append(
+            f"  Balance:             {_signed(data.time_balance):>9} h")
         lines.append(
             f"  Weighted overtime:   {data.weighted_overtime:>9.2f} h"
             f"  (rate: {data.overtime_rate}x)"
@@ -305,17 +321,22 @@ class ReportDialog(tk.Toplevel):
         lines.append("")
 
         lines.append(f"SICKNESS ({data.year})")
-        lines.append(f"  Allowance:           {data.sick_allowance_days:>9.1f} days")
         lines.append(
-            f"  Used:                {data.sick_used_days:>9.1f} days"
-            f"  ({data.sick_used_hours:.1f} h)"
-        )
-        lines.append(f"  Remaining:           {data.sick_remaining_days:>9.1f} days")
+            f"  Allowance:           {data.sick_allowance_hours:>9.1f} h")
+        lines.append(f"  Used:                {data.sick_used_hours:>9.1f} h")
+        lines.append(
+            f"  Remaining:           {data.sick_remaining_hours:>9.1f} h")
+        lines.append("")
+
+        lines.append(f"MILIUIM ({data.year})")
+        lines.append(f"  Periods:             {data.miliuim_period_count:>9}")
+        lines.append(f"  Total days:          {data.miliuim_total_days:>9}")
 
         if data.monthly_rows:
             lines.append("")
             lines.append("MONTHLY BREAKDOWN")
-            lines.append(f"  {'Month':<16} {'Worked':>9}  {'Target':>9}  {'Balance':>10}")
+            lines.append(
+                f"  {'Month':<16} {'Worked':>9}  {'Target':>9}  {'Balance':>10}")
             lines.append(f"  {'-'*16} {'-'*9}  {'-'*9}  {'-'*10}")
             for row in data.monthly_rows:
                 name = MONTH_NAMES[row.month]
@@ -325,6 +346,52 @@ class ReportDialog(tk.Toplevel):
                 )
 
         return "\n".join(lines)
+
+    # ─────────────────────────── Document Collection ─────────────────────────
+
+    def _collect_documents(
+        self, data: ReportData
+    ) -> tuple[list[tuple[str, date, str]], list[tuple[str, date, str]]]:
+        """Returns (image_docs, pdf_docs) for records in the report period.
+        Each element: (type_label, record_date, file_path).
+        Only includes paths that actually exist on disk.
+        """
+        start, end = period_range(
+            data.period_type, data.year, data.month, data.quarter)
+
+        image_exts = {".png", ".jpg", ".jpeg", ".bmp", ".tiff", ".tif", ".gif"}
+        image_docs: list[tuple[str, date, str]] = []
+        pdf_docs: list[tuple[str, date, str]] = []
+
+        for rec in self._model_sickness.get_records_in_date_range(start, end):
+            if rec.document_path and Path(rec.document_path).exists():
+                ext = Path(rec.document_path).suffix.lower()
+                if ext == ".pdf":
+                    pdf_docs.append(("Sickness", rec.date, rec.document_path))
+                elif ext in image_exts:
+                    image_docs.append(
+                        ("Sickness", rec.date, rec.document_path))
+
+        for rec in self._model_tc.get_records_for_date_range(start, end):
+            if rec.document_path and Path(rec.document_path).exists():
+                ext = Path(rec.document_path).suffix.lower()
+                if ext == ".pdf":
+                    pdf_docs.append(("Road", rec.date, rec.document_path))
+                elif ext in image_exts:
+                    image_docs.append(("Road", rec.date, rec.document_path))
+
+        if self._model_miliuim is not None:
+            for rec in self._model_miliuim.get_records_in_date_range(start, end):
+                if rec.document_path and Path(rec.document_path).exists():
+                    ext = Path(rec.document_path).suffix.lower()
+                    if ext == ".pdf":
+                        pdf_docs.append(
+                            ("Miliuim", rec.start_date, rec.document_path))
+                    elif ext in image_exts:
+                        image_docs.append(
+                            ("Miliuim", rec.start_date, rec.document_path))
+
+        return image_docs, pdf_docs
 
     # ─────────────────────────── PDF Export ─────────────────────────────────
 
@@ -391,7 +458,8 @@ class ReportDialog(tk.Toplevel):
                 ("TOPPADDING", (0, 0), (-1, -1), 5),
                 ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
                 ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f9f9f9")]),
+                ("ROWBACKGROUNDS", (0, 1), (-1, -1),
+                 [colors.white, colors.HexColor("#f9f9f9")]),
             ]))
             return t
 
@@ -423,7 +491,8 @@ class ReportDialog(tk.Toplevel):
             ["Worked", _fmt_h(data.worked_hours)],
             ["Target", _fmt_h(data.target_hours)],
             ["Balance", f"{_signed(data.time_balance)} h"],
-            ["Weighted Overtime", f"{data.weighted_overtime:.2f} h  (rate: {data.overtime_rate}x)"],
+            ["Weighted Overtime",
+                f"{data.weighted_overtime:.2f} h  (rate: {data.overtime_rate}x)"],
         ]))
         story.append(Spacer(1, 0.5 * cm))
 
@@ -443,9 +512,18 @@ class ReportDialog(tk.Toplevel):
         story.append(Paragraph(f"Sickness ({data.year})", styles["Heading1"]))
         story.append(Spacer(1, 0.2 * cm))
         story.append(kv_table([
-            ["Allowance", f"{data.sick_allowance_days:.1f} days"],
-            ["Used", f"{data.sick_used_days:.1f} days  ({data.sick_used_hours:.1f} h)"],
-            ["Remaining", f"{data.sick_remaining_days:.1f} days"],
+            ["Allowance", f"{data.sick_allowance_hours:.1f} h"],
+            ["Used", f"{data.sick_used_hours:.1f} h"],
+            ["Remaining", f"{data.sick_remaining_hours:.1f} h"],
+        ]))
+        story.append(Spacer(1, 0.5 * cm))
+
+        # ── Miliuim ───────────────────────────────────────────────────────────
+        story.append(Paragraph(f"Miliuim ({data.year})", styles["Heading1"]))
+        story.append(Spacer(1, 0.2 * cm))
+        story.append(kv_table([
+            ["Periods", str(data.miliuim_period_count)],
+            ["Total days", str(data.miliuim_total_days)],
         ]))
 
         # ── Monthly Breakdown ─────────────────────────────────────────────────
@@ -466,4 +544,59 @@ class ReportDialog(tk.Toplevel):
                 ])
             story.append(monthly_table(table_rows))
 
+        # ── Attached Documents (images) ───────────────────────────────────────
+        image_docs, pdf_docs = self._collect_documents(data)
+
+        if image_docs:
+            story.append(Spacer(1, 0.5 * cm))
+            story.append(HRFlowable(
+                width="100%", thickness=1, color=colors.grey))
+            story.append(Spacer(1, 0.4 * cm))
+            story.append(Paragraph("Attached Documents", styles["Heading1"]))
+            for type_label, rec_date, doc_path in image_docs:
+                story.append(Spacer(1, 0.3 * cm))
+                story.append(Paragraph(
+                    f"{type_label} — {to_display_date(rec_date)} — {os.path.basename(doc_path)}",
+                    styles["Heading2"],
+                ))
+                story.append(Spacer(1, 0.2 * cm))
+                img = RLImage(doc_path, width=15 * cm,
+                              height=20 * cm, kind="proportional")
+                story.append(img)
+
         doc.build(story)
+
+        # ── Attached Documents (PDF pages appended) ───────────────────────────
+        if pdf_docs:
+            writer = PdfWriter()
+            main_reader = PdfReader(filepath)
+            for page in main_reader.pages:
+                writer.add_page(page)
+            failed_attachments: list[str] = []
+            for _type_label, _rec_date, doc_path in pdf_docs:
+                try:
+                    att_reader = PdfReader(doc_path)
+                    for page in att_reader.pages:
+                        writer.add_page(page)
+                except Exception as exc:
+                    failed_attachments.append(
+                        f"{os.path.basename(doc_path)}: {exc}")
+            tmp_fd, tmp_path = tempfile.mkstemp(suffix=".pdf")
+            try:
+                os.close(tmp_fd)
+                with open(tmp_path, "wb") as f:
+                    writer.write(f)
+                shutil.move(tmp_path, filepath)
+            except Exception:
+                try:
+                    os.unlink(tmp_path)
+                except Exception:
+                    pass
+                raise
+            if failed_attachments:
+                messagebox.showwarning(
+                    "Attachment Warning",
+                    "Some attachments could not be merged:\n" +
+                    "\n".join(failed_attachments),
+                    parent=self,
+                )

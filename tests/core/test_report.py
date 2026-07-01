@@ -257,6 +257,6 @@ def test_period_summary_vac_defaults_with_no_settings(period_models):
     assert data.vac_allowance == pytest.approx(0.0)
     assert data.vac_used == pytest.approx(0.0)
     assert data.vac_remaining == pytest.approx(0.0)
-    # No sickness settings set → default fallback is 10.0 days
-    assert data.sick_allowance_days == pytest.approx(10.0)
+    # No sickness settings set → default fallback is 80.0h (10 days × 8h)
+    assert data.sick_allowance_hours == pytest.approx(80.0)
     assert data.sick_used_hours == pytest.approx(0.0)

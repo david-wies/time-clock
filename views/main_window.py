@@ -13,7 +13,7 @@ class MainWindow(ttk.Frame):
     """Root application window with notebook tabs, menu, and status bar."""
 
     def __init__(self, root, bus: EventBus, settings=None, model_tc=None,
-                 model_vacation=None, model_sickness=None) -> None:
+                 model_vacation=None, model_sickness=None, model_miliuim=None) -> None:
         super().__init__(root)
         self.root = root
         self.bus = bus
@@ -21,6 +21,7 @@ class MainWindow(ttk.Frame):
         self._model_tc = model_tc
         self._model_vacation = model_vacation
         self._model_sickness = model_sickness
+        self._model_miliuim = model_miliuim
         self.status_var = StringVar(value="Ready")
         self._count_var = StringVar(value="")
         self._clock_var = StringVar(value="Idle")
@@ -42,6 +43,8 @@ class MainWindow(ttk.Frame):
                                _: self._set_status("Vacation records updated")),
             self.bus.subscribe(Event.SICKNESS_CHANGED, lambda **
                                _: self._set_status("Sick records updated")),
+            self.bus.subscribe(Event.MILIUIM_CHANGED, lambda **
+                               _: self._set_status("Miliuim records updated")),
             self.bus.subscribe(Event.SETTINGS_CHANGED, lambda **
                                _: self._set_status("Settings changed")),
             self.bus.subscribe(Event.CLOCK_STATE_CHANGED,
@@ -121,6 +124,7 @@ class MainWindow(ttk.Frame):
             model_vacation=self._model_vacation,
             model_sickness=self._model_sickness,
             settings=self._settings,
+            model_miliuim=self._model_miliuim,
         )
 
     def _build_notebook(self) -> None:
@@ -130,10 +134,12 @@ class MainWindow(ttk.Frame):
         self.time_clock_frame = ttk.Frame(self.notebook)
         self.vacation_frame = ttk.Frame(self.notebook)
         self.sickness_frame = ttk.Frame(self.notebook)
+        self.miliuim_frame = ttk.Frame(self.notebook)
 
         self.notebook.add(self.time_clock_frame, text="Time Clock")
         self.notebook.add(self.vacation_frame, text="Vacation")
         self.notebook.add(self.sickness_frame, text="Sickness")
+        self.notebook.add(self.miliuim_frame, text="Miliuim")
 
         self.notebook.bind("<<NotebookTabChanged>>", self._on_tab_changed)
 
@@ -177,7 +183,7 @@ class MainWindow(ttk.Frame):
 
     def _on_tab_changed(self, _event: object = None) -> None:
         idx = self.notebook.index("current")
-        names = ["Time Clock", "Vacation", "Sickness"]
+        names = ["Time Clock", "Vacation", "Sickness", "Miliuim"]
         self._tab_var.set(names[idx] if idx < len(names) else "")
 
     def _on_destroy(self, _event: object = None) -> None:

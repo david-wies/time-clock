@@ -1,4 +1,4 @@
-"""Sickness tab — balance summary, record list, and CRUD actions."""
+"""Miliuim (Army Reserve) tab — period list and CRUD actions."""
 
 from __future__ import annotations
 
@@ -8,16 +8,16 @@ from typing import Optional, Callable
 import tkinter as tk
 from tkinter import ttk, messagebox
 
-from controllers.sickness_controller import SicknessController
-from models.sickness_model import SicknessModel
+from controllers.miliuim_controller import MiliuimController
+from models.miliuim_model import MiliuimModel
 from settings import SettingsManager
 from core.events import EventBus, Event
 from core.timeutil import to_display_date
-from domain.types import SicknessRecord
+from domain.types import MiliuimRecord
 from theme.style import COLORS
 
 from core.hebrew_date import to_hebrew_label as _safe_hebrew
-from views.sick_record_dialog import SickRecordDialog
+from views.miliuim_record_dialog import MiliuimRecordDialog
 
 
 _MONTH_NAMES = [
@@ -26,14 +26,14 @@ _MONTH_NAMES = [
 ]
 
 
-class SicknessTab(ttk.Frame):
-    """Sickness tab: balance display, record list, add/edit/delete."""
+class MiliuimTab(ttk.Frame):
+    """Miliuim tab: summary display, period list, add/edit/delete."""
 
     def __init__(
         self,
         parent,
-        controller: SicknessController,
-        model: SicknessModel,
+        controller: MiliuimController,
+        model: MiliuimModel,
         settings: SettingsManager,
         bus: EventBus,
         root,
@@ -47,24 +47,20 @@ class SicknessTab(ttk.Frame):
 
         today = date.today()
         self._selected_year: int = today.year
-        self._selected_month: int = 0  # 0 = All months
+        self._selected_month: int = 0
         self._unsubs: list[Callable] = []
         self._build_ui()
         self._refresh()
 
         self._unsubs.append(bus.subscribe(
-            Event.SICKNESS_CHANGED, self._on_event))
-        self._unsubs.append(bus.subscribe(
-            Event.SETTINGS_CHANGED, self._on_event))
+            Event.MILIUIM_CHANGED, self._on_event))
 
         self.bind("<Destroy>", self._on_destroy)
         self.pack(fill="both", expand=True)
 
-    # ─────────────────────────── UI Construction ────────────────────────────
-
     def _build_ui(self) -> None:
         self._build_filter_bar()
-        self._build_balance_bar()
+        self._build_summary_bar()
         self._build_treeview()
         self._build_action_bar()
         self._bind_shortcuts()
@@ -94,47 +90,40 @@ class SicknessTab(ttk.Frame):
         self._cbo_month.pack(side="left", padx=(2, 0))
         self._cbo_month.bind("<<ComboboxSelected>>", self._on_period_changed)
 
-    def _build_balance_bar(self) -> None:
-        self._frm_balance = ttk.Frame(self, style="Card.TFrame")
-        self._frm_balance.pack(fill="x", padx=4, pady=(4, 0))
+    def _build_summary_bar(self) -> None:
+        self._frm_summary = ttk.Frame(self, style="Card.TFrame")
+        self._frm_summary.pack(fill="x", padx=4, pady=(4, 0))
 
-        self._lbl_balance = ttk.Label(
-            self._frm_balance, text="", style="DayHeader.TLabel"
+        self._lbl_summary = ttk.Label(
+            self._frm_summary, text="", style="DayHeader.TLabel"
         )
-        self._lbl_balance.pack(side="left", padx=10, pady=5)
-
-        ttk.Separator(self._frm_balance, orient="vertical").pack(
-            side="left", fill="y", pady=5
-        )
-
-        self._lbl_hours = ttk.Label(
-            self._frm_balance, text="", foreground="gray")
-        self._lbl_hours.pack(side="left", padx=10, pady=5)
+        self._lbl_summary.pack(side="left", padx=10, pady=5)
 
     def _build_treeview(self) -> None:
         frame = ttk.Frame(self)
         frame.pack(fill="both", expand=True, padx=4, pady=4)
 
-        cols = ["date", "hebrew_date", "hours", "note"]
+        cols = ["start_date", "end_date", "hebrew_date", "days", "note"]
 
         self._tree = ttk.Treeview(
-            frame,
-            columns=cols,
-            show="headings",
-            selectmode="browse",
+            frame, columns=cols, show="headings", selectmode="browse",
         )
+        self._tree.column("start_date", width=110,
+                          minwidth=90, stretch=False, anchor="w")
+        self._tree.heading("start_date", text="Start Date", anchor="center")
 
-        self._tree.column("date", width=110, minwidth=90,
+        self._tree.column("end_date", width=110, minwidth=90,
                           stretch=False, anchor="w")
-        self._tree.heading("date", text="Date", anchor="center")
+        self._tree.heading("end_date", text="End Date", anchor="center")
 
         self._tree.column("hebrew_date", width=150,
                           minwidth=120, stretch=False, anchor="w")
-        self._tree.heading("hebrew_date", text="Hebrew Date", anchor="center")
+        self._tree.heading(
+            "hebrew_date", text="Hebrew Date (Start)", anchor="center")
 
-        self._tree.column("hours", width=70, minwidth=50,
+        self._tree.column("days", width=60, minwidth=50,
                           stretch=False, anchor="e")
-        self._tree.heading("hours", text="Hours", anchor="center")
+        self._tree.heading("days", text="Days", anchor="center")
 
         self._tree.column("note", width=200, minwidth=80,
                           stretch=True, anchor="w")
@@ -158,13 +147,11 @@ class SicknessTab(ttk.Frame):
         inner.pack(fill="x")
 
         self._btn_add = ttk.Button(
-            inner, text="+ Add", command=self._do_add, width=12
-        )
+            inner, text="+ Add", command=self._do_add, width=12)
         self._btn_add.pack(side="left", padx=(0, 4))
 
         self._btn_edit = ttk.Button(
-            inner, text="✏ Edit", command=self._do_edit, width=12
-        )
+            inner, text="✏ Edit", command=self._do_edit, width=12)
         self._btn_edit.pack(side="left", padx=(0, 4))
 
         self._btn_delete = ttk.Button(
@@ -183,12 +170,8 @@ class SicknessTab(ttk.Frame):
                     pass
             return _handler
 
-        self.root.bind_all("<Control-Shift-S>", _guard(self._do_add), add=True)
-        self.root.bind_all("<Control-e>",       _guard(self._do_edit), add=True)
-        self.root.bind_all("<Delete>",          _guard(self._do_delete), add=True)
-        self.root.bind_all("<F5>",              _guard(self._refresh), add=True)
-
-    # ─────────────────────────── Period Filter ──────────────────────────────
+        self.root.bind_all("<Control-Shift-M>", _guard(self._do_add), add=True)
+        self.root.bind_all("<F5>", _guard(self._refresh), add=True)
 
     def _on_period_changed(self, _event=None) -> None:
         try:
@@ -203,85 +186,61 @@ class SicknessTab(ttk.Frame):
             self._selected_month = idx if idx > 0 else 0
         self._refresh()
 
-    # ─────────────────────────── Balance Bar ────────────────────────────────
-
-    def _refresh_balance(self) -> None:
+    def _refresh_summary(self) -> None:
         year = self._selected_year
-        summary = self.model.calculate_sickness_summary(year)
-        used = summary.used_hours
-        allowance = summary.allowance_hours
-        remaining = summary.remaining_hours
-
+        summary = self.model.calculate_summary(year)
         c = COLORS.get("light", COLORS["light"])
-        if remaining < 0:
-            bal_color = c["warning"]
-        elif remaining == 0:
-            bal_color = c["fg.muted"]
-        else:
-            bal_color = c["success"]
-
-        self._lbl_balance.config(
-            text=(
-                f"Sick hours {year}: {used:.1f}h / {allowance:.1f}h used"
-                f"  |  Remaining: {remaining:.1f}h"
-            ),
-            foreground=bal_color,
+        text = (
+            f"Miliuim {year}: {summary.period_count} period(s)"
+            f"  |  {summary.total_days} day(s) total"
         )
-        self._lbl_hours.config(text="")
-
-    # ─────────────────────────── Treeview Population ────────────────────────
+        self._lbl_summary.config(text=text, foreground=c["fg.muted"])
 
     def _clear_tree(self) -> None:
         children = self._tree.get_children()
         if children:
             self._tree.delete(*children)
 
-    def _make_row_values(self, rec: Optional[SicknessRecord], override_date: str = "") -> tuple:
-        if rec is None:
-            return (override_date, "", "", "")
-
-        disp = to_display_date(rec.date)
-        hours_str = f"{rec.hours:.1f}h"
-        note = rec.note or ""
-        return (disp, _safe_hebrew(rec.date), hours_str, note)
+    def _make_row_values(self, rec: MiliuimRecord, month: Optional[int]) -> tuple:
+        days = self.model.clip_days(rec, self._selected_year, month)
+        return (
+            to_display_date(rec.start_date),
+            to_display_date(rec.end_date),
+            _safe_hebrew(rec.start_date),
+            str(days),
+            rec.note or "",
+        )
 
     def _refresh_tree(self) -> None:
         self._clear_tree()
         month = self._selected_month if self._selected_month > 0 else None
         records = self.model.get_records_for_year(self._selected_year, month)
 
-        total_hours = 0.0
+        total_days = 0
         for rec in records:
             self._tree.insert(
-                "", "end",
-                iid=f"rec_{rec.id}",
-                values=self._make_row_values(rec),
-            )
-            total_hours += rec.hours
+                "", "end", iid=f"rec_{rec.id}",
+                values=self._make_row_values(rec, month))
+            total_days += self.model.clip_days(rec, self._selected_year, month)
 
         if records:
             self._tree.insert(
-                "", "end",
-                iid="__total__",
-                values=self._make_row_values(None, f"Total: {total_hours:.1f}h"),
+                "", "end", iid="__total__",
+                values=("", "", "", str(total_days),
+                        f"Total: {total_days} days"),
                 tags=("total",),
             )
             c = COLORS.get("light", COLORS["light"])
             self._tree.tag_configure(
-                "total", foreground=c["fg.muted"], font=("Helvetica", 9, "bold")
-            )
-
-    # ─────────────────────────── Refresh ────────────────────────────────────
+                "total", foreground=c["fg.muted"], font=("Helvetica", 9, "bold"))
 
     def _refresh(self, **_kw) -> None:
-        self._refresh_balance()
+        self._refresh_summary()
         self._refresh_tree()
         self._update_button_states()
 
     def _on_event(self, **_kw) -> None:
         self._refresh()
-
-    # ─────────────────────────── Button State ───────────────────────────────
 
     def _update_button_states(self) -> None:
         state = "normal" if self._get_selected_record_id() is not None else "disabled"
@@ -300,11 +259,9 @@ class SicknessTab(ttk.Frame):
                 return None
         return None
 
-    def _get_selected_record(self) -> Optional[SicknessRecord]:
+    def _get_selected_record(self) -> Optional[MiliuimRecord]:
         rec_id = self._get_selected_record_id()
         return self.model.get_record_by_id(rec_id) if rec_id is not None else None
-
-    # ─────────────────────────── Tree Callbacks ─────────────────────────────
 
     def _on_double_click(self, event: tk.Event) -> None:
         iid = self._tree.identify_row(event.y)
@@ -317,20 +274,16 @@ class SicknessTab(ttk.Frame):
         self._btn_edit.config(state=state)
         self._btn_delete.config(state=state)
 
-    # ─────────────────────────── Actions ────────────────────────────────────
-
     def _do_add(self) -> None:
-        SickRecordDialog(
-            self, controller=self.controller, model=self.model, record=None,
-        )
+        MiliuimRecordDialog(self, controller=self.controller,
+                            model=self.model, record=None)
 
     def _do_edit(self) -> None:
         rec = self._get_selected_record()
         if rec is None:
             return
-        SickRecordDialog(
-            self, controller=self.controller, model=self.model, record=rec,
-        )
+        MiliuimRecordDialog(self, controller=self.controller,
+                            model=self.model, record=rec)
 
     def _do_delete(self) -> None:
         rec_id = self._get_selected_record_id()
@@ -338,7 +291,7 @@ class SicknessTab(ttk.Frame):
             return
         if not messagebox.askyesno(
             "Confirm Remove",
-            "Permanently remove this sick record?",
+            "Permanently remove this Miliuim period?",
             icon="warning",
             parent=self,
         ):
@@ -347,8 +300,6 @@ class SicknessTab(ttk.Frame):
         if not result.ok:
             messagebox.showerror("Remove Failed", "\n".join(
                 result.errors), parent=self)
-
-    # ─────────────────────────── Lifecycle ──────────────────────────────────
 
     def _on_destroy(self, _event=None) -> None:
         for unsub in self._unsubs:

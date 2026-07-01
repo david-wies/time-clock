@@ -1,8 +1,8 @@
-import pytest
 from datetime import date
 from domain.types import VacationRecord
 from domain.enums import VacationType
 from models.vacation_model import VacationModel
+from models.time_clock_model import TimeClockModel
 from core.events import EventBus, Event
 from db.database import Database
 
@@ -18,7 +18,8 @@ def test_vacation_events(db: Database, event_bus: EventBus) -> None:
 
     event_bus.subscribe(Event.VACATION_CHANGED, on_change)
 
-    rec = VacationRecord(None, date(2026, 7, 15), 8.0, VacationType.ANNUAL_LEAVE)
+    rec = VacationRecord(None, date(2026, 7, 15), 8.0,
+                         VacationType.ANNUAL_LEAVE)
     rec_id = model.insert_record(rec)
     assert change_called is True
 
@@ -149,7 +150,8 @@ def test_carry_over_history(db: Database, event_bus: EventBus) -> None:
     model.save_settings(2026, 160.0, 40.0)
 
     # Use only 145h of 160h in 2025 (15h remaining)
-    r1 = VacationRecord(None, date(2025, 6, 1), 145.0, VacationType.ANNUAL_LEAVE)
+    r1 = VacationRecord(None, date(2025, 6, 1), 145.0,
+                        VacationType.ANNUAL_LEAVE)
     model.insert_record(r1)
 
     model.add_carry_over(2025, 2026, 15.0)
@@ -158,3 +160,27 @@ def test_carry_over_history(db: Database, event_bus: EventBus) -> None:
     assert len(history) == 1
     assert history[0].hours == 15.0
     assert history[0].from_year == 2025
+
+
+def test_daily_target_falls_back_to_weekday(db: Database, event_bus: EventBus) -> None:
+    model = VacationModel(db, event_bus)
+    tc_model = TimeClockModel(db, event_bus)
+    tc_model.save_work_day_targets({0: 9.0, 1: 7.5})
+
+    monday = date(2026, 6, 22)  # weekday() == 0
+    assert monday.weekday() == 0
+    assert model.get_daily_target_for_date(monday) == 9.0
+
+
+def test_daily_target_uses_date_exception_over_weekday(db: Database, event_bus: EventBus) -> None:
+    model = VacationModel(db, event_bus)
+    tc_model = TimeClockModel(db, event_bus)
+    tc_model.save_work_day_targets({0: 9.0})
+
+    exception_date = date(2026, 6, 22)  # a Monday, normally 9.0h
+    tc_model.save_date_exception(
+        exception_date.isoformat(), 4.0, "Short Friday-eve")
+
+    assert model.get_daily_target_for_date(exception_date) == 4.0
+    # A day without an exception still falls back to the weekday target.
+    assert model.get_daily_target_for_date(date(2026, 6, 29)) == 9.0
