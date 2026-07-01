@@ -2,9 +2,9 @@
 import webbrowser
 from pathlib import Path
 from tkinter import messagebox
+from urllib.parse import urlencode
 import tkinter as tk
 from tkinter import ttk
-from urllib.parse import urlencode
 
 
 _REPO_URL = 'https://github.com/david-wies/time-clock'
@@ -99,3 +99,85 @@ def show_about(parent=None) -> None:
     dialog.bind("<Escape>", lambda e: dialog.destroy())
     dialog.wait_window()
     return
+
+
+_DIALOG_TITLE_BY_KIND = {
+    'bug': 'Report a Bug',
+    'feature': 'Suggest a Feature',
+}
+
+
+def _report_dialog(parent, kind: str) -> None:
+    """Opens a modal dialog collecting name/email/message, then opens
+    a prefilled GitHub issue page in the default browser."""
+    dialog = tk.Toplevel(parent)
+    dialog.title(_DIALOG_TITLE_BY_KIND[kind])
+    dialog.resizable(False, False)
+
+    if parent is not None:
+        dialog.transient(parent)
+
+    container = ttk.Frame(dialog, padding=20)
+    container.pack(fill='both', expand=True)
+
+    ttk.Label(container, text='Name').grid(
+        row=0, column=0, sticky='w', pady=(0, 4))
+    name_var = tk.StringVar()
+    ttk.Entry(container, textvariable=name_var, width=40).grid(
+        row=1, column=0, sticky='ew', pady=(0, 10))
+
+    ttk.Label(container, text='Email').grid(
+        row=2, column=0, sticky='w', pady=(0, 4))
+    email_var = tk.StringVar()
+    ttk.Entry(container, textvariable=email_var, width=40).grid(
+        row=3, column=0, sticky='ew', pady=(0, 10))
+
+    ttk.Label(container, text='Message').grid(
+        row=4, column=0, sticky='w', pady=(0, 4))
+    message_text = tk.Text(container, width=40, height=8, wrap='word')
+    message_text.grid(row=5, column=0, sticky='ew', pady=(0, 10))
+
+    def _on_submit() -> None:
+        name = name_var.get().strip()
+        email = email_var.get().strip()
+        message = message_text.get('1.0', 'end').strip()
+
+        if not name or not email or '@' not in email or not message:
+            messagebox.showwarning(
+                'Missing Information',
+                'Name, a valid email, and a message are all required.',
+                parent=dialog,
+            )
+            return
+
+        url = _build_issue_url(kind, name, email, message)
+        webbrowser.open(url)
+        dialog.destroy()
+
+    button_row = ttk.Frame(container)
+    button_row.grid(row=6, column=0, sticky='e')
+    ttk.Button(button_row, text='Cancel', command=dialog.destroy).pack(
+        side='right', padx=(6, 0))
+    ttk.Button(button_row, text='Submit', command=_on_submit).pack(
+        side='right')
+
+    dialog.update_idletasks()
+    if parent is not None:
+        x = parent.winfo_rootx() + (parent.winfo_width() - dialog.winfo_width()) // 2
+        y = parent.winfo_rooty() + (parent.winfo_height() - dialog.winfo_height()) // 2
+        dialog.geometry(f'+{max(x, 0)}+{max(y, 0)}')
+
+    dialog.grab_set()
+    dialog.focus_set()
+    dialog.bind('<Escape>', lambda e: dialog.destroy())
+    dialog.wait_window()
+
+
+def report_bug(parent=None) -> None:
+    """Opens the bug-report dialog."""
+    _report_dialog(parent, 'bug')
+
+
+def suggest_feature(parent=None) -> None:
+    """Opens the feature-request dialog."""
+    _report_dialog(parent, 'feature')
