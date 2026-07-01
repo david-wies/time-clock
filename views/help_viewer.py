@@ -151,7 +151,16 @@ def _report_dialog(parent, kind: str) -> None:
             return
 
         url = _build_issue_url(kind, name, email, message)
-        webbrowser.open(url)
+        try:
+            opened = webbrowser.open(url)
+        except webbrowser.Error as exc:
+            messagebox.showerror(
+                'Browser Error', f'Could not open browser:\n{exc}', parent=dialog)
+            return
+        if not opened:
+            messagebox.showerror(
+                'Browser Error', 'Could not open a web browser.', parent=dialog)
+            return
         dialog.destroy()
 
     button_row = ttk.Frame(container)
