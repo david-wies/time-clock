@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-import os
 import tkinter as tk
 from tkinter import ttk, messagebox
-from tkinter.filedialog import askopenfilename
 from datetime import date
 from typing import Optional
 
@@ -13,6 +11,7 @@ from controllers.sickness_controller import SicknessController
 from models.sickness_model import SicknessModel
 from domain.types import SicknessRecord
 from views.date_picker import make_date_picker
+from views.document_attachment import make_document_picker
 
 
 class SickRecordDialog(tk.Toplevel):
@@ -116,14 +115,9 @@ class SickRecordDialog(tk.Toplevel):
         doc_row.pack(fill="x", pady=(0, 6))
         ttk.Label(doc_row, text="Document:", width=10,
                   anchor="e").pack(side="left")
-        self._var_doc_path = tk.StringVar(value="")
-        self._lbl_doc_name = ttk.Label(
-            doc_row, text="None", foreground="gray", width=24, anchor="w")
-        self._lbl_doc_name.pack(side="left", padx=(4, 4))
-        ttk.Button(doc_row, text="Browse…", command=self._browse_document,
-                   width=9).pack(side="left", padx=(0, 4))
-        ttk.Button(doc_row, text="Clear",
-                   command=self._clear_document, width=7).pack(side="left")
+        self._doc_widget, self._get_doc_path, self._set_doc_path = make_document_picker(
+            doc_row)
+        self._doc_widget.pack(side="left", padx=(4, 0))
 
         # ── Error label ───────────────────────────────────────────────────────
         self._lbl_error = ttk.Label(
@@ -164,33 +158,6 @@ class SickRecordDialog(tk.Toplevel):
             self._var_note.set(record.note or "")
         doc = record.document_path if record is not None else None
         self._set_doc_path(doc)
-
-    # ─────────────────────────── Document Helpers ────────────────────────────
-
-    def _set_doc_path(self, path: Optional[str]) -> None:
-        self._var_doc_path.set(path or "")
-        if path:
-            self._lbl_doc_name.config(
-                text=os.path.basename(path), foreground="black")
-        else:
-            self._lbl_doc_name.config(text="None", foreground="gray")
-
-    def _browse_document(self) -> None:
-        path = askopenfilename(
-            parent=self,
-            title="Attach Document",
-            filetypes=[
-                ("Documents", "*.pdf *.png *.jpg *.jpeg *.bmp *.tiff *.tif *.gif"),
-                ("PDF files", "*.pdf"),
-                ("Image files", "*.png *.jpg *.jpeg *.bmp *.tiff *.tif *.gif"),
-                ("All files", "*.*"),
-            ],
-        )
-        if path:
-            self._set_doc_path(path)
-
-    def _clear_document(self) -> None:
-        self._set_doc_path(None)
 
     # ─────────────────────────── Validation ─────────────────────────────────
 
@@ -233,6 +200,7 @@ class SickRecordDialog(tk.Toplevel):
             result = self._controller.save_range(
                 start_date, end_date, hours, note,
                 confirm_over_balance=confirm_over_balance,
+                document_path=self._get_doc_path(),
             )
         else:
             record = SicknessRecord(
@@ -240,7 +208,7 @@ class SickRecordDialog(tk.Toplevel):
                 date=start_date,
                 hours=hours,
                 note=note,
-                document_path=self._var_doc_path.get() or None,
+                document_path=self._get_doc_path(),
             )
             result = self._controller.save_record(
                 record, confirm_over_balance=confirm_over_balance)

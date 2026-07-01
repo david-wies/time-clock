@@ -109,13 +109,23 @@ class MiliuimModel:
         finally:
             conn.close()
 
+    @staticmethod
+    def clip_days(record: MiliuimRecord, year: int, month: Optional[int] = None) -> int:
+        """Returns the number of days of `record` that fall within `year`
+        (and `month`, if given), clipping the period to that boundary."""
+        period_start = date(year, 1, 1)
+        period_end = date(year, 12, 31)
+        if month is not None:
+            last_day = calendar.monthrange(year, month)[1]
+            period_start = date(year, month, 1)
+            period_end = date(year, month, last_day)
+        clipped_start = max(record.start_date, period_start)
+        clipped_end = min(record.end_date, period_end)
+        if clipped_end < clipped_start:
+            return 0
+        return (clipped_end - clipped_start).days + 1
+
     def calculate_summary(self, year: int) -> MiliuimSummary:
         records = self.get_records_for_year(year)
-        year_start = date(year, 1, 1)
-        year_end = date(year, 12, 31)
-        total_days = 0
-        for r in records:
-            clipped_start = max(r.start_date, year_start)
-            clipped_end = min(r.end_date, year_end)
-            total_days += (clipped_end - clipped_start).days + 1
+        total_days = sum(self.clip_days(r, year) for r in records)
         return MiliuimSummary(period_count=len(records), total_days=total_days)

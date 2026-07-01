@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import calendar
 import os
 import shutil
 import tempfile
@@ -29,7 +28,7 @@ from reportlab.platypus import (
 )
 from pypdf import PdfWriter, PdfReader
 
-from core.report import period_summary, ReportData, MONTH_NAMES
+from core.report import period_summary, period_range, ReportData, MONTH_NAMES
 from core.timeutil import to_display_date
 from models.time_clock_model import TimeClockModel
 from models.vacation_model import VacationModel
@@ -357,19 +356,8 @@ class ReportDialog(tk.Toplevel):
         Each element: (type_label, record_date, file_path).
         Only includes paths that actually exist on disk.
         """
-        if data.period_type == "month" and data.month:
-            start = date(data.year, data.month, 1)
-            end = date(data.year, data.month,
-                       calendar.monthrange(data.year, data.month)[1])
-        elif data.period_type == "quarter" and data.quarter:
-            m_start = (data.quarter - 1) * 3 + 1
-            m_end = m_start + 2
-            start = date(data.year, m_start, 1)
-            end = date(data.year, m_end,
-                       calendar.monthrange(data.year, m_end)[1])
-        else:
-            start = date(data.year, 1, 1)
-            end = date(data.year, 12, 31)
+        start, end = period_range(
+            data.period_type, data.year, data.month, data.quarter)
 
         image_exts = {".png", ".jpg", ".jpeg", ".bmp", ".tiff", ".tif", ".gif"}
         image_docs: list[tuple[str, date, str]] = []
@@ -383,6 +371,14 @@ class ReportDialog(tk.Toplevel):
                 elif ext in image_exts:
                     image_docs.append(
                         ("Sickness", rec.date, rec.document_path))
+
+        for rec in self._model_tc.get_records_for_date_range(start, end):
+            if rec.document_path and Path(rec.document_path).exists():
+                ext = Path(rec.document_path).suffix.lower()
+                if ext == ".pdf":
+                    pdf_docs.append(("Road", rec.date, rec.document_path))
+                elif ext in image_exts:
+                    image_docs.append(("Road", rec.date, rec.document_path))
 
         if self._model_miliuim is not None:
             for rec in self._model_miliuim.get_records_in_date_range(start, end):

@@ -36,7 +36,7 @@ class SicknessController:
         old_hours = 0.0
         if record.id is not None:
             old_rec = self.model.get_record_by_id(record.id)
-            if old_rec:
+            if old_rec and old_rec.date.year == year:
                 old_hours = old_rec.hours
 
         projected_used = summary.used_hours - old_hours + record.hours
@@ -69,6 +69,7 @@ class SicknessController:
         hours: float,
         note: Optional[str] = None,
         confirm_over_balance: bool = False,
+        document_path: Optional[str] = None,
     ) -> Result:
         """Insert sick records for every day in [start_date, end_date] inclusive."""
         if end_date < start_date:
@@ -77,6 +78,16 @@ class SicknessController:
             return Result(ok=False, errors=["Hours must be between 0.5 and 24."])
         if note and len(note) > 500:
             return Result(ok=False, errors=["Note is too long (max 500 characters)."])
+
+        existing = self.model.get_records_in_date_range(start_date, end_date)
+        if existing:
+            conflict_dates = ", ".join(
+                sorted(d.date.isoformat() for d in existing))
+            return Result(
+                ok=False,
+                errors=[
+                    f"A sick record already exists for: {conflict_dates}."],
+            )
 
         dates: list[date] = []
         cur = start_date
@@ -94,7 +105,8 @@ class SicknessController:
                     return Result(ok=False, errors=["OVER_BALANCE_WARNING"])
 
         records = [SicknessRecord(
-            id=None, date=d, hours=hours, note=note) for d in dates]
+            id=None, date=d, hours=hours, note=note,
+            document_path=document_path) for d in dates]
         try:
             self.model.insert_records_bulk(records)
             return Result(ok=True, errors=[])

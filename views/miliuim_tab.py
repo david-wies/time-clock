@@ -201,8 +201,8 @@ class MiliuimTab(ttk.Frame):
         if children:
             self._tree.delete(*children)
 
-    def _make_row_values(self, rec: MiliuimRecord) -> tuple:
-        days = (rec.end_date - rec.start_date).days + 1
+    def _make_row_values(self, rec: MiliuimRecord, month: Optional[int]) -> tuple:
+        days = self.model.clip_days(rec, self._selected_year, month)
         return (
             to_display_date(rec.start_date),
             to_display_date(rec.end_date),
@@ -219,8 +219,9 @@ class MiliuimTab(ttk.Frame):
         total_days = 0
         for rec in records:
             self._tree.insert(
-                "", "end", iid=f"rec_{rec.id}", values=self._make_row_values(rec))
-            total_days += (rec.end_date - rec.start_date).days + 1
+                "", "end", iid=f"rec_{rec.id}",
+                values=self._make_row_values(rec, month))
+            total_days += self.model.clip_days(rec, self._selected_year, month)
 
         if records:
             self._tree.insert(

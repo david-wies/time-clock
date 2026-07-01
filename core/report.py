@@ -81,7 +81,7 @@ def _month_range(year: int, month: int) -> tuple[date, date]:
     return first, last
 
 
-def _period_range(
+def period_range(
     period_type: str,
     year: int,
     month: Optional[int],
@@ -99,6 +99,9 @@ def _period_range(
     if period_type == "year":
         return date(year, 1, 1), date(year, 12, 31)
     raise ValueError(f"Unknown period_type: {period_type!r}")
+
+
+_period_range = period_range
 
 
 def _period_label(
@@ -134,7 +137,7 @@ def period_summary(
     """
     overtime_rate = float(settings.get("overtime_rate", 1.0))
 
-    start_date, end_date = _period_range(period_type, year, month, quarter)
+    start_date, end_date = period_range(period_type, year, month, quarter)
     label = _period_label(period_type, year, month, quarter)
 
     # Fetch records once for the full year so monthly rows can reuse them
