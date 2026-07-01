@@ -1,3 +1,4 @@
+import calendar
 import sqlite3
 from datetime import date
 from typing import Optional
@@ -15,8 +16,8 @@ class MiliuimModel:
     def _row_to_record(self, row: sqlite3.Row) -> MiliuimRecord:
         return MiliuimRecord(
             id=row["id"],
-            date=iso_to_date(row["date"]),
-            hours=row["hours"],
+            start_date=iso_to_date(row["start_date"]),
+            end_date=iso_to_date(row["end_date"]),
             note=row["note"],
             document_path=row["document_path"],
         )
@@ -25,7 +26,8 @@ class MiliuimModel:
         conn = self.db.get_connection()
         try:
             cursor = conn.cursor()
-            cursor.execute("SELECT * FROM miliuim_record WHERE id = ?;", (record_id,))
+            cursor.execute(
+                "SELECT * FROM miliuim_period WHERE id = ?;", (record_id,))
             row = cursor.fetchone()
             return self._row_to_record(row) if row else None
         finally:
@@ -36,19 +38,17 @@ class MiliuimModel:
         try:
             cursor = conn.cursor()
             if month is not None:
-                start_date = f"{year:04d}-{month:02d}-01"
-                end_date = f"{year:04d}-{month:02d}-31"
-                cursor.execute(
-                    "SELECT * FROM miliuim_record WHERE date >= ? AND date <= ? ORDER BY date DESC;",
-                    (start_date, end_date),
-                )
+                last_day = calendar.monthrange(year, month)[1]
+                period_start = f"{year:04d}-{month:02d}-01"
+                period_end = f"{year:04d}-{month:02d}-{last_day:02d}"
             else:
-                start_date = f"{year:04d}-01-01"
-                end_date = f"{year:04d}-12-31"
-                cursor.execute(
-                    "SELECT * FROM miliuim_record WHERE date >= ? AND date <= ? ORDER BY date DESC;",
-                    (start_date, end_date),
-                )
+                period_start = f"{year:04d}-01-01"
+                period_end = f"{year:04d}-12-31"
+            cursor.execute(
+                "SELECT * FROM miliuim_period WHERE start_date <= ? AND end_date >= ?"
+                " ORDER BY start_date DESC;",
+                (period_end, period_start),
+            )
             return [self._row_to_record(row) for row in cursor.fetchall()]
         finally:
             conn.close()
@@ -58,8 +58,9 @@ class MiliuimModel:
         try:
             cursor = conn.cursor()
             cursor.execute(
-                "SELECT * FROM miliuim_record WHERE date >= ? AND date <= ? ORDER BY date;",
-                (date_to_iso(start), date_to_iso(end)),
+                "SELECT * FROM miliuim_period WHERE start_date <= ? AND end_date >= ?"
+                " ORDER BY start_date;",
+                (date_to_iso(end), date_to_iso(start)),
             )
             return [self._row_to_record(row) for row in cursor.fetchall()]
         finally:
@@ -71,8 +72,10 @@ class MiliuimModel:
             with conn:
                 cursor = conn.cursor()
                 cursor.execute(
-                    "INSERT INTO miliuim_record (date, hours, note, document_path) VALUES (?, ?, ?, ?);",
-                    (date_to_iso(record.date), record.hours, record.note, record.document_path),
+                    "INSERT INTO miliuim_period (start_date, end_date, note, document_path)"
+                    " VALUES (?, ?, ?, ?);",
+                    (date_to_iso(record.start_date), date_to_iso(record.end_date),
+                     record.note, record.document_path),
                 )
                 record_id = cursor.lastrowid or 0
             self.bus.publish(Event.MILIUIM_CHANGED)
@@ -87,8 +90,10 @@ class MiliuimModel:
         try:
             with conn:
                 conn.execute(
-                    "UPDATE miliuim_record SET date = ?, hours = ?, note = ?, document_path = ?, updated_at = datetime('now') WHERE id = ?;",
-                    (date_to_iso(record.date), record.hours, record.note, record.document_path, record.id),
+                    "UPDATE miliuim_period SET start_date = ?, end_date = ?, note = ?,"
+                    " document_path = ?, updated_at = datetime('now') WHERE id = ?;",
+                    (date_to_iso(record.start_date), date_to_iso(record.end_date),
+                     record.note, record.document_path, record.id),
                 )
             self.bus.publish(Event.MILIUIM_CHANGED)
         finally:
@@ -98,40 +103,19 @@ class MiliuimModel:
         conn = self.db.get_connection()
         try:
             with conn:
-                conn.execute("DELETE FROM miliuim_record WHERE id = ?;", (record_id,))
+                conn.execute(
+                    "DELETE FROM miliuim_period WHERE id = ?;", (record_id,))
             self.bus.publish(Event.MILIUIM_CHANGED)
         finally:
             conn.close()
 
-    def get_settings(self, year: int) -> Optional[float]:
-        """Returns hours_per_year for the given year, or None if not configured."""
-        conn = self.db.get_connection()
-        try:
-            cursor = conn.cursor()
-            cursor.execute("SELECT hours_per_year FROM miliuim_settings WHERE year = ?;", (year,))
-            row = cursor.fetchone()
-            return row["hours_per_year"] if row else None
-        finally:
-            conn.close()
-
-    def save_settings(self, year: int, hours_per_year: float) -> None:
-        conn = self.db.get_connection()
-        try:
-            with conn:
-                conn.execute(
-                    "INSERT OR REPLACE INTO miliuim_settings (year, hours_per_year) VALUES (?, ?);",
-                    (year, hours_per_year),
-                )
-            self.bus.publish(Event.SETTINGS_CHANGED)
-        finally:
-            conn.close()
-
     def calculate_summary(self, year: int) -> MiliuimSummary:
-        allowance = self.get_settings(year) or 0.0
         records = self.get_records_for_year(year)
-        used_hours = sum(r.hours for r in records)
-        return MiliuimSummary(
-            allowance_hours=allowance,
-            used_hours=used_hours,
-            remaining_hours=allowance - used_hours,
-        )
+        year_start = date(year, 1, 1)
+        year_end = date(year, 12, 31)
+        total_days = 0
+        for r in records:
+            clipped_start = max(r.start_date, year_start)
+            clipped_end = min(r.end_date, year_end)
+            total_days += (clipped_end - clipped_start).days + 1
+        return MiliuimSummary(period_count=len(records), total_days=total_days)

@@ -1,4 +1,4 @@
-"""Miliuim (Army Reserve) tab — balance summary, record list, and CRUD actions."""
+"""Miliuim (Army Reserve) tab — period list and CRUD actions."""
 
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ _MONTH_NAMES = [
 
 
 class MiliuimTab(ttk.Frame):
-    """Miliuim tab: balance display, record list, add/edit/delete."""
+    """Miliuim tab: summary display, period list, add/edit/delete."""
 
     def __init__(
         self,
@@ -52,15 +52,15 @@ class MiliuimTab(ttk.Frame):
         self._build_ui()
         self._refresh()
 
-        self._unsubs.append(bus.subscribe(Event.MILIUIM_CHANGED, self._on_event))
-        self._unsubs.append(bus.subscribe(Event.SETTINGS_CHANGED, self._on_event))
+        self._unsubs.append(bus.subscribe(
+            Event.MILIUIM_CHANGED, self._on_event))
 
         self.bind("<Destroy>", self._on_destroy)
         self.pack(fill="both", expand=True)
 
     def _build_ui(self) -> None:
         self._build_filter_bar()
-        self._build_balance_bar()
+        self._build_summary_bar()
         self._build_treeview()
         self._build_action_bar()
         self._bind_shortcuts()
@@ -90,34 +90,43 @@ class MiliuimTab(ttk.Frame):
         self._cbo_month.pack(side="left", padx=(2, 0))
         self._cbo_month.bind("<<ComboboxSelected>>", self._on_period_changed)
 
-    def _build_balance_bar(self) -> None:
-        self._frm_balance = ttk.Frame(self, style="Card.TFrame")
-        self._frm_balance.pack(fill="x", padx=4, pady=(4, 0))
+    def _build_summary_bar(self) -> None:
+        self._frm_summary = ttk.Frame(self, style="Card.TFrame")
+        self._frm_summary.pack(fill="x", padx=4, pady=(4, 0))
 
-        self._lbl_balance = ttk.Label(
-            self._frm_balance, text="", style="DayHeader.TLabel"
+        self._lbl_summary = ttk.Label(
+            self._frm_summary, text="", style="DayHeader.TLabel"
         )
-        self._lbl_balance.pack(side="left", padx=10, pady=5)
+        self._lbl_summary.pack(side="left", padx=10, pady=5)
 
     def _build_treeview(self) -> None:
         frame = ttk.Frame(self)
         frame.pack(fill="both", expand=True, padx=4, pady=4)
 
-        cols = ["date", "hebrew_date", "hours", "note"]
+        cols = ["start_date", "end_date", "hebrew_date", "days", "note"]
 
         self._tree = ttk.Treeview(
             frame, columns=cols, show="headings", selectmode="browse",
         )
-        self._tree.column("date", width=110, minwidth=90, stretch=False, anchor="w")
-        self._tree.heading("date", text="Date", anchor="center")
+        self._tree.column("start_date", width=110,
+                          minwidth=90, stretch=False, anchor="w")
+        self._tree.heading("start_date", text="Start Date", anchor="center")
 
-        self._tree.column("hebrew_date", width=150, minwidth=120, stretch=False, anchor="w")
-        self._tree.heading("hebrew_date", text="Hebrew Date", anchor="center")
+        self._tree.column("end_date", width=110, minwidth=90,
+                          stretch=False, anchor="w")
+        self._tree.heading("end_date", text="End Date", anchor="center")
 
-        self._tree.column("hours", width=70, minwidth=50, stretch=False, anchor="e")
-        self._tree.heading("hours", text="Hours", anchor="center")
+        self._tree.column("hebrew_date", width=150,
+                          minwidth=120, stretch=False, anchor="w")
+        self._tree.heading(
+            "hebrew_date", text="Hebrew Date (Start)", anchor="center")
 
-        self._tree.column("note", width=200, minwidth=80, stretch=True, anchor="w")
+        self._tree.column("days", width=60, minwidth=50,
+                          stretch=False, anchor="e")
+        self._tree.heading("days", text="Days", anchor="center")
+
+        self._tree.column("note", width=200, minwidth=80,
+                          stretch=True, anchor="w")
         self._tree.heading("note", text="Note", anchor="center")
 
         vsb = ttk.Scrollbar(frame, orient="vertical", command=self._tree.yview)
@@ -137,10 +146,12 @@ class MiliuimTab(ttk.Frame):
         inner = ttk.Frame(bar)
         inner.pack(fill="x")
 
-        self._btn_add = ttk.Button(inner, text="+ Add", command=self._do_add, width=12)
+        self._btn_add = ttk.Button(
+            inner, text="+ Add", command=self._do_add, width=12)
         self._btn_add.pack(side="left", padx=(0, 4))
 
-        self._btn_edit = ttk.Button(inner, text="✏ Edit", command=self._do_edit, width=12)
+        self._btn_edit = ttk.Button(
+            inner, text="✏ Edit", command=self._do_edit, width=12)
         self._btn_edit.pack(side="left", padx=(0, 4))
 
         self._btn_delete = ttk.Button(
@@ -175,43 +186,28 @@ class MiliuimTab(ttk.Frame):
             self._selected_month = idx if idx > 0 else 0
         self._refresh()
 
-    def _refresh_balance(self) -> None:
+    def _refresh_summary(self) -> None:
         year = self._selected_year
         summary = self.model.calculate_summary(year)
-        used = summary.used_hours
-
         c = COLORS.get("light", COLORS["light"])
-        if summary.allowance_hours == 0.0:
-            text = f"Miliuim hours {year}: {used:.1f}h used  |  No annual limit"
-            bal_color = c["fg.muted"]
-        else:
-            allowance = summary.allowance_hours
-            remaining = summary.remaining_hours
-            if remaining < 0:
-                bal_color = c["warning"]
-            elif remaining == 0:
-                bal_color = c["fg.muted"]
-            else:
-                bal_color = c["success"]
-            text = (
-                f"Miliuim hours {year}: {used:.1f}h / {allowance:.1f}h used"
-                f"  |  Remaining: {remaining:.1f}h"
-            )
-
-        self._lbl_balance.config(text=text, foreground=bal_color)
+        text = (
+            f"Miliuim {year}: {summary.period_count} period(s)"
+            f"  |  {summary.total_days} day(s) total"
+        )
+        self._lbl_summary.config(text=text, foreground=c["fg.muted"])
 
     def _clear_tree(self) -> None:
         children = self._tree.get_children()
         if children:
             self._tree.delete(*children)
 
-    def _make_row_values(self, rec: Optional[MiliuimRecord], override_date: str = "") -> tuple:
-        if rec is None:
-            return (override_date, "", "", "")
+    def _make_row_values(self, rec: MiliuimRecord) -> tuple:
+        days = (rec.end_date - rec.start_date).days + 1
         return (
-            to_display_date(rec.date),
-            _safe_hebrew(rec.date),
-            f"{rec.hours:.1f}h",
+            to_display_date(rec.start_date),
+            to_display_date(rec.end_date),
+            _safe_hebrew(rec.start_date),
+            str(days),
             rec.note or "",
         )
 
@@ -220,22 +216,25 @@ class MiliuimTab(ttk.Frame):
         month = self._selected_month if self._selected_month > 0 else None
         records = self.model.get_records_for_year(self._selected_year, month)
 
-        total_hours = 0.0
+        total_days = 0
         for rec in records:
-            self._tree.insert("", "end", iid=f"rec_{rec.id}", values=self._make_row_values(rec))
-            total_hours += rec.hours
+            self._tree.insert(
+                "", "end", iid=f"rec_{rec.id}", values=self._make_row_values(rec))
+            total_days += (rec.end_date - rec.start_date).days + 1
 
         if records:
             self._tree.insert(
                 "", "end", iid="__total__",
-                values=self._make_row_values(None, f"Total: {total_hours:.1f}h"),
+                values=("", "", "", str(total_days),
+                        f"Total: {total_days} days"),
                 tags=("total",),
             )
             c = COLORS.get("light", COLORS["light"])
-            self._tree.tag_configure("total", foreground=c["fg.muted"], font=("Helvetica", 9, "bold"))
+            self._tree.tag_configure(
+                "total", foreground=c["fg.muted"], font=("Helvetica", 9, "bold"))
 
     def _refresh(self, **_kw) -> None:
-        self._refresh_balance()
+        self._refresh_summary()
         self._refresh_tree()
         self._update_button_states()
 
@@ -275,13 +274,15 @@ class MiliuimTab(ttk.Frame):
         self._btn_delete.config(state=state)
 
     def _do_add(self) -> None:
-        MiliuimRecordDialog(self, controller=self.controller, model=self.model, record=None)
+        MiliuimRecordDialog(self, controller=self.controller,
+                            model=self.model, record=None)
 
     def _do_edit(self) -> None:
         rec = self._get_selected_record()
         if rec is None:
             return
-        MiliuimRecordDialog(self, controller=self.controller, model=self.model, record=rec)
+        MiliuimRecordDialog(self, controller=self.controller,
+                            model=self.model, record=rec)
 
     def _do_delete(self) -> None:
         rec_id = self._get_selected_record_id()
@@ -289,14 +290,15 @@ class MiliuimTab(ttk.Frame):
             return
         if not messagebox.askyesno(
             "Confirm Remove",
-            "Permanently remove this Miliuim record?",
+            "Permanently remove this Miliuim period?",
             icon="warning",
             parent=self,
         ):
             return
         result = self.controller.delete_record(rec_id)
         if not result.ok:
-            messagebox.showerror("Remove Failed", "\n".join(result.errors), parent=self)
+            messagebox.showerror("Remove Failed", "\n".join(
+                result.errors), parent=self)
 
     def _on_destroy(self, _event=None) -> None:
         for unsub in self._unsubs:

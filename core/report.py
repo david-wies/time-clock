@@ -59,9 +59,8 @@ class ReportData:
     sick_remaining_hours: float
 
     # Miliuim
-    miliuim_allowance_hours: float
-    miliuim_used_hours: float
-    miliuim_remaining_hours: float
+    miliuim_period_count: int
+    miliuim_total_days: int
 
     # Monthly breakdown (for quarter/year reports)
     monthly_rows: list[MonthlyRow] = field(default_factory=list)
@@ -180,7 +179,8 @@ def period_summary(
     # Vacation and sickness summaries are always year-level
     vac = model_vacation.calculate_vacation_summary(year)
     sick = model_sickness.calculate_sickness_summary(year)
-    miliuim = model_miliuim.calculate_summary(year) if model_miliuim is not None else None
+    miliuim = model_miliuim.calculate_summary(
+        year) if model_miliuim is not None else None
 
     return ReportData(
         period_label=label,
@@ -201,8 +201,7 @@ def period_summary(
         sick_allowance_hours=sick.allowance_hours,
         sick_used_hours=sick.used_hours,
         sick_remaining_hours=sick.remaining_hours,
-        miliuim_allowance_hours=miliuim.allowance_hours if miliuim is not None else 0.0,
-        miliuim_used_hours=miliuim.used_hours if miliuim is not None else 0.0,
-        miliuim_remaining_hours=miliuim.remaining_hours if miliuim is not None else 0.0,
+        miliuim_period_count=miliuim.period_count if miliuim is not None else 0,
+        miliuim_total_days=miliuim.total_days if miliuim is not None else 0,
         monthly_rows=monthly_rows,
     )

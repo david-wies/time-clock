@@ -146,7 +146,8 @@ class ReportDialog(tk.Toplevel):
 
         # Quarter combobox (shown only for Quarter mode)
         self._lbl_quarter = ttk.Label(frm, text="Quarter:")
-        self._lbl_quarter.grid(row=3, column=0, sticky="w", padx=(0, 8), pady=3)
+        self._lbl_quarter.grid(
+            row=3, column=0, sticky="w", padx=(0, 8), pady=3)
         self._var_quarter = tk.StringVar(value="Q1")
         self._cbo_quarter = ttk.Combobox(
             frm,
@@ -182,11 +183,13 @@ class ReportDialog(tk.Toplevel):
         )
         self._txt_preview.grid(row=0, column=0, sticky="nsew")
 
-        vsb = ttk.Scrollbar(frm_txt, orient="vertical", command=self._txt_preview.yview)
+        vsb = ttk.Scrollbar(frm_txt, orient="vertical",
+                            command=self._txt_preview.yview)
         vsb.grid(row=0, column=1, sticky="ns")
         self._txt_preview.configure(yscrollcommand=vsb.set)
 
-        hsb = ttk.Scrollbar(frm_txt, orient="horizontal", command=self._txt_preview.xview)
+        hsb = ttk.Scrollbar(frm_txt, orient="horizontal",
+                            command=self._txt_preview.xview)
         hsb.grid(row=1, column=0, sticky="ew")
         self._txt_preview.configure(xscrollcommand=hsb.set)
 
@@ -297,7 +300,8 @@ class ReportDialog(tk.Toplevel):
         lines.append("TIME CLOCK")
         lines.append(f"  Worked:              {data.worked_hours:>9.2f} h")
         lines.append(f"  Target:              {data.target_hours:>9.2f} h")
-        lines.append(f"  Balance:             {_signed(data.time_balance):>9} h")
+        lines.append(
+            f"  Balance:             {_signed(data.time_balance):>9} h")
         lines.append(
             f"  Weighted overtime:   {data.weighted_overtime:>9.2f} h"
             f"  (rate: {data.overtime_rate}x)"
@@ -313,14 +317,22 @@ class ReportDialog(tk.Toplevel):
         lines.append("")
 
         lines.append(f"SICKNESS ({data.year})")
-        lines.append(f"  Allowance:           {data.sick_allowance_hours:>9.1f} h")
+        lines.append(
+            f"  Allowance:           {data.sick_allowance_hours:>9.1f} h")
         lines.append(f"  Used:                {data.sick_used_hours:>9.1f} h")
-        lines.append(f"  Remaining:           {data.sick_remaining_hours:>9.1f} h")
+        lines.append(
+            f"  Remaining:           {data.sick_remaining_hours:>9.1f} h")
+        lines.append("")
+
+        lines.append(f"MILIUIM ({data.year})")
+        lines.append(f"  Periods:             {data.miliuim_period_count:>9}")
+        lines.append(f"  Total days:          {data.miliuim_total_days:>9}")
 
         if data.monthly_rows:
             lines.append("")
             lines.append("MONTHLY BREAKDOWN")
-            lines.append(f"  {'Month':<16} {'Worked':>9}  {'Target':>9}  {'Balance':>10}")
+            lines.append(
+                f"  {'Month':<16} {'Worked':>9}  {'Target':>9}  {'Balance':>10}")
             lines.append(f"  {'-'*16} {'-'*9}  {'-'*9}  {'-'*10}")
             for row in data.monthly_rows:
                 name = MONTH_NAMES[row.month]
@@ -342,12 +354,14 @@ class ReportDialog(tk.Toplevel):
         """
         if data.period_type == "month" and data.month:
             start = date(data.year, data.month, 1)
-            end = date(data.year, data.month, calendar.monthrange(data.year, data.month)[1])
+            end = date(data.year, data.month,
+                       calendar.monthrange(data.year, data.month)[1])
         elif data.period_type == "quarter" and data.quarter:
             m_start = (data.quarter - 1) * 3 + 1
             m_end = m_start + 2
             start = date(data.year, m_start, 1)
-            end = date(data.year, m_end, calendar.monthrange(data.year, m_end)[1])
+            end = date(data.year, m_end,
+                       calendar.monthrange(data.year, m_end)[1])
         else:
             start = date(data.year, 1, 1)
             end = date(data.year, 12, 31)
@@ -362,16 +376,19 @@ class ReportDialog(tk.Toplevel):
                 if ext == ".pdf":
                     pdf_docs.append(("Sickness", rec.date, rec.document_path))
                 elif ext in image_exts:
-                    image_docs.append(("Sickness", rec.date, rec.document_path))
+                    image_docs.append(
+                        ("Sickness", rec.date, rec.document_path))
 
         if self._model_miliuim is not None:
             for rec in self._model_miliuim.get_records_in_date_range(start, end):
                 if rec.document_path and Path(rec.document_path).exists():
                     ext = Path(rec.document_path).suffix.lower()
                     if ext == ".pdf":
-                        pdf_docs.append(("Miliuim", rec.date, rec.document_path))
+                        pdf_docs.append(
+                            ("Miliuim", rec.start_date, rec.document_path))
                     elif ext in image_exts:
-                        image_docs.append(("Miliuim", rec.date, rec.document_path))
+                        image_docs.append(
+                            ("Miliuim", rec.start_date, rec.document_path))
 
         return image_docs, pdf_docs
 
@@ -440,7 +457,8 @@ class ReportDialog(tk.Toplevel):
                 ("TOPPADDING", (0, 0), (-1, -1), 5),
                 ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
                 ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f9f9f9")]),
+                ("ROWBACKGROUNDS", (0, 1), (-1, -1),
+                 [colors.white, colors.HexColor("#f9f9f9")]),
             ]))
             return t
 
@@ -472,7 +490,8 @@ class ReportDialog(tk.Toplevel):
             ["Worked", _fmt_h(data.worked_hours)],
             ["Target", _fmt_h(data.target_hours)],
             ["Balance", f"{_signed(data.time_balance)} h"],
-            ["Weighted Overtime", f"{data.weighted_overtime:.2f} h  (rate: {data.overtime_rate}x)"],
+            ["Weighted Overtime",
+                f"{data.weighted_overtime:.2f} h  (rate: {data.overtime_rate}x)"],
         ]))
         story.append(Spacer(1, 0.5 * cm))
 
@@ -495,6 +514,15 @@ class ReportDialog(tk.Toplevel):
             ["Allowance", f"{data.sick_allowance_hours:.1f} h"],
             ["Used", f"{data.sick_used_hours:.1f} h"],
             ["Remaining", f"{data.sick_remaining_hours:.1f} h"],
+        ]))
+        story.append(Spacer(1, 0.5 * cm))
+
+        # ── Miliuim ───────────────────────────────────────────────────────────
+        story.append(Paragraph(f"Miliuim ({data.year})", styles["Heading1"]))
+        story.append(Spacer(1, 0.2 * cm))
+        story.append(kv_table([
+            ["Periods", str(data.miliuim_period_count)],
+            ["Total days", str(data.miliuim_total_days)],
         ]))
 
         # ── Monthly Breakdown ─────────────────────────────────────────────────
@@ -520,7 +548,8 @@ class ReportDialog(tk.Toplevel):
 
         if image_docs:
             story.append(Spacer(1, 0.5 * cm))
-            story.append(HRFlowable(width="100%", thickness=1, color=colors.grey))
+            story.append(HRFlowable(
+                width="100%", thickness=1, color=colors.grey))
             story.append(Spacer(1, 0.4 * cm))
             story.append(Paragraph("Attached Documents", styles["Heading1"]))
             for type_label, rec_date, doc_path in image_docs:
@@ -530,7 +559,8 @@ class ReportDialog(tk.Toplevel):
                     styles["Heading2"],
                 ))
                 story.append(Spacer(1, 0.2 * cm))
-                img = RLImage(doc_path, width=15 * cm, height=20 * cm, kind="proportional")
+                img = RLImage(doc_path, width=15 * cm,
+                              height=20 * cm, kind="proportional")
                 story.append(img)
 
         doc.build(story)

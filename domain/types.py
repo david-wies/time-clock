@@ -88,14 +88,13 @@ class CarryOverLogEntry:
 @dataclass(slots=True)
 class MiliuimRecord:
     id: Optional[int]
-    date: date
-    hours: float
+    start_date: date
+    end_date: date
     note: Optional[str] = None
     document_path: Optional[str] = None
 
 
 @dataclass(slots=True)
 class MiliuimSummary:
-    allowance_hours: float   # 0.0 means unlimited/no cap
-    used_hours: float
-    remaining_hours: float   # can be negative if over allowance; meaningless when allowance=0
+    period_count: int
+    total_days: int
