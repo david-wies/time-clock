@@ -7,6 +7,14 @@ body:
       value: |
         Thanks for suggesting a new feature! Please fill out the fields below.
 
+  - type: input
+    id: contact
+    attributes:
+      label: Your name and email
+      description: So we can follow up if we have questions.
+    validations:
+      required: true
+
   - type: textarea
     id: problem
     attributes:
