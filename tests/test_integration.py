@@ -82,13 +82,13 @@ def test_hebrew_label_returns_string() -> None:
 def test_hebrew_label_known_date() -> None:
     # 26 June 2026 = 1 Tammuz 5786 (א' תמוז תשפ"ו)
     label = to_hebrew_label(date(2026, 6, 26))
-    assert "תמוז" in label or len(label) > 3
+    assert "זומת" in label  # to_hebrew_label reverses the string; "זומת" == "תמוז"[::-1]
 
 
 def test_hebrew_label_rosh_hashana() -> None:
-    # 22 Sep 2025 = Rosh Hashana 5786
-    label = to_hebrew_label(date(2025, 9, 22))
-    assert isinstance(label, str)
+    # 23 Sep 2025 = 1 Tishri 5786 (Rosh Hashana; 22 Sep is still 29 Elul)
+    label = to_hebrew_label(date(2025, 9, 23))
+    assert "ירשת" in label  # to_hebrew_label reverses the string; "ירשת" == "תשרי"[::-1]
 
 
 # ─────────────────── Clock-in / clock-out integration ─────────────────────────
