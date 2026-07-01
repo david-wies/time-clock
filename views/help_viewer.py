@@ -4,6 +4,32 @@ from pathlib import Path
 from tkinter import messagebox
 import tkinter as tk
 from tkinter import ttk
+from urllib.parse import urlencode
+
+
+_REPO_URL = 'https://github.com/david-wies/time-clock'
+
+_TEMPLATE_BY_KIND = {
+    'bug': 'bug_report.yml',
+    'feature': 'feature_request.yml',
+}
+
+_FIELD_ID_BY_KIND = {
+    'bug': 'description',
+    'feature': 'problem',
+}
+
+
+def _build_issue_url(kind: str, name: str, email: str, message: str) -> str:
+    """Builds a GitHub new-issue URL prefilled from the report dialog."""
+    template = _TEMPLATE_BY_KIND[kind]
+    field_id = _FIELD_ID_BY_KIND[kind]
+    params = {
+        'template': template,
+        'contact': f'{name} <{email}>',
+        field_id: message,
+    }
+    return f'{_REPO_URL}/issues/new?{urlencode(params)}'
 
 
 def open_help() -> None:
