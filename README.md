@@ -11,6 +11,7 @@ A desktop time-tracking application built with Python and tkinter. Tracks daily 
 - **Time Clock** — Clock in/out, manual records, overnight-shift support, week/month views with running balance
 - **Vacation** — Annual allowance, carry-over, five leave types (annual, public holiday, special, unpaid, carry-over), balance warning on over-draw
 - **Sickness** — Hours-to-day conversion, per-year allowance, balance tracking
+- **Miliuim** — Reserve-duty periods tracked as date ranges, with optional document attachment per period
 - **Settings** — Per-day work targets, break presets, office list, overtime rate, holiday auto-import (34 countries), light/dark/system theme
 - **Export** — CSV, Excel (`pandas`/`openpyxl`), PDF (`reportlab`) for each tab
 - **PDF Reports** — Monthly, quarterly, yearly summaries with overtime and absence breakdown
@@ -76,12 +77,14 @@ Time Clock/
 ├── models/                  # Data access layer (SQLite CRUD + queries)
 │   ├── time_clock_model.py
 │   ├── vacation_model.py
-│   └── sickness_model.py
+│   ├── sickness_model.py
+│   └── miliuim_model.py
 │
 ├── controllers/             # Validation + orchestration (no GUI)
 │   ├── time_clock_controller.py
 │   ├── vacation_controller.py
-│   └── sickness_controller.py
+│   ├── sickness_controller.py
+│   └── miliuim_controller.py
 │
 ├── views/                   # All tkinter UI
 │   ├── main_window.py       # Root window, notebook, menu bar, status bar
@@ -89,10 +92,13 @@ Time Clock/
 │   ├── time_clock_tab.py
 │   ├── vacation_tab.py
 │   ├── sickness_tab.py
+│   ├── miliuim_tab.py
 │   ├── time_record_dialog.py
 │   ├── vacation_record_dialog.py
 │   ├── sick_record_dialog.py
+│   ├── miliuim_record_dialog.py
 │   ├── carry_over_dialog.py
+│   ├── document_attachment.py
 │   ├── settings_dialog.py
 │   ├── export_dialog.py
 │   ├── report_dialog.py
