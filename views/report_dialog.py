@@ -71,6 +71,7 @@ class ReportDialog(tk.Toplevel):
         self.resizable(True, True)
         self.transient(parent)
         self.grab_set()
+        self.bind("<Escape>", lambda e: self.destroy())
 
         self._build_ui()
         self._on_period_changed()  # set initial visibility

@@ -31,6 +31,7 @@ class CarryOverDialog(tk.Toplevel):
         self.minsize(360, 200)
         self.transient(parent)
         self.grab_set()
+        self.bind("<Escape>", lambda e: self.destroy())
 
         self._allowance = self._model.calculate_carry_over_allowance(to_year)
         self._build_ui()

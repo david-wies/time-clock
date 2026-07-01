@@ -36,6 +36,7 @@ class MiliuimRecordDialog(tk.Toplevel):
         self.minsize(420, 280)
         self.transient(parent)
         self.grab_set()
+        self.bind("<Escape>", lambda e: self.destroy())
 
         self._build_ui()
         self._populate(record)
