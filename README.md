@@ -170,3 +170,11 @@ Settings are stored in the `app_config` table as JSON-serialized key/value pairs
 - **Holiday import** adds public holidays as Vacation tab records (type: Public Holiday, 0 h — visible for reference, no quota impact).
 - **Vacation carry-over** is capped per the per-year `max_carry_over` setting and logged in `carry_over_log`.
 - **Tray thread safety** — all pystray callbacks marshal to the tkinter main thread via `root.after(0, fn)`.
+
+---
+
+## Feedback
+
+Found a bug or have a feature idea? Use **Help → Report a Bug** or **Help → Suggest a Feature** in the app —
+it opens a prefilled GitHub issue in your browser for you to review and submit. Or file one directly at
+[github.com/david-wies/time-clock/issues](https://github.com/david-wies/time-clock/issues).
