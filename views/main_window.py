@@ -4,7 +4,7 @@ from tkinter import Menu, StringVar, ttk
 
 from core.events import Event, EventBus
 from views.export_dialog import ExportDialog
-from views.help_viewer import open_help, show_about
+from views.help_viewer import open_help, report_bug, show_about, suggest_feature
 from views.report_dialog import ReportDialog
 from views.settings_dialog import SettingsDialog
 
@@ -82,6 +82,11 @@ class MainWindow(ttk.Frame):
         help_menu.add_command(label="Usage Guide", command=open_help)
         help_menu.add_command(
             label="About", command=lambda: show_about(self.root))
+        help_menu.add_separator()
+        help_menu.add_command(
+            label="Report a Bug", command=lambda: report_bug(self.root))
+        help_menu.add_command(
+            label="Suggest a Feature", command=lambda: suggest_feature(self.root))
         menubar.add_cascade(label="Help", menu=help_menu)
 
         root.config(menu=menubar)

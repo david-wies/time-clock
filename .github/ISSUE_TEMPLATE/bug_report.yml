@@ -7,6 +7,14 @@ body:
       value: |
         Thanks for taking the time to file a bug report. Please fill out the fields below.
 
+  - type: input
+    id: contact
+    attributes:
+      label: Your name and email
+      description: So we can follow up if we have questions.
+    validations:
+      required: true
+
   - type: textarea
     id: description
     attributes:
