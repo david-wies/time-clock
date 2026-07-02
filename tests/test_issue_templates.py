@@ -1,6 +1,8 @@
 """Regression tests for GitHub issue form templates."""
 from pathlib import Path
 
+from views.help_viewer import _FIELD_ID_BY_KIND, _TEMPLATE_BY_KIND
+
 TEMPLATE_DIR = Path(__file__).parent.parent / '.github' / 'ISSUE_TEMPLATE'
 
 
@@ -22,3 +24,11 @@ def test_feature_request_template_has_required_contact_field():
     assert contact_start < problem_start
     contact_block = content[contact_start:problem_start]
     assert 'required: true' in contact_block
+
+
+def test_field_id_by_kind_matches_template_field_ids():
+    for kind, field_id in _FIELD_ID_BY_KIND.items():
+        content = (TEMPLATE_DIR / _TEMPLATE_BY_KIND[kind]).read_text()
+        assert f'id: {field_id}' in content, (
+            f'{kind}: expected field id {field_id!r} in {_TEMPLATE_BY_KIND[kind]}'
+        )

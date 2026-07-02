@@ -39,9 +39,12 @@ def open_help() -> None:
         messagebox.showwarning("Help Not Found", f"Help file not found:\n{help_path}")
         return
     try:
-        webbrowser.open(help_path.as_uri())
+        opened = webbrowser.open(help_path.as_uri())
     except webbrowser.Error as exc:
         messagebox.showerror("Help Error", f"Could not open help file:\n{exc}")
+        return
+    if not opened:
+        messagebox.showerror("Help Error", "Could not open a web browser.")
 
 
 def show_about(parent=None) -> None:
