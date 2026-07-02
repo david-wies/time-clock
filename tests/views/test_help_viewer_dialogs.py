@@ -138,12 +138,32 @@ def test_open_help_webbrowser_error_shows_error_message(monkeypatch):
     assert 'no browser registered' in mock_error.call_args[0][1]
 
 
+def test_open_help_oserror_shows_error_message(monkeypatch):
+    """webbrowser.open() can raise a plain OSError (e.g. the registered
+    browser binary was removed/broken) rather than webbrowser.Error --
+    UnixBrowser._invoke() calls subprocess.Popen with no try/except."""
+    monkeypatch.setattr(Path, 'exists', lambda self: True)
+    monkeypatch.setattr(
+        help_viewer.webbrowser, 'open',
+        mock.MagicMock(side_effect=OSError('no such file or directory')),
+    )
+    mock_error = mock.MagicMock()
+    monkeypatch.setattr(help_viewer.messagebox, 'showerror', mock_error)
+
+    help_viewer.open_help()
+
+    mock_error.assert_called_once()
+    assert 'no such file or directory' in mock_error.call_args[0][1]
+
+
 @pytest.mark.parametrize(
     ('name', 'email', 'message'),
     [
         ('', 'jane@example.com', 'a message'),
         ('Jane', '', 'a message'),
         ('Jane', 'not-an-email', 'a message'),
+        ('Jane', 'jane@example', 'a message'),
+        ('Jane', 'a@', 'a message'),
         ('Jane', 'jane@example.com', ''),
         ('Jane', 'jane@example.com', '   '),
     ],
@@ -151,6 +171,8 @@ def test_open_help_webbrowser_error_shows_error_message(monkeypatch):
         'missing-name',
         'missing-email',
         'email-without-at-sign',
+        'email-without-domain-dot',
+        'email-garbage-with-at-sign',
         'missing-message',
         'whitespace-only-message',
     ],
@@ -223,6 +245,49 @@ def test_report_dialog_submit_webbrowser_error_keeps_dialog_open(monkeypatch):
 
     mock_error.assert_called_once()
     assert 'boom' in mock_error.call_args[0][1]
+    harness.dialog.destroy.assert_not_called()
+
+
+def test_report_dialog_submit_oserror_keeps_dialog_open(monkeypatch):
+    """webbrowser.open() can raise a plain OSError rather than
+    webbrowser.Error (see test_open_help_oserror_shows_error_message);
+    _report_dialog's submit handler must catch that too."""
+    monkeypatch.setattr(
+        help_viewer.webbrowser, 'open',
+        mock.MagicMock(side_effect=OSError('no such file or directory')),
+    )
+    mock_error = mock.MagicMock()
+    monkeypatch.setattr(help_viewer.messagebox, 'showerror', mock_error)
+
+    harness = _open_dialog(monkeypatch, 'bug')
+    harness.name_var.get.return_value = 'Jane'
+    harness.email_var.get.return_value = 'jane@example.com'
+    harness.message.get.return_value = 'It crashed'
+
+    harness.submit()
+
+    mock_error.assert_called_once()
+    assert 'no such file or directory' in mock_error.call_args[0][1]
+    harness.dialog.destroy.assert_not_called()
+
+
+def test_report_dialog_submit_message_too_long_shows_warning_and_keeps_dialog_open(
+        monkeypatch):
+    mock_warn = mock.MagicMock()
+    monkeypatch.setattr(help_viewer.messagebox, 'showwarning', mock_warn)
+    mock_open = mock.MagicMock()
+    monkeypatch.setattr(help_viewer.webbrowser, 'open', mock_open)
+
+    harness = _open_dialog(monkeypatch, 'bug')
+    harness.name_var.get.return_value = 'Jane'
+    harness.email_var.get.return_value = 'jane@example.com'
+    harness.message.get.return_value = 'x' * help_viewer._MAX_ISSUE_URL_LENGTH
+
+    harness.submit()
+
+    mock_warn.assert_called_once()
+    assert mock_warn.call_args[0][0] == 'Message Too Long'
+    mock_open.assert_not_called()
     harness.dialog.destroy.assert_not_called()
 
 

@@ -1,5 +1,7 @@
 """Help viewer — opens documentation in the default browser."""
+import re
 import webbrowser
+from dataclasses import dataclass
 from pathlib import Path
 from tkinter import messagebox
 from urllib.parse import urlencode
@@ -9,27 +11,52 @@ from tkinter import ttk
 
 _REPO_URL = 'https://github.com/david-wies/time-clock'
 
-_TEMPLATE_BY_KIND = {
-    'bug': 'bug_report.yml',
-    'feature': 'feature_request.yml',
-}
+_EMAIL_RE = re.compile(r'^[^@\s]+@[^@\s]+\.[^@\s]+$')
 
-_FIELD_ID_BY_KIND = {
-    'bug': 'description',
-    'feature': 'problem',
+_MAX_ISSUE_URL_LENGTH = 8000
+
+
+@dataclass(frozen=True)
+class _ReportKind:
+    template: str
+    field_id: str
+    title: str
+
+
+_KIND_CONFIG = {
+    'bug': _ReportKind(
+        template='bug_report.yml', field_id='description',
+        title='Report a Bug'),
+    'feature': _ReportKind(
+        template='feature_request.yml', field_id='problem',
+        title='Suggest a Feature'),
 }
 
 
 def _build_issue_url(kind: str, name: str, email: str, message: str) -> str:
     """Builds a GitHub new-issue URL prefilled from the report dialog."""
-    template = _TEMPLATE_BY_KIND[kind]
-    field_id = _FIELD_ID_BY_KIND[kind]
+    config = _KIND_CONFIG[kind]
     params = {
-        'template': template,
+        'template': config.template,
         'contact': f'{name} <{email}>',
-        field_id: message,
+        config.field_id: message,
     }
     return f'{_REPO_URL}/issues/new?{urlencode(params)}'
+
+
+def _show_modal(dialog, parent) -> None:
+    """Centers `dialog` on `parent` (if any), makes it modal, and blocks
+    until it is closed."""
+    dialog.update_idletasks()
+    if parent is not None:
+        x = parent.winfo_rootx() + (parent.winfo_width() - dialog.winfo_width()) // 2
+        y = parent.winfo_rooty() + (parent.winfo_height() - dialog.winfo_height()) // 2
+        dialog.geometry(f'+{max(x, 0)}+{max(y, 0)}')
+
+    dialog.grab_set()
+    dialog.focus_set()
+    dialog.bind('<Escape>', lambda e: dialog.destroy())
+    dialog.wait_window()
 
 
 def open_help() -> None:
@@ -40,7 +67,7 @@ def open_help() -> None:
         return
     try:
         opened = webbrowser.open(help_path.as_uri())
-    except webbrowser.Error as exc:
+    except (webbrowser.Error, OSError) as exc:
         messagebox.showerror("Help Error", f"Could not open help file:\n{exc}")
         return
     if not opened:
@@ -91,30 +118,14 @@ def show_about(parent=None) -> None:
 
     ttk.Button(container, text='OK', command=dialog.destroy).pack(pady=(15, 0))
 
-    dialog.update_idletasks()
-    if parent is not None:
-        x = parent.winfo_rootx() + (parent.winfo_width() - dialog.winfo_width()) // 2
-        y = parent.winfo_rooty() + (parent.winfo_height() - dialog.winfo_height()) // 2
-        dialog.geometry(f'+{max(x, 0)}+{max(y, 0)}')
-
-    dialog.grab_set()
-    dialog.focus_set()
-    dialog.bind("<Escape>", lambda e: dialog.destroy())
-    dialog.wait_window()
-    return
-
-
-_DIALOG_TITLE_BY_KIND = {
-    'bug': 'Report a Bug',
-    'feature': 'Suggest a Feature',
-}
+    _show_modal(dialog, parent)
 
 
 def _report_dialog(parent, kind: str) -> None:
     """Opens a modal dialog collecting name/email/message, then opens
     a prefilled GitHub issue page in the default browser."""
     dialog = tk.Toplevel(parent)
-    dialog.title(_DIALOG_TITLE_BY_KIND[kind])
+    dialog.title(_KIND_CONFIG[kind].title)
     dialog.resizable(False, False)
 
     if parent is not None:
@@ -145,7 +156,7 @@ def _report_dialog(parent, kind: str) -> None:
         email = email_var.get().strip()
         message = message_text.get('1.0', 'end').strip()
 
-        if not name or not email or '@' not in email or not message:
+        if not name or not email or not _EMAIL_RE.match(email) or not message:
             messagebox.showwarning(
                 'Missing Information',
                 'Name, a valid email, and a message are all required.',
@@ -154,9 +165,18 @@ def _report_dialog(parent, kind: str) -> None:
             return
 
         url = _build_issue_url(kind, name, email, message)
+        if len(url) > _MAX_ISSUE_URL_LENGTH:
+            messagebox.showwarning(
+                'Message Too Long',
+                'Your message is too long to prefill in the browser. '
+                'Please shorten it and try again.',
+                parent=dialog,
+            )
+            return
+
         try:
             opened = webbrowser.open(url)
-        except webbrowser.Error as exc:
+        except (webbrowser.Error, OSError) as exc:
             messagebox.showerror(
                 'Browser Error', f'Could not open browser:\n{exc}', parent=dialog)
             return
@@ -173,16 +193,7 @@ def _report_dialog(parent, kind: str) -> None:
     ttk.Button(button_row, text='Submit', command=_on_submit).pack(
         side='right')
 
-    dialog.update_idletasks()
-    if parent is not None:
-        x = parent.winfo_rootx() + (parent.winfo_width() - dialog.winfo_width()) // 2
-        y = parent.winfo_rooty() + (parent.winfo_height() - dialog.winfo_height()) // 2
-        dialog.geometry(f'+{max(x, 0)}+{max(y, 0)}')
-
-    dialog.grab_set()
-    dialog.focus_set()
-    dialog.bind('<Escape>', lambda e: dialog.destroy())
-    dialog.wait_window()
+    _show_modal(dialog, parent)
 
 
 def report_bug(parent=None) -> None:

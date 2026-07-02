@@ -76,8 +76,8 @@ def test_build_issue_url_unicode_name_and_email_round_trip():
 
 
 def test_build_issue_url_unknown_kind_raises_key_error():
-    """kind dispatches through _TEMPLATE_BY_KIND/_FIELD_ID_BY_KIND; an
-    unrecognized kind is a programming error in the caller, not user
-    input, so it should fail loudly rather than silently defaulting."""
+    """kind dispatches through _KIND_CONFIG; an unrecognized kind is a
+    programming error in the caller, not user input, so it should fail
+    loudly rather than silently defaulting."""
     with pytest.raises(KeyError):
         _build_issue_url('typo', 'Jane', 'jane@example.com', 'message')
