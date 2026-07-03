@@ -33,6 +33,42 @@ def test_sickness_events(db: Database, event_bus: EventBus) -> None:
     assert change_called is True
 
 
+@pytest.mark.parametrize(
+    "year, month, expected_last_day",
+    [
+        (2024, 2, 29),  # leap-year February
+        (2026, 2, 28),  # non-leap-year February
+        (2026, 4, 30),  # 30-day month
+    ],
+)
+def test_get_records_for_year_uses_real_month_end_date(
+    db: Database, event_bus: EventBus, year: int, month: int, expected_last_day: int
+) -> None:
+    """Regression guard for the `f"{year:04d}-{month:02d}-31"` hardcoding
+    bug: the query's end-of-month bound must be the real last day of the
+    month (via calendar.monthrange), not a literal "-31" that happens to
+    still sort correctly by lexicographic accident. Captures the actual
+    bound SQLite receives via set_trace_callback (which expands bound
+    parameters into the executed SQL text)."""
+    model = SicknessModel(db, event_bus)
+    conn = db.get_connection()
+
+    captured_statements: list[str] = []
+    conn.set_trace_callback(captured_statements.append)
+    try:
+        model.get_records_for_year(year, month=month)
+    finally:
+        conn.set_trace_callback(None)
+
+    select_statements = [
+        s for s in captured_statements if s.startswith("SELECT * FROM sickness_record")]
+    assert len(select_statements) == 1
+    expected_end_date = f"{year:04d}-{month:02d}-{expected_last_day:02d}"
+    assert expected_end_date in select_statements[0]
+    if expected_last_day != 31:
+        assert f"{year:04d}-{month:02d}-31" not in select_statements[0]
+
+
 def test_sickness_record_crud(db: Database, event_bus: EventBus) -> None:
     model = SicknessModel(db, event_bus)
 

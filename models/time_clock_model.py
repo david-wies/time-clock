@@ -1,3 +1,4 @@
+import calendar
 import logging
 import sqlite3
 from datetime import date, time
@@ -55,8 +56,9 @@ class TimeClockModel:
         with self.db.connection() as conn:
             cursor = conn.cursor()
             if month is not None:
+                last_day = calendar.monthrange(year, month)[1]
                 start_date = f"{year:04d}-{month:02d}-01"
-                end_date = f"{year:04d}-{month:02d}-31"
+                end_date = f"{year:04d}-{month:02d}-{last_day:02d}"
                 cursor.execute(
                     "SELECT * FROM time_record WHERE date >= ? AND date <= ? ORDER BY date DESC, start_time ASC;",
                     (start_date, end_date)
