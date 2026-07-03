@@ -5,7 +5,6 @@ __all__ = ["TimeRecord", "VacationRecord", "SicknessRecord",
 
 from dataclasses import dataclass
 from datetime import date, datetime, time
-from typing import Optional
 
 from domain.enums import WorkType, VacationType
 from core.timeutil import duration
@@ -48,15 +47,15 @@ def time_record_invariant_errors(record: "TimeRecord") -> list[str]:
 
 @dataclass(slots=True)
 class TimeRecord:
-    id: Optional[int]
+    id: int | None
     date: date
     start_time: time
-    end_time: Optional[time]
+    end_time: time | None
     break_minutes: int
     work_type: WorkType
-    office: Optional[str] = None
-    note: Optional[str] = None
-    document_path: Optional[str] = None
+    office: str | None = None
+    note: str | None = None
+    document_path: str | None = None
 
     def __post_init__(self) -> None:
         # Context-free invariants only — checks that need other DB records
@@ -98,11 +97,11 @@ def vacation_record_invariant_errors(record: "VacationRecord") -> list[str]:
 
 @dataclass(slots=True)
 class VacationRecord:
-    id: Optional[int]
+    id: int | None
     date: date
     hours: float
     vtype: VacationType
-    note: Optional[str] = None
+    note: str | None = None
 
     def __post_init__(self) -> None:
         # NOTE: vtype == VacationType.CARRY_OVER is deliberately NOT rejected
@@ -152,11 +151,11 @@ def sickness_record_invariant_errors(record: "SicknessRecord") -> list[str]:
 
 @dataclass(slots=True)
 class SicknessRecord:
-    id: Optional[int]
+    id: int | None
     date: date
     hours: float
-    note: Optional[str] = None
-    document_path: Optional[str] = None
+    note: str | None = None
+    document_path: str | None = None
 
     def __post_init__(self) -> None:
         errors = sickness_record_invariant_errors(self)
@@ -200,7 +199,7 @@ class WorkDayException:
     id: int
     date: date
     hours: float
-    label: Optional[str]
+    label: str | None
 
 
 @dataclass(slots=True)
@@ -234,11 +233,11 @@ def miliuim_record_invariant_errors(record: "MiliuimRecord") -> list[str]:
 
 @dataclass(slots=True)
 class MiliuimRecord:
-    id: Optional[int]
+    id: int | None
     start_date: date
     end_date: date
-    note: Optional[str] = None
-    document_path: Optional[str] = None
+    note: str | None = None
+    document_path: str | None = None
 
     def __post_init__(self) -> None:
         errors = miliuim_record_invariant_errors(self)

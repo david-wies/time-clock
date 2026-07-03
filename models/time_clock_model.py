@@ -2,7 +2,6 @@ import calendar
 import logging
 import sqlite3
 from datetime import date, time
-from typing import Optional
 from domain.types import TimeRecord, WorkDayException
 from domain.enums import WorkType
 from core.events import EventBus, Event
@@ -30,7 +29,7 @@ class TimeClockModel:
             document_path=row["document_path"],
         )
 
-    def get_record_by_id(self, record_id: int) -> Optional[TimeRecord]:
+    def get_record_by_id(self, record_id: int) -> TimeRecord | None:
         with self.db.connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
@@ -48,7 +47,7 @@ class TimeClockModel:
             rows = cursor.fetchall()
             return [self._row_to_record(row) for row in rows]
 
-    def get_records_for_period(self, year: int, month: Optional[int] = None) -> list[TimeRecord]:
+    def get_records_for_period(self, year: int, month: int | None = None) -> list[TimeRecord]:
         """
         Retrieves all time records for the given year and optionally month.
         Ordered by date DESC, start_time ASC.
@@ -190,7 +189,7 @@ class TimeClockModel:
                     )
             self.bus.publish(Event.SETTINGS_CHANGED)
 
-    def get_date_exceptions(self, year: Optional[int] = None) -> list[WorkDayException]:
+    def get_date_exceptions(self, year: int | None = None) -> list[WorkDayException]:
         """Returns work day exceptions. If year is specified, filters by that year."""
         with self.db.connection() as conn:
             cursor = conn.cursor()
@@ -226,7 +225,7 @@ class TimeClockModel:
                 )
             return exceptions
 
-    def save_date_exception(self, date_str: str, hours: float, label: Optional[str] = None) -> None:
+    def save_date_exception(self, date_str: str, hours: float, label: str | None = None) -> None:
         with self.db.connection() as conn:
             with conn:
                 conn.execute(

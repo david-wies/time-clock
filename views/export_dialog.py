@@ -8,7 +8,6 @@ import os
 import tkinter as tk
 from datetime import date
 from tkinter import filedialog, messagebox, ttk
-from typing import Union
 
 import pandas as pd
 from reportlab.lib import colors
@@ -57,7 +56,7 @@ _MONTH_NAMES = [
     "July", "August", "September", "October", "November", "December",
 ]
 
-_AnyRecord = Union[TimeRecord, VacationRecord, SicknessRecord]
+_AnyRecord = TimeRecord | VacationRecord | SicknessRecord
 
 
 class ExportDialog(tk.Toplevel):

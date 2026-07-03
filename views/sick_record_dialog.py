@@ -5,7 +5,6 @@ from __future__ import annotations
 import tkinter as tk
 from tkinter import ttk, messagebox
 from datetime import date
-from typing import Optional
 
 from controllers.sickness_controller import SicknessController
 from models.sickness_model import SicknessModel
@@ -22,7 +21,7 @@ class SickRecordDialog(tk.Toplevel):
         parent,
         controller: SicknessController,
         model: SicknessModel,
-        record: Optional[SicknessRecord] = None,
+        record: SicknessRecord | None = None,
         **_kwargs,
     ) -> None:
         super().__init__(parent)
@@ -146,7 +145,7 @@ class SickRecordDialog(tk.Toplevel):
 
     # ─────────────────────────── Data Population ────────────────────────────
 
-    def _populate(self, record: Optional[SicknessRecord]) -> None:
+    def _populate(self, record: SicknessRecord | None) -> None:
         if record is None:
             self._set_date(date.today())
             self._set_end_date(date.today())
@@ -172,7 +171,7 @@ class SickRecordDialog(tk.Toplevel):
         field_errors: list[str] = []
 
         try:
-            start_date: Optional[date] = self._get_date()
+            start_date: date | None = self._get_date()
         except Exception:
             field_errors.append("Invalid date.")
             start_date = None

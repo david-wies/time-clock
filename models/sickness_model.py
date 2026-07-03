@@ -1,7 +1,6 @@
 import calendar
 import sqlite3
 from datetime import date
-from typing import Optional
 from domain.types import SicknessRecord, SicknessSummary
 from core.events import EventBus, Event
 from core.timeutil import iso_to_date, date_to_iso
@@ -22,7 +21,7 @@ class SicknessModel:
             document_path=row["document_path"],
         )
 
-    def get_record_by_id(self, record_id: int) -> Optional[SicknessRecord]:
+    def get_record_by_id(self, record_id: int) -> SicknessRecord | None:
         with self.db.connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
@@ -30,7 +29,7 @@ class SicknessModel:
             row = cursor.fetchone()
             return self._row_to_record(row) if row else None
 
-    def get_records_for_year(self, year: int, month: Optional[int] = None) -> list[SicknessRecord]:
+    def get_records_for_year(self, year: int, month: int | None = None) -> list[SicknessRecord]:
         with self.db.connection() as conn:
             cursor = conn.cursor()
             if month is not None:
@@ -125,7 +124,7 @@ class SicknessModel:
 
     # --- Sickness Settings Queries ---
 
-    def get_settings(self, year: int) -> Optional[float]:
+    def get_settings(self, year: int) -> float | None:
         """Returns hours_per_year allowance for the given year."""
         with self.db.connection() as conn:
             cursor = conn.cursor()
@@ -149,7 +148,7 @@ class SicknessModel:
     # --- Sickness Calculations & Summaries ---
 
     def calculate_sickness_summary(
-        self, year: int, records: Optional[list[SicknessRecord]] = None
+        self, year: int, records: list[SicknessRecord] | None = None
     ) -> SicknessSummary:
         """Computes the year's sickness allowance/used/remaining summary.
 

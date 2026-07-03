@@ -6,7 +6,7 @@ import os
 import tkinter as tk
 from tkinter import ttk
 from tkinter.filedialog import askopenfilename
-from typing import Callable, Optional
+from typing import Callable
 
 DOCUMENT_FILETYPES = [
     ("Documents", "*.pdf *.png *.jpg *.jpeg *.bmp *.tiff *.tif *.gif"),
@@ -17,8 +17,8 @@ DOCUMENT_FILETYPES = [
 
 
 def make_document_picker(
-    parent, initial_path: Optional[str] = None, label_width: int = 24
-) -> tuple[ttk.Frame, Callable[[], Optional[str]], Callable[[Optional[str]], None]]:
+    parent, initial_path: str | None = None, label_width: int = 24
+) -> tuple[ttk.Frame, Callable[[], str | None], Callable[[str | None], None]]:
     """Creates the document-name label plus Browse/Clear buttons, packed left-to-right
     inside a returned frame. The caller places its own "Document:" row label and packs
     the returned frame alongside it (mirroring views/date_picker.py:make_date_picker).
@@ -29,10 +29,10 @@ def make_document_picker(
     lbl_doc_name = ttk.Label(
         frame, text="None", foreground="gray", width=label_width, anchor="w")
 
-    def get_path() -> Optional[str]:
+    def get_path() -> str | None:
         return var_doc_path.get() or None
 
-    def set_path(path: Optional[str]) -> None:
+    def set_path(path: str | None) -> None:
         var_doc_path.set(path or "")
         if path:
             lbl_doc_name.config(

@@ -7,7 +7,6 @@ import sqlite3
 import tkinter as tk
 from tkinter import ttk, messagebox
 from datetime import date
-from typing import Optional
 
 from controllers.vacation_controller import VacationController
 from models.vacation_model import VacationModel
@@ -37,7 +36,7 @@ class VacationRecordDialog(tk.Toplevel):
         parent,
         controller: VacationController,
         model: VacationModel,
-        record: Optional[VacationRecord] = None,
+        record: VacationRecord | None = None,
         **_kwargs,
     ) -> None:
         super().__init__(parent)
@@ -138,7 +137,7 @@ class VacationRecordDialog(tk.Toplevel):
 
     # ─────────────────────────── Data Population ────────────────────────────
 
-    def _populate(self, record: Optional[VacationRecord]) -> None:
+    def _populate(self, record: VacationRecord | None) -> None:
         if record is None:
             self._set_date(date.today())
             self._var_hours.set("8.0")
@@ -190,7 +189,7 @@ class VacationRecordDialog(tk.Toplevel):
         field_errors: list[str] = []
 
         try:
-            rec_date: Optional[date] = self._get_date()
+            rec_date: date | None = self._get_date()
         except Exception:
             field_errors.append("Invalid date.")
             rec_date = None

@@ -1,7 +1,6 @@
 import calendar
 import sqlite3
 from datetime import date
-from typing import Optional
 from domain.types import MiliuimRecord, MiliuimSummary
 from core.events import EventBus, Event
 from core.timeutil import iso_to_date, date_to_iso
@@ -22,7 +21,7 @@ class MiliuimModel:
             document_path=row["document_path"],
         )
 
-    def get_record_by_id(self, record_id: int) -> Optional[MiliuimRecord]:
+    def get_record_by_id(self, record_id: int) -> MiliuimRecord | None:
         with self.db.connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
@@ -30,7 +29,7 @@ class MiliuimModel:
             row = cursor.fetchone()
             return self._row_to_record(row) if row else None
 
-    def get_records_for_year(self, year: int, month: Optional[int] = None) -> list[MiliuimRecord]:
+    def get_records_for_year(self, year: int, month: int | None = None) -> list[MiliuimRecord]:
         with self.db.connection() as conn:
             cursor = conn.cursor()
             if month is not None:
@@ -92,7 +91,7 @@ class MiliuimModel:
             self.bus.publish(Event.MILIUIM_CHANGED)
 
     @staticmethod
-    def clip_days(record: MiliuimRecord, year: int, month: Optional[int] = None) -> int:
+    def clip_days(record: MiliuimRecord, year: int, month: int | None = None) -> int:
         """Returns the number of days of `record` that fall within `year`
         (and `month`, if given), clipping the period to that boundary."""
         period_start = date(year, 1, 1)

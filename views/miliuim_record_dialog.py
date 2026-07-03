@@ -5,7 +5,6 @@ from __future__ import annotations
 import tkinter as tk
 from tkinter import ttk
 from datetime import date
-from typing import Optional
 
 from controllers.miliuim_controller import MiliuimController
 from models.miliuim_model import MiliuimModel
@@ -21,7 +20,7 @@ class MiliuimRecordDialog(tk.Toplevel):
         parent,
         controller: MiliuimController,
         model: MiliuimModel,
-        record: Optional[MiliuimRecord] = None,
+        record: MiliuimRecord | None = None,
         **_kwargs,
     ) -> None:
         super().__init__(parent)
@@ -99,7 +98,7 @@ class MiliuimRecordDialog(tk.Toplevel):
         ttk.Button(btn_row, text="Save",
                    command=self._on_save).pack(side="right")
 
-    def _populate(self, record: Optional[MiliuimRecord]) -> None:
+    def _populate(self, record: MiliuimRecord | None) -> None:
         today = date.today()
         if record is None:
             self._set_date(today)
@@ -120,13 +119,13 @@ class MiliuimRecordDialog(tk.Toplevel):
         field_errors: list[str] = []
 
         try:
-            start_date: Optional[date] = self._get_date()
+            start_date: date | None = self._get_date()
         except Exception:
             field_errors.append("Invalid start date.")
             start_date = None
 
         try:
-            end_date: Optional[date] = self._get_end_date()
+            end_date: date | None = self._get_end_date()
         except Exception:
             field_errors.append("Invalid end date.")
             end_date = None

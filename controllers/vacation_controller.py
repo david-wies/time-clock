@@ -1,6 +1,5 @@
 import logging
 import sqlite3
-from typing import Optional
 from domain.types import VacationRecord, Result, vacation_record_invariant_errors
 from domain.enums import VacationType, WarningCode
 from models.vacation_model import VacationModel

@@ -1,7 +1,7 @@
 """Simple synchronous pub/sub event bus."""
 import logging
 from enum import Enum
-from typing import Callable, Optional
+from typing import Callable
 
 logger = logging.getLogger(__name__)
 
@@ -16,7 +16,7 @@ class Event(Enum):
 
 
 class EventBus:
-    def __init__(self, on_handler_error: Optional[Callable[[str], None]] = None) -> None:
+    def __init__(self, on_handler_error: Callable[[str], None] | None = None) -> None:
         self._subscribers: dict[Event, list[Callable[..., None]]] = {}
         # Optional hook the UI layer can set so a handler exception is
         # surfaced to the user, not just logged. EventBus itself stays

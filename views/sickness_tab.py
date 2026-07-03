@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import date
-from typing import Optional, Callable
+from typing import Callable
 
 import tkinter as tk
 from tkinter import ttk, messagebox
@@ -241,7 +241,7 @@ class SicknessTab(ttk.Frame):
         if children:
             self._tree.delete(*children)
 
-    def _make_row_values(self, rec: Optional[SicknessRecord], override_date: str = "") -> tuple:
+    def _make_row_values(self, rec: SicknessRecord | None, override_date: str = "") -> tuple:
         if rec is None:
             return (override_date, "", "", "")
 
@@ -302,7 +302,7 @@ class SicknessTab(ttk.Frame):
         self._btn_edit.config(state=state)
         self._btn_delete.config(state=state)
 
-    def _get_selected_record_id(self) -> Optional[int]:
+    def _get_selected_record_id(self) -> int | None:
         sel = self._tree.selection()
         if not sel:
             return None
@@ -314,7 +314,7 @@ class SicknessTab(ttk.Frame):
                 return None
         return None
 
-    def _get_selected_record(self) -> Optional[SicknessRecord]:
+    def _get_selected_record(self) -> SicknessRecord | None:
         rec_id = self._get_selected_record_id()
         return self.model.get_record_by_id(rec_id) if rec_id is not None else None
 

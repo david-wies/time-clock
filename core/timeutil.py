@@ -1,5 +1,4 @@
 from datetime import date, time, datetime
-from typing import Union
 
 
 def now_hm() -> str:
@@ -31,7 +30,7 @@ def str_to_time(s: str) -> time:
     raise ValueError(f"Invalid time format: {s}")
 
 
-def time_to_minutes(t: Union[time, str]) -> int:
+def time_to_minutes(t: time | str) -> int:
     """Converts a time object or HH:MM string to minutes since midnight."""
     if isinstance(t, str):
         t_obj = str_to_time(t)
@@ -45,7 +44,7 @@ def to_display_date(d: date) -> str:
     return d.strftime("%d/%m/%Y")
 
 
-def duration(start: Union[time, str], end: Union[time, str], break_minutes: int) -> float:
+def duration(start: time | str, end: time | str, break_minutes: int) -> float:
     """
     Calculates the net duration of a shift in hours.
     If end < start, it is treated as an overnight shift.

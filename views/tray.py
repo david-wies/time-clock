@@ -6,7 +6,6 @@ import tkinter as tk
 import tkinter.messagebox
 from datetime import date
 from pathlib import Path
-from typing import Optional
 
 import pystray
 from PIL import Image, ImageDraw
@@ -60,7 +59,7 @@ class SystemTray:
         self._controller = controller
         self._model = model
         self._settings = settings
-        self._icon: Optional[pystray.Icon] = None
+        self._icon: pystray.Icon | None = None
         # Cached on the Tk main thread only -- pystray evaluates
         # MenuItem(enabled=...) predicates lazily on its own background
         # icon-rendering thread on backends that render menus (Windows,

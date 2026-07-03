@@ -1,5 +1,4 @@
 from datetime import date, time, datetime, timedelta
-from typing import Optional, Union
 from domain.types import PeriodBalance, TimeRecord
 from core.timeutil import duration
 
@@ -43,8 +42,8 @@ def period_balance_from_grouped(
     targets: dict[int, float],
     exceptions: dict[date, float],
     overtime_rate: float = 1.0,
-    today: Optional[date] = None,
-    now_time: Optional[time] = None,
+    today: date | None = None,
+    now_time: time | None = None,
 ) -> PeriodBalance:
     """
     Computes total worked hours, target hours, and balances for a date range,
@@ -105,8 +104,8 @@ def calculate_period_balance(
     targets: dict[int, float],
     exceptions: dict[date, float],
     overtime_rate: float = 1.0,
-    today: Optional[date] = None,
-    now_time: Optional[time] = None
+    today: date | None = None,
+    now_time: time | None = None
 ) -> PeriodBalance:
     """
     Computes total worked hours, target hours, and balances for a date range.
@@ -156,8 +155,8 @@ def overtime(
     targets: dict[int, float],
     exceptions: dict[date, float],
     rate: float = 1.0,
-    today: Optional[date] = None,
-    now_time: Optional[time] = None,
+    today: date | None = None,
+    now_time: time | None = None,
 ) -> tuple[float, float]:
     """
     Returns (raw_hours, weighted_hours) for the period (§21.3).

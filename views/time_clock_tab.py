@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from datetime import date, datetime, time, timedelta
-from typing import Optional, Callable
+from typing import Callable
 
 import tkinter as tk
 from tkinter import ttk, messagebox
@@ -96,7 +96,7 @@ class TimeClockTab(ttk.Frame):
         self._selected_year: int = today.year
         self._selected_month: int = today.month
         self._selected_week_start: date = self._week_start_for(today)
-        self._after_id: Optional[str] = None
+        self._after_id: str | None = None
         self._unsubs: list[Callable] = []
 
         self._build_ui()
@@ -403,8 +403,8 @@ class TimeClockTab(ttk.Frame):
 
     def _refresh_header(
         self,
-        targets: Optional[dict[int, float]] = None,
-        exc_cache: Optional[dict[int, dict[date, float]]] = None,
+        targets: dict[int, float] | None = None,
+        exc_cache: dict[int, dict[date, float]] | None = None,
     ) -> None:
         today = date.today()
         now_t = _now_time()
@@ -448,8 +448,8 @@ class TimeClockTab(ttk.Frame):
 
     def _refresh_tree(
         self,
-        targets: Optional[dict[int, float]] = None,
-        exc_cache: Optional[dict[int, dict[date, float]]] = None,
+        targets: dict[int, float] | None = None,
+        exc_cache: dict[int, dict[date, float]] | None = None,
     ) -> None:
         self._clear_tree()
         if targets is None:
@@ -688,7 +688,7 @@ class TimeClockTab(ttk.Frame):
         self._btn_edit.config(state=state)
         self._btn_delete.config(state=state)
 
-    def _get_selected_record_id(self) -> Optional[int]:
+    def _get_selected_record_id(self) -> int | None:
         sel = self._tree.selection()
         if not sel:
             return None
@@ -700,7 +700,7 @@ class TimeClockTab(ttk.Frame):
                 return None
         return None
 
-    def _get_selected_record(self) -> Optional[TimeRecord]:
+    def _get_selected_record(self) -> TimeRecord | None:
         rec_id = self._get_selected_record_id()
         return self.model.get_record_by_id(rec_id) if rec_id is not None else None
 

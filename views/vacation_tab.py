@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import date
-from typing import Optional, Callable
+from typing import Callable
 
 import tkinter as tk
 from tkinter import ttk, messagebox
@@ -324,7 +324,7 @@ class VacationTab(ttk.Frame):
             self._tree.tag_configure("total", foreground=c["fg.muted"],
                                      font=("Helvetica", 9, "bold"))
 
-    def _make_row_values(self, rec: Optional[VacationRecord], override_date: str = "") -> tuple:
+    def _make_row_values(self, rec: VacationRecord | None, override_date: str = "") -> tuple:
         if rec is None:
             return (override_date, "", "", "", "")
 
@@ -370,7 +370,7 @@ class VacationTab(ttk.Frame):
         self._btn_edit.config(state=state)
         self._btn_delete.config(state=state)
 
-    def _get_selected_record_id(self) -> Optional[int]:
+    def _get_selected_record_id(self) -> int | None:
         sel = self._tree.selection()
         if not sel:
             return None
@@ -382,7 +382,7 @@ class VacationTab(ttk.Frame):
                 return None
         return None
 
-    def _get_selected_record(self) -> Optional[VacationRecord]:
+    def _get_selected_record(self) -> VacationRecord | None:
         rec_id = self._get_selected_record_id()
         return self.model.get_record_by_id(rec_id) if rec_id is not None else None
 

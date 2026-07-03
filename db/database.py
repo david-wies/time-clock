@@ -4,7 +4,7 @@ import platform
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Optional, Any
+from typing import Any
 
 
 def get_default_db_path() -> Path:
@@ -65,7 +65,7 @@ class SharedConnectionWrapper:
 
 
 class Database:
-    def __init__(self, db_path: Optional[str] = None) -> None:
+    def __init__(self, db_path: str | None = None) -> None:
         """
         Initializes the database. If db_path is None, the default OS-specific path is used.
         Pass ':memory:' for in-memory DB testing.

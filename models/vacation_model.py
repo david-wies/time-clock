@@ -1,7 +1,7 @@
 import calendar
 import sqlite3
 from datetime import date, datetime
-from typing import Optional, Any
+from typing import Any
 from domain.types import VacationRecord, VacationSummary, CarryOverAllowance, CarryOverLogEntry
 from domain.enums import VacationType
 from core.events import EventBus, Event
@@ -23,7 +23,7 @@ class VacationModel:
             note=row["note"]
         )
 
-    def get_record_by_id(self, record_id: int) -> Optional[VacationRecord]:
+    def get_record_by_id(self, record_id: int) -> VacationRecord | None:
         with self.db.connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
@@ -31,7 +31,7 @@ class VacationModel:
             row = cursor.fetchone()
             return self._row_to_record(row) if row else None
 
-    def get_records_for_year(self, year: int, month: Optional[int] = None) -> list[VacationRecord]:
+    def get_records_for_year(self, year: int, month: int | None = None) -> list[VacationRecord]:
         with self.db.connection() as conn:
             cursor = conn.cursor()
             if month is not None:
@@ -103,7 +103,7 @@ class VacationModel:
 
     # --- Vacation Settings Queries ---
 
-    def get_settings(self, year: int) -> Optional[dict[str, Any]]:
+    def get_settings(self, year: int) -> dict[str, Any] | None:
         with self.db.connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
@@ -248,7 +248,7 @@ class VacationModel:
             cursor.execute("SELECT day_of_week, hours FROM work_day_target;")
             return {row["day_of_week"]: row["hours"] for row in cursor.fetchall()}
 
-    def get_date_exception(self, d: date) -> Optional[float]:
+    def get_date_exception(self, d: date) -> float | None:
         """Returns the exception hours configured for date d, or None if not configured."""
         with self.db.connection() as conn:
             cursor = conn.cursor()

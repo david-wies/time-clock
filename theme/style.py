@@ -1,7 +1,6 @@
 """Semantic ttk style system with graceful sv-ttk fallback."""
 
 from tkinter import ttk
-from typing import Optional
 
 import sv_ttk
 
@@ -33,7 +32,7 @@ COLORS = {
 }
 
 
-def resolve_theme_mode(mode: Optional[str]) -> str:
+def resolve_theme_mode(mode: str | None) -> str:
     """Resolves a stored theme setting (e.g. from SettingsManager) to a
     concrete ``COLORS`` key. ``"system"`` (no OS dark-mode detection yet),
     ``None``, and any other unrecognized value fall back to ``"light"``.

@@ -5,7 +5,6 @@ from __future__ import annotations
 import tkinter as tk
 from tkinter import ttk
 from datetime import date, time, datetime
-from typing import Optional
 
 from controllers.time_clock_controller import TimeClockController
 from core.timeutil import duration
@@ -62,7 +61,7 @@ class TimeRecordDialog(tk.Toplevel):
         parent,
         controller: TimeClockController,
         settings: SettingsManager,
-        record: Optional[TimeRecord] = None,
+        record: TimeRecord | None = None,
         **_kwargs,
     ) -> None:
         super().__init__(parent)
@@ -232,7 +231,7 @@ class TimeRecordDialog(tk.Toplevel):
 
     # ─────────────────────────── Data Population ────────────────────────────
 
-    def _populate(self, record: Optional[TimeRecord]) -> None:
+    def _populate(self, record: TimeRecord | None) -> None:
         if record is None:
             self._set_date(date.today())
             self._var_start.set(datetime.now().strftime("%H:%M"))
@@ -317,19 +316,19 @@ class TimeRecordDialog(tk.Toplevel):
         field_errors: list[str] = []
 
         try:
-            rec_date: Optional[date] = self._get_date()
+            rec_date: date | None = self._get_date()
         except Exception:
             field_errors.append("Invalid date.")
             rec_date = None
 
-        start_time: Optional[time] = None
+        start_time: time | None = None
         try:
             start_time = _parse_hhmm(self._var_start.get())
         except ValueError:
             field_errors.append(
                 "Start time must be in HH:MM format (00:00–23:59).")
 
-        end_time: Optional[time] = None
+        end_time: time | None = None
         end_s = self._var_end.get().strip()
         if end_s:
             try:
@@ -355,17 +354,17 @@ class TimeRecordDialog(tk.Toplevel):
             self._lbl_error.config(text=f"Invalid work type: {wt_val!r}")
             return
 
-        office: Optional[str] = None
+        office: str | None = None
         if work_type == WorkType.IN_SITE:
             o = self._var_office.get().strip()
             office = o or None
 
-        document_path: Optional[str] = None
+        document_path: str | None = None
         if work_type == WorkType.ROAD:
             document_path = self._get_doc_path()
 
         note_s = self._var_note.get().strip()
-        note: Optional[str] = note_s or None
+        note: str | None = note_s or None
 
         try:
             record = TimeRecord(

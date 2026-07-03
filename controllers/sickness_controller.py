@@ -1,7 +1,6 @@
 import logging
 import sqlite3
 from datetime import date, timedelta
-from typing import Optional
 from domain.types import SicknessRecord, Result, sickness_record_invariant_errors
 from domain.enums import WarningCode
 from models.sickness_model import SicknessModel
@@ -84,9 +83,9 @@ class SicknessController:
         start_date: date,
         end_date: date,
         hours: float,
-        note: Optional[str] = None,
+        note: str | None = None,
         confirm_over_balance: bool = False,
-        document_path: Optional[str] = None,
+        document_path: str | None = None,
     ) -> Result:
         """Insert sick records for every day in [start_date, end_date] inclusive."""
         if end_date < start_date:

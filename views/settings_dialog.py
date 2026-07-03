@@ -5,7 +5,7 @@ from __future__ import annotations
 import tkinter as tk
 from tkinter import ttk, messagebox, simpledialog
 from datetime import date
-from typing import Callable, Optional
+from typing import Callable
 
 import holidays
 
@@ -736,7 +736,7 @@ class _ExceptionDialog(tk.Toplevel):
         self,
         parent,
         model_tc: TimeClockModel,
-        exc: Optional[WorkDayException],
+        exc: WorkDayException | None,
         on_saved: Callable,
     ) -> None:
         super().__init__(parent)
@@ -817,7 +817,7 @@ class _ExceptionDialog(tk.Toplevel):
             return
 
         date_str = date_to_iso(d)
-        label: Optional[str] = self._var_label.get().strip() or None
+        label: str | None = self._var_label.get().strip() or None
 
         try:
             if self._exc is not None:

@@ -7,7 +7,6 @@ import shutil
 import tempfile
 from datetime import date
 from pathlib import Path
-from typing import Optional
 
 import tkinter as tk
 from tkinter import ttk, messagebox
@@ -59,7 +58,7 @@ class ReportDialog(tk.Toplevel):
         model_vacation: VacationModel,
         model_sickness: SicknessModel,
         settings: SettingsManager,
-        model_miliuim: Optional[MiliuimModel] = None,
+        model_miliuim: MiliuimModel | None = None,
     ) -> None:
         super().__init__(parent)
         self._model_tc = model_tc
@@ -231,7 +230,7 @@ class ReportDialog(tk.Toplevel):
 
     # ─────────────────────────── Data Assembly ───────────────────────────────
 
-    def _get_report_data(self) -> Optional[ReportData]:
+    def _get_report_data(self) -> ReportData | None:
         try:
             year = int(self._var_year.get())
         except ValueError:
@@ -241,8 +240,8 @@ class ReportDialog(tk.Toplevel):
             return None
 
         period_type = self._var_period.get()
-        month: Optional[int] = None
-        quarter: Optional[int] = None
+        month: int | None = None
+        quarter: int | None = None
 
         if period_type == "month":
             month_name = self._var_month.get()

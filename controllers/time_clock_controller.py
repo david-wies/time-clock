@@ -1,7 +1,7 @@
 import logging
 import sqlite3
 from datetime import date, time, datetime
-from typing import Optional, Callable
+from typing import Callable
 
 from domain.types import TimeRecord, Result, time_record_invariant_errors
 from domain.enums import WarningCode, WorkType
@@ -11,7 +11,7 @@ from settings import SettingsManager
 logger = logging.getLogger(__name__)
 
 
-def times_overlap(s1: time, e1: Optional[time], s2: time, e2: Optional[time]) -> bool:
+def times_overlap(s1: time, e1: time | None, s2: time, e2: time | None) -> bool:
     """Checks if two time intervals on the same day overlap."""
     start1 = s1.hour * 60 + s1.minute
     end1 = (e1.hour * 60 + e1.minute) if e1 else 1440
@@ -69,7 +69,7 @@ class TimeClockController:
         self,
         model: TimeClockModel,
         settings: SettingsManager,
-        clock: Optional[Callable[[], datetime]] = None,
+        clock: Callable[[], datetime] | None = None,
     ) -> None:
         self.model = model
         self.settings = settings
@@ -107,7 +107,7 @@ class TimeClockController:
             logger.exception("Database error while saving time record %r", record)
             return Result(ok=False, errors=[f"Database error: {e}"])
 
-    def clock_in(self, work_type: Optional[WorkType] = None, force: bool = False) -> Result:
+    def clock_in(self, work_type: WorkType | None = None, force: bool = False) -> Result:
         """
         Clocks in the user. Creates a new record with start_time = now.
         Returns Result(ok=False, errors=["OPEN_RECORD_EXISTS"]) if a today-open record exists
@@ -157,7 +157,7 @@ class TimeClockController:
             logger.exception("Database error while clocking in")
             return Result(ok=False, errors=[f"Database error: {e}"])
 
-    def clock_out(self, record_id: Optional[int] = None) -> Result:
+    def clock_out(self, record_id: int | None = None) -> Result:
         """
         Clocks out the user. Sets end_time = now on today's active open record.
         If multiple open records exist today and record_id is None, returns

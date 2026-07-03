@@ -5,7 +5,6 @@ from __future__ import annotations
 import calendar
 from dataclasses import dataclass, field
 from datetime import date
-from typing import Optional
 
 from core.balance import group_records_by_date, period_balance_from_grouped
 from models.miliuim_model import MiliuimModel
@@ -35,8 +34,8 @@ class ReportData:
     period_label: str         # e.g. "June 2026", "Q2 2026", "2026"
     period_type: str          # "month" | "quarter" | "year"
     year: int
-    month: Optional[int]      # None for year/quarter reports
-    quarter: Optional[int]    # None for month/year reports
+    month: int | None    # None for year/quarter reports
+    quarter: int | None  # None for month/year reports
 
     # Time clock
     worked_hours: float
@@ -83,8 +82,8 @@ def _month_range(year: int, month: int) -> tuple[date, date]:
 def period_range(
     period_type: str,
     year: int,
-    month: Optional[int],
-    quarter: Optional[int],
+    month: int | None,
+    quarter: int | None,
 ) -> tuple[date, date]:
     if period_type == "month":
         if month is None:
@@ -106,8 +105,8 @@ _period_range = period_range
 def _period_label(
     period_type: str,
     year: int,
-    month: Optional[int],
-    quarter: Optional[int],
+    month: int | None,
+    quarter: int | None,
 ) -> str:
     if period_type == "month":
         return f"{MONTH_NAMES[month or 1]} {year}"
@@ -122,13 +121,13 @@ def period_summary(
     period_type: str,  # "month" | "quarter" | "year"
     year: int,
     # required when period_type="month"; pass None for "quarter" and "year"
-    month: Optional[int],
-    quarter: Optional[int],  # 1-4, required for "quarter"
+    month: int | None,
+    quarter: int | None,  # 1-4, required for "quarter"
     model_tc: TimeClockModel,
     model_vacation: VacationModel,
     model_sickness: SicknessModel,
     settings: SettingsManager,
-    model_miliuim: Optional[MiliuimModel] = None,
+    model_miliuim: MiliuimModel | None = None,
 ) -> ReportData:
     """
     Assembles all report data for the requested period.
