@@ -1,4 +1,6 @@
 __all__ = [
+    "Hours",
+    "BreakMinutes",
     "TimeRecord",
     "VacationRecord",
     "SicknessRecord",
@@ -19,6 +21,28 @@ from core.timeutil import duration
 from domain.enums import VacationType, WorkType
 
 _MAX_NOTE_LENGTH = 500
+
+
+class Hours(float):
+    """A non-negative quantity of hours. Behaves as a plain ``float`` (arithmetic,
+    formatting, sqlite3 binding) but rejects negative values at construction."""
+
+    def __new__(cls, value: float) -> "Hours":
+        v = float(value)
+        if v < 0:
+            raise ValueError("Hours must be non-negative.")
+        return super().__new__(cls, v)
+
+
+class BreakMinutes(int):
+    """A non-negative quantity of break minutes. Behaves as a plain ``int``
+    but rejects negative values at construction."""
+
+    def __new__(cls, value: int) -> "BreakMinutes":
+        v = int(value)
+        if v < 0:
+            raise ValueError("Break minutes must be non-negative.")
+        return super().__new__(cls, v)
 
 
 def time_record_invariant_errors(record: "TimeRecord") -> list[str]:
@@ -59,7 +83,7 @@ class TimeRecord:
     date: date
     start_time: time
     end_time: time | None
-    break_minutes: int
+    break_minutes: BreakMinutes
     work_type: WorkType
     office: str | None = None
     note: str | None = None
@@ -72,6 +96,7 @@ class TimeRecord:
         errors = time_record_invariant_errors(self)
         if errors:
             raise ValueError(errors[0])
+        self.break_minutes = BreakMinutes(self.break_minutes)
 
     @property
     def is_open(self) -> bool:
@@ -106,7 +131,7 @@ def vacation_record_invariant_errors(record: "VacationRecord") -> list[str]:
 class VacationRecord:
     id: int | None
     date: date
-    hours: float
+    hours: Hours
     vtype: VacationType
     note: str | None = None
 
@@ -128,6 +153,7 @@ class VacationRecord:
         errors = vacation_record_invariant_errors(self)
         if errors:
             raise ValueError(errors[0])
+        self.hours = Hours(self.hours)
 
 
 def sickness_record_invariant_errors(record: "SicknessRecord") -> list[str]:
@@ -159,7 +185,7 @@ def sickness_record_invariant_errors(record: "SicknessRecord") -> list[str]:
 class SicknessRecord:
     id: int | None
     date: date
-    hours: float
+    hours: Hours
     note: str | None = None
     document_path: str | None = None
 
@@ -167,6 +193,7 @@ class SicknessRecord:
         errors = sickness_record_invariant_errors(self)
         if errors:
             raise ValueError(errors[0])
+        self.hours = Hours(self.hours)
 
 
 @dataclass(slots=True)

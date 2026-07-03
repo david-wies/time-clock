@@ -4,7 +4,7 @@ from datetime import datetime, time
 from typing import Callable
 
 from domain.enums import WarningCode, WorkType
-from domain.types import Result, TimeRecord, time_record_invariant_errors
+from domain.types import BreakMinutes, Result, TimeRecord, time_record_invariant_errors
 from models.time_clock_model import TimeClockModel
 from settings import SettingsManager
 
@@ -145,7 +145,7 @@ class TimeClockController:
             date=now.date(),
             start_time=now.time().replace(second=0, microsecond=0),
             end_time=None,
-            break_minutes=0,
+            break_minutes=BreakMinutes(0),
             work_type=work_type,
             office=office,
             note="",

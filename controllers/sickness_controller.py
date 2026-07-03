@@ -3,7 +3,7 @@ import sqlite3
 from datetime import date, timedelta
 
 from domain.enums import WarningCode
-from domain.types import Result, SicknessRecord, sickness_record_invariant_errors
+from domain.types import Hours, Result, SicknessRecord, sickness_record_invariant_errors
 from models.sickness_model import SicknessModel
 
 logger = logging.getLogger(__name__)
@@ -124,7 +124,11 @@ class SicknessController:
 
         records = [
             SicknessRecord(
-                id=None, date=d, hours=hours, note=note, document_path=document_path
+                id=None,
+                date=d,
+                hours=Hours(hours),
+                note=note,
+                document_path=document_path,
             )
             for d in dates
         ]
