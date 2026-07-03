@@ -367,17 +367,21 @@ class TimeRecordDialog(tk.Toplevel):
         note_s = self._var_note.get().strip()
         note: Optional[str] = note_s or None
 
-        record = TimeRecord(
-            id=self._record.id if self._record is not None else None,
-            date=rec_date,
-            start_time=start_time,
-            end_time=end_time,
-            break_minutes=break_minutes,
-            work_type=work_type,
-            office=office,
-            note=note,
-            document_path=document_path,
-        )
+        try:
+            record = TimeRecord(
+                id=self._record.id if self._record is not None else None,
+                date=rec_date,
+                start_time=start_time,
+                end_time=end_time,
+                break_minutes=break_minutes,
+                work_type=work_type,
+                office=office,
+                note=note,
+                document_path=document_path,
+            )
+        except ValueError as exc:
+            self._lbl_error.config(text=str(exc))
+            return
 
         result = self._controller.save_record(record)
         if result.ok:

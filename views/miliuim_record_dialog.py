@@ -137,13 +137,17 @@ class MiliuimRecordDialog(tk.Toplevel):
 
         note_s = self._var_note.get().strip() or None
 
-        record = MiliuimRecord(
-            id=self._record.id if self._record is not None else None,
-            start_date=start_date,
-            end_date=end_date,
-            note=note_s,
-            document_path=self._get_doc_path(),
-        )
+        try:
+            record = MiliuimRecord(
+                id=self._record.id if self._record is not None else None,
+                start_date=start_date,
+                end_date=end_date,
+                note=note_s,
+                document_path=self._get_doc_path(),
+            )
+        except ValueError as exc:
+            self._lbl_error.config(text=str(exc))
+            return
         result = self._controller.save_record(record)
 
         if result.ok:

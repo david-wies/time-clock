@@ -204,13 +204,17 @@ class SickRecordDialog(tk.Toplevel):
                 document_path=self._get_doc_path(),
             )
         else:
-            record = SicknessRecord(
-                id=self._record.id if self._record is not None else None,
-                date=start_date,
-                hours=hours,
-                note=note,
-                document_path=self._get_doc_path(),
-            )
+            try:
+                record = SicknessRecord(
+                    id=self._record.id if self._record is not None else None,
+                    date=start_date,
+                    hours=hours,
+                    note=note,
+                    document_path=self._get_doc_path(),
+                )
+            except ValueError as exc:
+                self._lbl_error.config(text=str(exc))
+                return
             result = self._controller.save_record(
                 record, confirm_over_balance=confirm_over_balance)
 
