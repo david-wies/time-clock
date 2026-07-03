@@ -29,6 +29,19 @@ def test_save_valid_record(controller: VacationController) -> None:
     assert res.ok is True
 
 
+def test_save_record_rejects_carry_over_vtype(controller: VacationController) -> None:
+    """VacationRecord(vtype=CARRY_OVER, ...) is still constructible (it must
+    be, so records read back from the DB via VacationModel._row_to_record()
+    don't crash — see domain/types.py:VacationRecord.__post_init__ and
+    tests/domain/test_types.py). This guard is what stops such a record
+    (however a caller obtained one) from being routed through the general
+    save path instead of add_carry_over()."""
+    rec = VacationRecord(None, date(2026, 1, 1), 20.0, VacationType.CARRY_OVER)
+    res = controller.save_record(rec)
+    assert res.ok is False
+    assert "add_carry_over" in res.errors[0]
+
+
 def test_save_invalid_hours(controller: VacationController) -> None:
     # Hours < 0.5
     rec_low = VacationRecord(None, date(2026, 7, 15),

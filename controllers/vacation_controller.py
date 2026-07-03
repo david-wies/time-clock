@@ -9,7 +9,14 @@ logger = logging.getLogger(__name__)
 
 
 def validate_vacation_record(record: VacationRecord, max_hours: float = 24.0) -> list[str]:
-    """Pure validation function for VacationRecord (enforces §6.5 table)."""
+    """Pure validation function for VacationRecord (enforces §6.5 table).
+
+    max_hours comes from a live settings lookup
+    (VacationModel.get_daily_target_for_date()) at save time, so this bound
+    is context-dependent and cannot move into VacationRecord.__post_init__.
+    The note-length check IS context-free and is enforced unconditionally
+    by VacationRecord.__post_init__ instead.
+    """
     errors = []
 
     if record.vtype == VacationType.PUBLIC_HOLIDAY:
@@ -18,9 +25,6 @@ def validate_vacation_record(record: VacationRecord, max_hours: float = 24.0) ->
     else:
         if record.hours < 0.5 or record.hours > max_hours:
             errors.append(f"Hours must be between 0.5 and {max_hours:.1f}.")
-
-    if record.note and len(record.note) > 500:
-        errors.append("Note is too long (max 500 characters).")
 
     return errors
 
@@ -31,6 +35,14 @@ class VacationController:
 
     def save_record(self, record: VacationRecord, confirm_over_balance: bool = False) -> Result:
         """Validates and saves a VacationRecord."""
+        # NOT dead code: VacationRecord.__post_init__ deliberately does not
+        # reject vtype=CARRY_OVER (it must remain constructible so records
+        # read back from the DB via VacationModel._row_to_record() — which
+        # includes carry-over rows inserted by add_carry_over() — don't
+        # crash the Vacation tab / export dialog). This guard is what stops
+        # such a record (however a caller obtained one) from being routed
+        # through the general debit/credit save path instead of
+        # add_carry_over().
         if record.vtype == VacationType.CARRY_OVER:
             return Result(ok=False, errors=["Use add_carry_over() to record carry-over hours."])
 

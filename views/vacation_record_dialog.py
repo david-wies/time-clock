@@ -22,7 +22,11 @@ _VTYPE_OPTIONS: list[tuple[VacationType, str]] = [
     (VacationType.PUBLIC_HOLIDAY, "Public Holiday"),
     (VacationType.SPECIAL_LEAVE, "Special Leave"),
     (VacationType.UNPAID_LEAVE, "Unpaid Leave"),
-    (VacationType.CARRY_OVER, "Carry-Over"),
+    # Carry-Over deliberately excluded: it can only be recorded via
+    # VacationController.add_carry_over() (see carry_over_dialog.py), never
+    # through this Add/Edit dialog. Selecting it here used to type-check
+    # fine but always failed on save with an opaque rejection from
+    # VacationController.save_record() — see codebase review G3 #4.
 ]
 
 
@@ -209,13 +213,17 @@ class VacationRecordDialog(tk.Toplevel):
             return
 
         note_s = self._var_note.get().strip()
-        record = VacationRecord(
-            id=self._record.id if self._record is not None else None,
-            date=rec_date,
-            hours=hours,
-            vtype=vtype,
-            note=note_s or None,
-        )
+        try:
+            record = VacationRecord(
+                id=self._record.id if self._record is not None else None,
+                date=rec_date,
+                hours=hours,
+                vtype=vtype,
+                note=note_s or None,
+            )
+        except ValueError as exc:
+            self._lbl_error.config(text=str(exc))
+            return
 
         result = self._controller.save_record(
             record, confirm_over_balance=confirm_over_balance)
