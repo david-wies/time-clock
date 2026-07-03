@@ -29,34 +29,32 @@ def get_default_db_path() -> Path:
 
 
 class SharedConnectionWrapper:
+    """Wraps a persistent ``sqlite3.Connection`` and makes ``close()`` a no-op.
+
+    Attribute *reads* (``conn.execute``, ``conn.row_factory``, etc.) are
+    forwarded to the wrapped connection via ``__getattr__``. Attribute
+    *writes* are NOT forwarded — ``self.x = y`` sets a plain attribute on the
+    wrapper itself, exactly like any ordinary object, so future instance
+    state added here (or in a subclass) can't silently end up on the
+    wrapped ``sqlite3.Connection`` instead.
+
+    ``__enter__``/``__exit__`` must stay explicitly defined (not just
+    covered by ``__getattr__``): Python looks up special/dunder methods used
+    by implicit protocols (``with conn:``, ``len(conn)``, etc.) on the
+    *type*, bypassing instance-level ``__getattr__`` entirely. ``close()``
+    must also stay explicit since it deliberately overrides — rather than
+    forwards to — the real ``close()``.
+    """
+
     def __init__(self, conn: sqlite3.Connection) -> None:
-        self.__dict__["_conn"] = conn
-        return
+        self._conn = conn
 
     def __getattr__(self, name: str) -> Any:
         return getattr(self._conn, name)
 
-    def __setattr__(self, name: str, value: Any) -> None:
-        setattr(self._conn, name, value)
-        return
-
     def close(self) -> None:
         # No-op to preserve in-memory DB lifetime
         pass
-
-    def cursor(self) -> sqlite3.Cursor:
-        return self._conn.cursor()
-
-    def execute(self, *args: Any, **kwargs: Any) -> sqlite3.Cursor:
-        return self._conn.execute(*args, **kwargs)
-
-    def commit(self) -> None:
-        self._conn.commit()
-        return
-
-    def rollback(self) -> None:
-        self._conn.rollback()
-        return
 
     def __enter__(self) -> "SharedConnectionWrapper":
         self._conn.__enter__()

@@ -99,6 +99,32 @@ def test_row_factory_is_sqlite3_row_for_file_db(tmp_path) -> None:
     assert conn.row_factory is sqlite3.Row
 
 
+def test_wrapper_attribute_write_does_not_leak_onto_wrapped_connection(tmp_path) -> None:
+    """SharedConnectionWrapper.__setattr__ was narrowed to plain (default)
+    attribute assignment: writes must land on the wrapper instance itself,
+    not silently forward onto the wrapped sqlite3.Connection, so future
+    wrapper-owned state can't accidentally corrupt connection state."""
+    db_path = tmp_path / "time_clock.db"
+    db = Database(db_path=str(db_path))
+    conn = db.get_connection()
+
+    conn.some_wrapper_only_attr = "wrapper-owned"
+
+    assert conn.some_wrapper_only_attr == "wrapper-owned"
+    # The underlying real sqlite3.Connection must be untouched.
+    assert not hasattr(conn._conn, "some_wrapper_only_attr")
+
+
+def test_wrapper_attribute_read_still_forwards_to_wrapped_connection(tmp_path) -> None:
+    """Reads for attributes the wrapper doesn't itself define (e.g.
+    ``row_factory``) must still forward to the wrapped connection via
+    ``__getattr__`` — only writes were narrowed, not reads."""
+    db_path = tmp_path / "time_clock.db"
+    db = Database(db_path=str(db_path))
+    conn = db.get_connection()
+    assert conn.row_factory is conn._conn.row_factory is sqlite3.Row
+
+
 def test_repeated_model_style_usage_does_not_reopen_connection(tmp_path) -> None:
     """Regression test mirroring the ~40 `models/*.py` call sites:
     `conn = db.get_connection(); try: ...; finally: conn.close()` repeated
