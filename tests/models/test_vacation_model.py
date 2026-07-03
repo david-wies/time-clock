@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime
 from domain.types import VacationRecord
 from domain.enums import VacationType
 from models.vacation_model import VacationModel
@@ -160,6 +160,7 @@ def test_carry_over_history(db: Database, event_bus: EventBus) -> None:
     assert len(history) == 1
     assert history[0].hours == 15.0
     assert history[0].from_year == 2025
+    assert isinstance(history[0].transferred_at, datetime)
 
 
 def test_daily_target_falls_back_to_weekday(db: Database, event_bus: EventBus) -> None:

@@ -1,3 +1,5 @@
+import logging
+
 import pytest
 from datetime import date, time
 from domain.types import TimeRecord
@@ -130,13 +132,44 @@ def test_targets_and_exceptions(db: Database, event_bus: EventBus) -> None:
 
     exceptions = model.get_date_exceptions(year=2026)
     assert len(exceptions) == 2
-    assert exceptions[0].date == "2026-12-24"
+    assert exceptions[0].date == date(2026, 12, 24)
     assert exceptions[0].hours == 4.0
-    assert exceptions[1].date == "2026-12-25"
+    assert exceptions[1].date == date(2026, 12, 25)
     assert exceptions[1].hours == 0.0
 
     # Delete exception
     model.delete_date_exception_by_date("2026-12-24")
     exceptions_after = model.get_date_exceptions(year=2026)
     assert len(exceptions_after) == 1
-    assert exceptions_after[0].date == "2026-12-25"
+    assert exceptions_after[0].date == date(2026, 12, 25)
+
+
+def test_get_date_exceptions_skips_malformed_date_and_logs_warning(
+        db: Database, event_bus: EventBus, caplog) -> None:
+    """A corrupted `date` column value (e.g. from manual DB editing) must
+    not crash get_date_exceptions() — it should be logged and skipped,
+    exactly like the (pre-existing) view-layer handling in
+    views/time_clock_tab.py:_build_exc_dict() used to do before date
+    parsing moved down into the model layer."""
+    model = TimeClockModel(db, event_bus)
+
+    model.save_date_exception("2026-12-24", 4.0, "Christmas Eve")
+    conn = db.get_connection()
+    try:
+        with conn:
+            conn.execute(
+                "INSERT INTO work_day_exception (date, hours, label) "
+                "VALUES ('not-a-date', 8.0, 'Corrupted row');"
+            )
+    finally:
+        conn.close()
+
+    with caplog.at_level(logging.WARNING, logger="models.time_clock_model"):
+        exceptions = model.get_date_exceptions()
+
+    assert len(exceptions) == 1
+    assert exceptions[0].date == date(2026, 12, 24)
+    assert any(
+        record.levelname == "WARNING" and "malformed" in record.message.lower()
+        for record in caplog.records
+    )

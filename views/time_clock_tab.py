@@ -55,11 +55,14 @@ def _now_time() -> time:
 
 
 def _build_exc_dict(raw: list[WorkDayException]) -> dict[date, float]:
+    """Builds a {date: hours} lookup from already-parsed WorkDayException
+    rows. Malformed *dates* are now filtered out upstream by
+    TimeClockModel.get_date_exceptions() (which logs and skips them at the
+    source); this only guards against a malformed `hours` value."""
     result: dict[date, float] = {}
     for exc in raw:
         try:
-            d = date.fromisoformat(exc.date)
-            result[d] = float(exc.hours)
+            result[exc.date] = float(exc.hours)
         except ValueError:
             logger.warning(
                 "Skipping malformed work-day exception (falls back to the "

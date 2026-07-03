@@ -8,7 +8,6 @@ from datetime import date
 from typing import Optional
 
 from core.balance import calculate_period_balance
-from core.timeutil import iso_to_date
 from models.miliuim_model import MiliuimModel
 from models.time_clock_model import TimeClockModel
 from models.vacation_model import VacationModel
@@ -149,7 +148,7 @@ def period_summary(
     targets = model_tc.get_work_day_targets()
 
     exceptions: dict[date, float] = {
-        iso_to_date(d.date): d.hours
+        d.date: d.hours
         for d in model_tc.get_date_exceptions(year)
     }
 

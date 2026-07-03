@@ -440,10 +440,9 @@ class SettingsDialog(tk.Toplevel):
         except ValueError:
             return
         for exc in self._model_tc.get_date_exceptions(year):
-            d = iso_to_date(exc.date)
             self._exc_tree.insert(
                 "", "end", iid=str(exc.id),
-                values=(to_display_date(d),
+                values=(to_display_date(exc.date),
                         f"{exc.hours:.1f}", exc.label or ""),
             )
 
@@ -800,7 +799,7 @@ class _ExceptionDialog(tk.Toplevel):
                    command=self._on_save).pack(side="right")
 
     def _populate(self, exc: WorkDayException) -> None:
-        self._set_date(iso_to_date(exc.date))
+        self._set_date(exc.date)
         self._var_hours.set(f"{exc.hours:.1f}")
         self._var_label.set(exc.label or "")
 

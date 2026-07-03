@@ -1,3 +1,4 @@
+import logging
 import sqlite3
 from datetime import date, time
 from typing import Optional
@@ -6,6 +7,8 @@ from domain.enums import WorkType
 from core.events import EventBus, Event
 from core.timeutil import iso_to_date, str_to_time, date_to_iso, time_to_str
 from db.database import Database
+
+logger = logging.getLogger(__name__)
 
 
 class TimeClockModel:
@@ -234,15 +237,26 @@ class TimeClockModel:
                 cursor.execute(
                     "SELECT id, date, hours, label FROM work_day_exception ORDER BY date ASC;")
             rows = cursor.fetchall()
-            return [
-                WorkDayException(
-                    id=row["id"],
-                    date=row["date"],
-                    hours=row["hours"],
-                    label=row["label"],
+            exceptions = []
+            for row in rows:
+                try:
+                    exc_date = date.fromisoformat(row["date"])
+                except ValueError:
+                    logger.warning(
+                        "Skipping malformed work-day exception row "
+                        "(falls back to the regular weekly target for that "
+                        "date): id=%r date=%r", row["id"], row["date"]
+                    )
+                    continue
+                exceptions.append(
+                    WorkDayException(
+                        id=row["id"],
+                        date=exc_date,
+                        hours=row["hours"],
+                        label=row["label"],
+                    )
                 )
-                for row in rows
-            ]
+            return exceptions
         finally:
             conn.close()
 

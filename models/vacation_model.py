@@ -1,5 +1,5 @@
 import sqlite3
-from datetime import date
+from datetime import date, datetime
 from typing import Optional, Any
 from domain.types import VacationRecord, VacationSummary, CarryOverAllowance, CarryOverLogEntry
 from domain.enums import VacationType
@@ -163,7 +163,8 @@ class VacationModel:
                     from_year=row["from_year"],
                     to_year=row["to_year"],
                     hours=row["hours"],
-                    transferred_at=row["transferred_at"],
+                    transferred_at=datetime.fromisoformat(
+                        row["transferred_at"]),
                 )
                 for row in rows
             ]

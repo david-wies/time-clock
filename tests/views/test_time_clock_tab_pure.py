@@ -6,6 +6,12 @@ unlike the rest of the module, which this repo's CI (headless, no X
 display) cannot instantiate. See tests/views/test_report_dialog.py and
 tests/views/test_help_viewer_dialogs.py for the same headless-CI
 constraint on the other view modules.
+
+Note: malformed-*date* handling now lives in
+models/time_clock_model.py:get_date_exceptions() (WorkDayException.date is
+a real `date` object by the time it reaches this view layer — see
+tests/models/test_time_clock_model.py for that coverage).
+``_build_exc_dict`` only needs to guard against a malformed *hours* value.
 """
 import logging
 from datetime import date
@@ -16,8 +22,8 @@ from views.time_clock_tab import _build_exc_dict
 
 def test_build_exc_dict_parses_valid_rows() -> None:
     raw = [
-        WorkDayException(id=1, date="2026-06-01", hours=4.0, label="Half day"),
-        WorkDayException(id=2, date="2026-06-02", hours=0.0, label="Day off"),
+        WorkDayException(id=1, date=date(2026, 6, 1), hours=4.0, label="Half day"),
+        WorkDayException(id=2, date=date(2026, 6, 2), hours=0.0, label="Day off"),
     ]
     result = _build_exc_dict(raw)
     assert result == {
@@ -26,28 +32,8 @@ def test_build_exc_dict_parses_valid_rows() -> None:
     }
 
 
-def test_build_exc_dict_skips_malformed_date_and_logs_warning(
-        caplog) -> None:
-    raw = [
-        WorkDayException(id=1, date="2026-06-01", hours=4.0, label=None),
-        WorkDayException(id=2, date="not-a-date", hours=8.0, label=None),
-    ]
-    with caplog.at_level(logging.WARNING, logger="views.time_clock_tab"):
-        result = _build_exc_dict(raw)
-
-    # The malformed row is silently dropped from the resulting dict (falls
-    # back to the regular weekly target for that date)...
-    assert result == {date(2026, 6, 1): 4.0}
-    # ...but it must no longer be silent in the log (previously only a
-    # stderr print with no logging framework hook).
-    assert any(
-        record.levelname == "WARNING" and "malformed" in record.message.lower()
-        for record in caplog.records
-    )
-
-
 def test_build_exc_dict_skips_malformed_hours_and_logs_warning(caplog) -> None:
-    raw = [WorkDayException(id=1, date="2026-06-01", hours="not-a-number", label=None)]  # type: ignore[arg-type]
+    raw = [WorkDayException(id=1, date=date(2026, 6, 1), hours="not-a-number", label=None)]  # type: ignore[arg-type]
 
     with caplog.at_level(logging.WARNING, logger="views.time_clock_tab"):
         result = _build_exc_dict(raw)
