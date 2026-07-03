@@ -125,3 +125,30 @@ def test_no_on_handler_error_callback_is_fine(caplog: pytest.LogCaptureFixture) 
     bus.subscribe(Event.TIME_RECORDS_CHANGED, bad_handler)
     with caplog.at_level(logging.ERROR, logger="core.events"):
         bus.publish(Event.TIME_RECORDS_CHANGED)  # must not raise
+
+
+def test_on_handler_error_callback_raising_does_not_propagate(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # A bad subscriber handler must never be able to take down the caller of
+    # publish() -- not even indirectly via a broken on_handler_error callback
+    # (e.g. a UI error dialog invoked while the window is mid-teardown).
+    def broken_callback(message: str) -> None:
+        raise RuntimeError("callback boom")
+
+    bus = EventBus(on_handler_error=broken_callback)
+
+    def bad_handler() -> None:
+        raise ValueError("boom")
+
+    bus.subscribe(Event.TIME_RECORDS_CHANGED, bad_handler)
+    with caplog.at_level(logging.ERROR, logger="core.events"):
+        bus.publish(Event.TIME_RECORDS_CHANGED)  # must not propagate
+
+    assert len(caplog.records) == 2
+    handler_record, callback_record = caplog.records
+    assert "bad_handler" in handler_record.message
+    assert handler_record.exc_info is not None
+
+    assert "on_handler_error callback itself raised" in callback_record.message
+    assert callback_record.exc_info is not None

@@ -46,4 +46,9 @@ class EventBus:
                 )
                 logger.exception(message)
                 if self.on_handler_error is not None:
-                    self.on_handler_error(message)
+                    try:
+                        self.on_handler_error(message)
+                    except Exception:
+                        logger.exception(
+                            "EventBus: on_handler_error callback itself raised"
+                        )
