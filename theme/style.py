@@ -1,6 +1,7 @@
 """Semantic ttk style system with graceful sv-ttk fallback."""
 
 from tkinter import ttk
+from typing import Optional
 
 import sv_ttk
 
@@ -30,6 +31,18 @@ COLORS = {
         "inprogress_bg": "#422006",
     },
 }
+
+
+def resolve_theme_mode(mode: Optional[str]) -> str:
+    """Resolves a stored theme setting (e.g. from SettingsManager) to a
+    concrete ``COLORS`` key. ``"system"`` (no OS dark-mode detection yet),
+    ``None``, and any other unrecognized value fall back to ``"light"``.
+
+    Views that build their own tag/foreground colors (treeviews, labels)
+    should use this instead of hardcoding ``COLORS["light"]`` so they
+    honor the active theme mode the same way ``apply_theme`` does.
+    """
+    return mode if mode in COLORS else "light"
 
 
 def apply_theme(root, mode: str = "light") -> str:

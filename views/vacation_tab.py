@@ -15,7 +15,7 @@ from core.events import EventBus, Event
 from core.timeutil import to_display_date
 from domain.types import VacationRecord
 from domain.enums import VacationType
-from theme.style import COLORS
+from theme.style import COLORS, resolve_theme_mode
 
 from core.hebrew_date import to_hebrew_label as _safe_hebrew
 from views.vacation_record_dialog import VacationRecordDialog
@@ -58,6 +58,7 @@ class VacationTab(ttk.Frame):
         self.settings = settings
         self.bus = bus
         self.root = root
+        self._theme_mode: str = resolve_theme_mode(self.settings.get("theme"))
 
         today = date.today()
         self._selected_year: int = today.year
@@ -128,7 +129,7 @@ class VacationTab(ttk.Frame):
         self._build_legend()
 
     def _build_legend(self) -> None:
-        c = COLORS.get("light", COLORS["light"])
+        c = COLORS.get(self._theme_mode, COLORS["light"])
         legend_frame = ttk.Frame(self)
         legend_frame.pack(fill="x", padx=10, pady=(2, 0))
 
@@ -187,7 +188,7 @@ class VacationTab(ttk.Frame):
         self._tree.bind("<Double-1>", self._on_double_click)
         self._tree.bind("<<TreeviewSelect>>", self._on_tree_select)
 
-        c = COLORS.get("light", COLORS["light"])
+        c = COLORS.get(self._theme_mode, COLORS["light"])
         self._tree.tag_configure("employer", foreground=c["success"])
         self._tree.tag_configure(
             "planned", foreground=c["accent"],
@@ -234,7 +235,11 @@ class VacationTab(ttk.Frame):
         def _guard(fn: Callable) -> Callable:
             def _handler(_e=None) -> None:
                 try:
-                    if self.winfo_exists():
+                    # bind_all is process-wide: all 4 tab frames coexist in the
+                    # Notebook, so without the winfo_ismapped() check a
+                    # shortcut fires on every hidden tab too, not just the
+                    # one currently selected/visible.
+                    if self.winfo_exists() and self.winfo_ismapped():
                         fn()
                 except tk.TclError:
                     pass
@@ -272,7 +277,7 @@ class VacationTab(ttk.Frame):
         carry_over = summary.carry_over
         allowance = summary.allowance
 
-        c = COLORS.get("light", COLORS["light"])
+        c = COLORS.get(self._theme_mode, COLORS["light"])
         if remaining < 0:
             bal_color = c["warning"]
         elif remaining == 0:
@@ -315,7 +320,7 @@ class VacationTab(ttk.Frame):
                     None, f"Total: {_fmt_h(total_hours)}"),
                 tags=("total",),
             )
-            c = COLORS.get("light", COLORS["light"])
+            c = COLORS.get(self._theme_mode, COLORS["light"])
             self._tree.tag_configure("total", foreground=c["fg.muted"],
                                      font=("Helvetica", 9, "bold"))
 

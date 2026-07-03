@@ -14,7 +14,7 @@ from settings import SettingsManager
 from core.events import EventBus, Event
 from core.timeutil import to_display_date
 from domain.types import SicknessRecord
-from theme.style import COLORS
+from theme.style import COLORS, resolve_theme_mode
 
 from core.hebrew_date import to_hebrew_label as _safe_hebrew
 from views.sick_record_dialog import SickRecordDialog
@@ -44,6 +44,7 @@ class SicknessTab(ttk.Frame):
         self.settings = settings
         self.bus = bus
         self.root = root
+        self._theme_mode: str = resolve_theme_mode(self.settings.get("theme"))
 
         today = date.today()
         self._selected_year: int = today.year
@@ -177,7 +178,11 @@ class SicknessTab(ttk.Frame):
         def _guard(fn: Callable) -> Callable:
             def _handler(_e=None) -> None:
                 try:
-                    if self.winfo_exists():
+                    # bind_all is process-wide: all 4 tab frames coexist in the
+                    # Notebook, so without the winfo_ismapped() check a
+                    # shortcut fires on every hidden tab too, not just the
+                    # one currently selected/visible.
+                    if self.winfo_exists() and self.winfo_ismapped():
                         fn()
                 except tk.TclError:
                     pass
@@ -212,7 +217,7 @@ class SicknessTab(ttk.Frame):
         allowance = summary.allowance_hours
         remaining = summary.remaining_hours
 
-        c = COLORS.get("light", COLORS["light"])
+        c = COLORS.get(self._theme_mode, COLORS["light"])
         if remaining < 0:
             bal_color = c["warning"]
         elif remaining == 0:
@@ -266,7 +271,7 @@ class SicknessTab(ttk.Frame):
                 values=self._make_row_values(None, f"Total: {total_hours:.1f}h"),
                 tags=("total",),
             )
-            c = COLORS.get("light", COLORS["light"])
+            c = COLORS.get(self._theme_mode, COLORS["light"])
             self._tree.tag_configure(
                 "total", foreground=c["fg.muted"], font=("Helvetica", 9, "bold")
             )

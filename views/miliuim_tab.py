@@ -14,7 +14,7 @@ from settings import SettingsManager
 from core.events import EventBus, Event
 from core.timeutil import to_display_date
 from domain.types import MiliuimRecord
-from theme.style import COLORS
+from theme.style import COLORS, resolve_theme_mode
 
 from core.hebrew_date import to_hebrew_label as _safe_hebrew
 from views.miliuim_record_dialog import MiliuimRecordDialog
@@ -44,6 +44,7 @@ class MiliuimTab(ttk.Frame):
         self.settings = settings
         self.bus = bus
         self.root = root
+        self._theme_mode: str = resolve_theme_mode(self.settings.get("theme"))
 
         today = date.today()
         self._selected_year: int = today.year
@@ -164,7 +165,11 @@ class MiliuimTab(ttk.Frame):
         def _guard(fn: Callable) -> Callable:
             def _handler(_e=None) -> None:
                 try:
-                    if self.winfo_exists():
+                    # bind_all is process-wide: all 4 tab frames coexist in the
+                    # Notebook, so without the winfo_ismapped() check a
+                    # shortcut fires on every hidden tab too, not just the
+                    # one currently selected/visible.
+                    if self.winfo_exists() and self.winfo_ismapped():
                         fn()
                 except tk.TclError:
                     pass
@@ -189,7 +194,7 @@ class MiliuimTab(ttk.Frame):
     def _refresh_summary(self) -> None:
         year = self._selected_year
         summary = self.model.calculate_summary(year)
-        c = COLORS.get("light", COLORS["light"])
+        c = COLORS.get(self._theme_mode, COLORS["light"])
         text = (
             f"Miliuim {year}: {summary.period_count} period(s)"
             f"  |  {summary.total_days} day(s) total"
@@ -230,7 +235,7 @@ class MiliuimTab(ttk.Frame):
                         f"Total: {total_days} days"),
                 tags=("total",),
             )
-            c = COLORS.get("light", COLORS["light"])
+            c = COLORS.get(self._theme_mode, COLORS["light"])
             self._tree.tag_configure(
                 "total", foreground=c["fg.muted"], font=("Helvetica", 9, "bold"))
 

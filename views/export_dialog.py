@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import csv
+import logging
+import os
 import tkinter as tk
 from datetime import date
 from tkinter import filedialog, messagebox, ttk
@@ -30,6 +32,8 @@ from models.vacation_model import VacationModel
 from views.date_picker import make_date_picker
 
 from core.hebrew_date import to_hebrew_label as _safe_hebrew
+
+logger = logging.getLogger(__name__)
 
 # ── Label maps ───────────────────────────────────────────────────────────────
 
@@ -195,16 +199,29 @@ class ExportDialog(tk.Toplevel):
         if not path:
             return
 
+        # Write to a temp file next to the final path and rename into place
+        # only on success, so a mid-export failure can never leave a
+        # truncated/partial file at `path` that could be mistaken for a
+        # complete payroll/hours record.
+        tmp_path = path + ".tmp"
         try:
             if fmt == "csv":
-                self._export_csv(records, path)
+                self._export_csv(records, tmp_path)
             elif fmt == "excel":
-                self._export_excel(records, path)
+                self._export_excel(records, tmp_path)
             elif fmt == "pdf":
-                self._export_pdf(records, path)
+                self._export_pdf(records, tmp_path)
             else:
                 raise ValueError(f"Unknown format: {fmt!r}")
+            os.replace(tmp_path, path)
         except Exception as exc:
+            logger.exception("Export failed for format=%s path=%s", fmt, path)
+            if os.path.exists(tmp_path):
+                try:
+                    os.remove(tmp_path)
+                except OSError:
+                    logger.warning(
+                        "Could not remove partial export temp file %s", tmp_path)
             messagebox.showerror("Export Failed", str(exc), parent=self)
             return
 

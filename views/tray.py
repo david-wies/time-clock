@@ -12,6 +12,7 @@ from PIL import Image, ImageDraw
 
 from controllers.time_clock_controller import TimeClockController
 from core.events import Event, EventBus
+from domain.enums import WarningCode
 from models.time_clock_model import TimeClockModel
 from settings import SettingsManager
 
@@ -151,7 +152,7 @@ class SystemTray:
 
     def _do_clock_in(self) -> None:
         result = self._controller.clock_in()
-        if not result.ok and result.errors != ["OPEN_RECORD_EXISTS"]:
+        if not result.ok and result.errors != [WarningCode.OPEN_RECORD_EXISTS.value]:
             errors = result.errors
             self._root.after(
                 0,
@@ -163,6 +164,16 @@ class SystemTray:
     def _do_clock_out(self) -> None:
         result = self._controller.clock_out()
         if not result.ok:
+            if result.errors == [WarningCode.MULTIPLE_OPEN_RECORDS.value]:
+                self._root.after(
+                    0,
+                    lambda: tk.messagebox.showinfo(
+                        "Multiple Open Records",
+                        "Multiple open records exist for today.\n"
+                        "Open the main window to choose which one to clock out.",
+                    ),
+                )
+                return
             errors = result.errors
             self._root.after(
                 0,

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import sys
+import logging
 from datetime import date, datetime, time, timedelta
 from typing import Optional, Callable
 
@@ -21,11 +21,13 @@ from core.balance import (
     get_month_range,
 )
 from domain.types import TimeRecord, WorkDayException
-from domain.enums import WorkType
-from theme.style import COLORS
+from domain.enums import WarningCode, WorkType
+from theme.style import COLORS, resolve_theme_mode
 
 from core.hebrew_date import to_hebrew_label as _safe_hebrew
 from views.time_record_dialog import TimeRecordDialog
+
+logger = logging.getLogger(__name__)
 
 
 _MONTH_NAMES = [
@@ -59,8 +61,10 @@ def _build_exc_dict(raw: list[WorkDayException]) -> dict[date, float]:
             d = date.fromisoformat(exc.date)
             result[d] = float(exc.hours)
         except ValueError:
-            print(
-                f"WARNING: skipping date exception with bad date: {exc}", file=sys.stderr)
+            logger.warning(
+                "Skipping malformed work-day exception (falls back to the "
+                "regular weekly target for that date): %r", exc
+            )
     return result
 
 
@@ -82,6 +86,7 @@ class TimeClockTab(ttk.Frame):
         self.settings = settings
         self.bus = bus
         self.root = root
+        self._theme_mode: str = resolve_theme_mode(self.settings.get("theme"))
 
         today = date.today()
         self._view_mode: str = self.settings.get("view_mode") or "month"
@@ -292,7 +297,11 @@ class TimeClockTab(ttk.Frame):
             # type: ignore[assignment]
             def _handler(_e: tk.Event = None) -> None:
                 try:
-                    if self.winfo_exists():
+                    # bind_all is process-wide: all 4 tab frames coexist in the
+                    # Notebook, so without the winfo_ismapped() check a
+                    # shortcut fires on every hidden tab too, not just the
+                    # one currently selected/visible.
+                    if self.winfo_exists() and self.winfo_ismapped():
                         fn()
                 except tk.TclError:
                     pass
@@ -305,7 +314,7 @@ class TimeClockTab(ttk.Frame):
         self.root.bind_all("<F5>",        _guard(self._refresh), add=True)
 
     def _apply_tag_styles(self) -> None:
-        c = COLORS.get("light", COLORS["light"])
+        c = COLORS.get(self._theme_mode, COLORS["light"])
         self._tree.tag_configure(
             "header", foreground=c["fg.muted"], font=("Helvetica", 9, "bold")
         )
@@ -392,7 +401,7 @@ class TimeClockTab(ttk.Frame):
         self._lbl_today.config(text=f"Today: {to_display_date(today)}")
         self._lbl_target.config(text=f"Target: {_fmt_h(target_h)}")
 
-        c = COLORS.get("light", COLORS["light"])
+        c = COLORS.get(self._theme_mode, COLORS["light"])
         if target_h == 0:
             self._lbl_remaining.config(
                 text="Day off", foreground=c["fg.muted"])
@@ -670,7 +679,7 @@ class TimeClockTab(ttk.Frame):
     def _do_clock_in(self) -> None:
         result = self.controller.clock_in()
         if not result.ok:
-            if "OPEN_RECORD_EXISTS" in result.errors:
+            if WarningCode.OPEN_RECORD_EXISTS.value in result.errors:
                 if messagebox.askyesno(
                     "Open Record Exists",
                     "An open record already exists.\nStart a new clock-in anyway?",
@@ -689,7 +698,7 @@ class TimeClockTab(ttk.Frame):
     def _do_clock_out(self) -> None:
         result = self.controller.clock_out()
         if not result.ok:
-            if "MULTIPLE_OPEN_RECORDS" in result.errors:
+            if WarningCode.MULTIPLE_OPEN_RECORDS.value in result.errors:
                 self._pick_record_to_close()
                 return
             messagebox.showerror("Clock Out Failed",

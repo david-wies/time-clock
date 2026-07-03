@@ -9,6 +9,7 @@ from typing import Optional
 
 from controllers.sickness_controller import SicknessController
 from models.sickness_model import SicknessModel
+from domain.enums import WarningCode
 from domain.types import SicknessRecord
 from views.date_picker import make_date_picker
 from views.document_attachment import make_document_picker
@@ -215,7 +216,7 @@ class SickRecordDialog(tk.Toplevel):
 
         if result.ok:
             self.destroy()
-        elif "OVER_BALANCE_WARNING" in result.errors:
+        elif WarningCode.OVER_BALANCE.value in result.errors:
             if messagebox.askyesno(
                 "Balance Exceeded",
                 "This exceeds your remaining sick hour balance.\nSave anyway?",

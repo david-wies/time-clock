@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+import sqlite3
 import tkinter as tk
 from tkinter import ttk, messagebox
 from datetime import date
@@ -9,9 +11,11 @@ from typing import Optional
 
 from controllers.vacation_controller import VacationController
 from models.vacation_model import VacationModel
-from domain.enums import VacationType
+from domain.enums import VacationType, WarningCode
 from domain.types import VacationRecord
 from views.date_picker import make_date_picker
+
+logger = logging.getLogger(__name__)
 
 _VTYPE_OPTIONS: list[tuple[VacationType, str]] = [
     (VacationType.ANNUAL_LEAVE, "Annual Leave"),
@@ -146,18 +150,28 @@ class VacationRecordDialog(tk.Toplevel):
     def _update_hours_cap(self) -> None:
         try:
             d = self._get_date()
+        except (ValueError, IndexError) as exc:
+            logger.warning("Could not read date for hours-cap lookup: %s", exc)
+            return
+
+        try:
             cap = self._model.get_daily_target_for_date(d)
-            if cap == 0.0:
-                cap = 8.0
-            self._spn_hours.config(to=cap)
-            self._lbl_hours_hint.config(text=f"(max {cap:.1f}h for this day)")
-            try:
-                current = float(self._var_hours.get())
-                if current > cap:
-                    self._var_hours.set(f"{cap:.1f}")
-            except ValueError:
-                pass
-        except Exception:
+        except sqlite3.Error:
+            logger.exception(
+                "Database error looking up the daily hours cap for %s; "
+                "the max-hours hint will not update", d
+            )
+            return
+
+        if cap == 0.0:
+            cap = 8.0
+        self._spn_hours.config(to=cap)
+        self._lbl_hours_hint.config(text=f"(max {cap:.1f}h for this day)")
+        try:
+            current = float(self._var_hours.get())
+            if current > cap:
+                self._var_hours.set(f"{cap:.1f}")
+        except ValueError:
             pass
 
     # ─────────────────────────── Validation ─────────────────────────────────
@@ -207,7 +221,7 @@ class VacationRecordDialog(tk.Toplevel):
             record, confirm_over_balance=confirm_over_balance)
         if result.ok:
             self.destroy()
-        elif "OVER_BALANCE_WARNING" in result.errors:
+        elif WarningCode.OVER_BALANCE.value in result.errors:
             if messagebox.askyesno(
                 "Balance Exceeded",
                 "This exceeds your remaining vacation balance.\nSave anyway?",
