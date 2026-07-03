@@ -1,9 +1,11 @@
 import copy
 import json
+import logging
 import sqlite3
-import sys
 from typing import Any
 from db.database import Database
+
+logger = logging.getLogger(__name__)
 
 
 class SettingsManager:
@@ -35,9 +37,11 @@ class SettingsManager:
             if row:
                 return json.loads(row["value"])
         except json.JSONDecodeError as exc:
-            print(f"WARNING: SettingsManager: corrupted value for key {key!r}, using default: {exc}", file=sys.stderr)
+            logger.warning(
+                "SettingsManager: corrupted value for key %r, using default: %s", key, exc)
         except sqlite3.Error as exc:
-            print(f"ERROR: SettingsManager: DB read failed for key {key!r}: {exc}", file=sys.stderr)
+            logger.warning(
+                "SettingsManager: DB read failed for key %r: %s", key, exc)
         finally:
             conn.close()
 

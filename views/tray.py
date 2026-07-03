@@ -1,5 +1,6 @@
 """System tray icon with quick clock-in/out actions (§21.4)."""
 
+import logging
 import threading
 import tkinter as tk
 import tkinter.messagebox
@@ -16,6 +17,7 @@ from domain.enums import WarningCode
 from models.time_clock_model import TimeClockModel
 from settings import SettingsManager
 
+logger = logging.getLogger(__name__)
 
 _ICON_SIZE = 64
 _BADGE_COLOR = (22, 163, 74, 255)   # success green
@@ -70,10 +72,8 @@ class SystemTray:
         try:
             self._base_icon: Image.Image = _load_base_icon()
         except (FileNotFoundError, OSError):
-            print(
-                f"[SystemTray] Warning: icon file not found at {_PNG_PATH!r};"
-                " using fallback icon."
-            )
+            logger.warning(
+                "icon file not found at %r; using fallback icon.", _PNG_PATH)
             self._base_icon = Image.new(
                 "RGBA", (_ICON_SIZE, _ICON_SIZE), (80, 120, 200, 255)
             )
