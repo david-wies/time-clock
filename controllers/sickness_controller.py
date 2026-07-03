@@ -10,17 +10,19 @@ logger = logging.getLogger(__name__)
 
 
 def validate_sick_record(record: SicknessRecord) -> list[str]:
-    """Pure validation function for SicknessRecord (enforces §7.3 table)."""
-    errors = []
+    """Pure validation function for SicknessRecord (enforces §7.3 table).
 
-    if record.date is None:
-        errors.append("Please enter a valid date.")
+    The 0.5-24 bound is fixed policy (not context-dependent), but is kept
+    here rather than in SicknessRecord.__post_init__: only the universal
+    non-negative floor is enforced at construction (see task report for the
+    "fold non-negative into __post_init__" decision). Note-length is
+    context-free and is enforced unconditionally by
+    SicknessRecord.__post_init__ instead.
+    """
+    errors = []
 
     if record.hours < 0.5 or record.hours > 24.0:
         errors.append("Hours must be between 0.5 and 24.")
-
-    if record.note and len(record.note) > 500:
-        errors.append("Note is too long (max 500 characters).")
 
     return errors
 

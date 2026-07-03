@@ -7,7 +7,6 @@ from domain.types import TimeRecord, Result
 from domain.enums import WarningCode, WorkType
 from models.time_clock_model import TimeClockModel
 from settings import SettingsManager
-from core.timeutil import duration
 
 logger = logging.getLogger(__name__)
 
@@ -30,18 +29,17 @@ def times_overlap(s1: time, e1: Optional[time], s2: time, e2: Optional[time]) ->
 
 
 def validate_time_record(record: TimeRecord, existing_records: list[TimeRecord]) -> list[str]:
-    """Pure validation function for TimeRecord (enforces §5.6 table)."""
+    """Pure validation function for TimeRecord (enforces §5.6 table).
+
+    Only context-dependent checks live here — they need data
+    TimeRecord itself doesn't have (other records for overlap detection).
+    Context-free invariants (break_minutes non-negative, break not exceeding
+    shift length, office required for in-site, note length) are enforced
+    unconditionally by TimeRecord.__post_init__ and are not re-checked here.
+    """
     errors = []
 
-    # date required
-    if record.date is None:
-        errors.append("Please enter a valid date.")
-
-    # start_time required
-    if record.start_time is None:
-        errors.append("Start time must be in HH:MM format.")
-
-    if record.end_time is not None and record.start_time is not None:
+    if record.end_time is not None:
         start_mins = record.start_time.hour * 60 + record.start_time.minute
         end_mins = record.end_time.hour * 60 + record.end_time.minute
 
@@ -52,36 +50,16 @@ def validate_time_record(record: TimeRecord, existing_records: list[TimeRecord])
             # Overnight shift — warn, not error (§5.7)
             errors.append(WarningCode.OVERNIGHT_SHIFT.value)
 
-        # Break must not exceed shift duration
-        raw_dur = duration(record.start_time, record.end_time, 0)
-        break_hours = record.break_minutes / 60.0
-        if break_hours > raw_dur:
-            errors.append("Break cannot exceed shift length.")
-
-    if record.break_minutes < 0:
-        errors.append("Break minutes must be non-negative.")
-
-    # work_type required
-    if record.work_type is None:
-        errors.append("Please select a work type.")
-
-    # office required for in_site
-    if record.work_type == WorkType.IN_SITE:
-        if not record.office or not record.office.strip():
-            errors.append("Please select or enter an office.")
-
-    # note length
-    if record.note and len(record.note) > 500:
-        errors.append("Note is too long (max 500 characters).")
-
-    # overlap check (only if date and start_time valid)
-    if record.date is not None and record.start_time is not None:
-        for existing in existing_records:
-            if existing.id == record.id:
-                continue
-            if times_overlap(record.start_time, record.end_time, existing.start_time, existing.end_time):
-                errors.append("Record overlaps with an existing time record.")
-                break
+    # overlap check
+    for existing in existing_records:
+        if existing.id == record.id:
+            continue
+        if times_overlap(
+            record.start_time, record.end_time,
+            existing.start_time, existing.end_time,
+        ):
+            errors.append("Record overlaps with an existing time record.")
+            break
 
     return errors
 

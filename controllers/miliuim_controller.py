@@ -7,39 +7,28 @@ from models.miliuim_model import MiliuimModel
 logger = logging.getLogger(__name__)
 
 
-def validate_miliuim_record(record: MiliuimRecord) -> list[str]:
-    errors = []
-    if record.start_date is None:
-        errors.append("Please enter a valid start date.")
-    if record.end_date is None:
-        errors.append("Please enter a valid end date.")
-    if record.start_date and record.end_date and record.end_date < record.start_date:
-        errors.append("End date must be on or after start date.")
-    if record.note and len(record.note) > 500:
-        errors.append("Note is too long (max 500 characters).")
-    return errors
-
-
 class MiliuimController:
+    """Note: there is no free validate_miliuim_record() function anymore —
+    every check it used to perform (start/end date required, end >= start,
+    note length) was context-free and is now enforced unconditionally by
+    MiliuimRecord.__post_init__. Only the overlap check remains here, since
+    it needs other persisted records (context-dependent)."""
+
     def __init__(self, model: MiliuimModel) -> None:
         self.model = model
 
     def save_record(self, record: MiliuimRecord) -> Result:
-        errors = validate_miliuim_record(record)
-        if errors:
-            return Result(ok=False, errors=errors)
-
-        if record.start_date is not None and record.end_date is not None:
-            existing = self.model.get_records_in_date_range(
-                record.start_date, record.end_date)
-            for other in existing:
-                if other.id == record.id:
-                    continue
-                errors.append(
-                    "Period overlaps with an existing Miliuim period "
-                    f"({other.start_date.isoformat()} – {other.end_date.isoformat()})."
-                )
-                break
+        errors: list[str] = []
+        existing = self.model.get_records_in_date_range(
+            record.start_date, record.end_date)
+        for other in existing:
+            if other.id == record.id:
+                continue
+            errors.append(
+                "Period overlaps with an existing Miliuim period "
+                f"({other.start_date.isoformat()} – {other.end_date.isoformat()})."
+            )
+            break
         if errors:
             return Result(ok=False, errors=errors)
 

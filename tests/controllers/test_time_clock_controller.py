@@ -46,30 +46,14 @@ def test_save_overlapping_record(controller: TimeClockController) -> None:
     assert "overlaps" in res.errors[0]
 
 
-def test_save_break_exceeds_shift(controller: TimeClockController) -> None:
-    # 09:00 - 10:00 (60 mins), break is 75 mins
-    rec = TimeRecord(None, date(2026, 6, 26), time(
-        9, 0), time(10, 0), 75, WorkType.REMOTE)
-    res = controller.save_record(rec)
-    assert res.ok is False
-    assert "Break cannot exceed shift length" in res.errors[0]
-
-
-def test_save_in_site_no_office(controller: TimeClockController) -> None:
-    rec = TimeRecord(None, date(2026, 6, 26), time(
-        9, 0), time(17, 0), 30, WorkType.IN_SITE, office=None)
-    res = controller.save_record(rec)
-    assert res.ok is False
-    assert "select or enter an office" in res.errors[0]
-
-
-def test_save_note_too_long(controller: TimeClockController) -> None:
-    long_note = "a" * 501
-    rec = TimeRecord(None, date(2026, 6, 26), time(9, 0), time(
-        17, 0), 30, WorkType.REMOTE, note=long_note)
-    res = controller.save_record(rec)
-    assert res.ok is False
-    assert "Note is too long" in res.errors[0]
+# NOTE: break-exceeds-shift-length, in-site-without-office, and
+# note-too-long are now context-free invariants enforced unconditionally by
+# TimeRecord.__post_init__ (domain/types.py) — constructing an invalid
+# TimeRecord raises ValueError before controller.save_record() is ever
+# reached. See tests/domain/test_types.py for that coverage
+# (test_time_record_break_exceeding_shift_length_raises,
+# test_time_record_in_site_without_office_raises,
+# test_time_record_note_too_long_raises).
 
 
 def test_clock_in_out_flow(controller: TimeClockController) -> None:

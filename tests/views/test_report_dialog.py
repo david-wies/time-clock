@@ -65,6 +65,7 @@ def test_collect_documents_ignores_records_without_document(db: Database, event_
         end_time=time(16, 0),
         break_minutes=0,
         work_type=WorkType.IN_SITE,
+        office="Main Office",
     )
     tc_model.insert_record(rec)
 

@@ -31,19 +31,13 @@ def test_save_multi_day_period(controller: MiliuimController) -> None:
     assert rec.id is not None
 
 
-def test_save_end_before_start_fails(controller: MiliuimController) -> None:
-    rec = MiliuimRecord(id=None, start_date=date(
-        2026, 6, 22), end_date=date(2026, 6, 20))
-    res = controller.save_record(rec)
-    assert res.ok is False
-    assert any("end date" in e.lower() for e in res.errors)
-
-
-def test_save_note_too_long_fails(controller: MiliuimController) -> None:
-    rec = MiliuimRecord(id=None, start_date=date(2026, 6, 1),
-                        end_date=date(2026, 6, 5), note="x" * 501)
-    res = controller.save_record(rec)
-    assert res.ok is False
+# NOTE: end-before-start and note-too-long are now context-free invariants
+# enforced unconditionally by MiliuimRecord.__post_init__
+# (domain/types.py) — constructing an invalid MiliuimRecord raises
+# ValueError before controller.save_record() is ever reached. See
+# tests/domain/test_types.py for that coverage
+# (test_miliuim_record_end_before_start_raises,
+# test_miliuim_record_note_too_long_raises).
 
 
 def test_delete_record(controller: MiliuimController) -> None:
