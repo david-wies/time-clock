@@ -7,3 +7,28 @@ select = ["E", "W", "F", "I"]
 
 [tool.mypy]
 strict = true
+ignore_missing_imports = true
+explicit_package_bases = true
+
+# These packages are not yet held to the --strict bar (213 pre-existing
+# errors as of the codebase review that introduced this consolidation).
+# CI and pre-commit only ever scan domain/, core/, controllers/ explicitly
+# (see .github/workflows/ci.yml and .pre-commit-config.yaml), so these
+# overrides are currently inert -- but they must live here as the single
+# source of truth rather than in a separate mypy.ini, which mypy would
+# otherwise treat as taking precedence over this section wholesale.
+[[tool.mypy.overrides]]
+module = ["db.*"]
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = ["settings"]
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = ["models.*"]
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = ["views.*"]
+ignore_errors = true
