@@ -95,6 +95,38 @@ def test_unpaid_leave_not_counted_as_used(db: Database, event_bus: EventBus) -> 
     assert summary.remaining == 160.0
 
 
+def test_calculate_vacation_summary_combines_carry_over_and_used_in_one_query(
+    db: Database, event_bus: EventBus
+) -> None:
+    """calculate_vacation_summary() combines the carry-over-credit and
+    used-debit SUMs into a single conditional-aggregation query instead of
+    two sequential SELECT SUM(...) queries -- this test exercises a year
+    with *both* record kinds present simultaneously to confirm the
+    combined query still attributes hours to the right bucket."""
+    model = VacationModel(db, event_bus)
+    model.save_settings(2026, 160.0, 40.0)
+
+    model.insert_record(
+        VacationRecord(None, date(2026, 1, 1), 15.0, VacationType.CARRY_OVER))
+    model.insert_record(
+        VacationRecord(None, date(2026, 3, 10), 24.0, VacationType.ANNUAL_LEAVE))
+    model.insert_record(
+        VacationRecord(None, date(2026, 5, 5), 8.0, VacationType.PUBLIC_HOLIDAY))
+    model.insert_record(
+        VacationRecord(None, date(2026, 8, 20), 16.0, VacationType.SPECIAL_LEAVE))
+    # Not counted as "used" -- must not leak into either bucket.
+    model.insert_record(
+        VacationRecord(None, date(2026, 9, 1), 40.0, VacationType.UNPAID_LEAVE))
+
+    summary = model.calculate_vacation_summary(2026)
+
+    assert summary.allowance == 160.0
+    assert summary.carry_over == 15.0
+    assert summary.total_pool == 175.0
+    assert summary.used == 48.0  # 24 + 8 + 16
+    assert summary.remaining == 127.0  # 175 - 48
+
+
 def test_vacation_balance_and_carry_over(db: Database, event_bus: EventBus) -> None:
     model = VacationModel(db, event_bus)
 

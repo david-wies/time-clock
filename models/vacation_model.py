@@ -200,27 +200,23 @@ class VacationModel:
         conn = self.db.get_connection()
         try:
             cursor = conn.cursor()
-            # Carry over credits for the year
+            # Carry-over credits and used debits in a single pass over the
+            # table via conditional aggregation, instead of two sequential
+            # SUM(...) queries over the same date range.
             cursor.execute(
                 """
-                SELECT SUM(hours) as total FROM vacation_record
-                WHERE date >= ? AND date <= ? AND vtype = 'carry_over';
+                SELECT
+                    SUM(CASE WHEN vtype = 'carry_over' THEN hours ELSE 0 END) AS carry_over,
+                    SUM(CASE WHEN vtype IN ('annual_leave', 'public_holiday', 'special_leave')
+                        THEN hours ELSE 0 END) AS used
+                FROM vacation_record
+                WHERE date >= ? AND date <= ?;
                 """,
                 (f"{year:04d}-01-01", f"{year:04d}-12-31")
             )
             row = cursor.fetchone()
-            carry_over = row["total"] if row and row["total"] is not None else 0.0
-
-            # Used debits (annual_leave, public_holiday, special_leave)
-            cursor.execute(
-                """
-                SELECT SUM(hours) as total FROM vacation_record
-                WHERE date >= ? AND date <= ? AND vtype IN ('annual_leave', 'public_holiday', 'special_leave');
-                """,
-                (f"{year:04d}-01-01", f"{year:04d}-12-31")
-            )
-            row = cursor.fetchone()
-            used = row["total"] if row and row["total"] is not None else 0.0
+            carry_over = row["carry_over"] if row and row["carry_over"] is not None else 0.0
+            used = row["used"] if row and row["used"] is not None else 0.0
         finally:
             conn.close()
 
