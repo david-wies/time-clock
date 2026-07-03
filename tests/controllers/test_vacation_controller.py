@@ -54,6 +54,36 @@ def test_save_invalid_hours(controller: VacationController) -> None:
     assert controller.save_record(rec_high).ok is False
 
 
+# ──────────── PUBLIC_HOLIDAY's 0-hour floor exception (§ migration comment,
+# db/database.py version-2 vacation_record.hours relaxation) ────────────────
+
+def test_save_public_holiday_with_zero_hours_succeeds(controller: VacationController) -> None:
+    """PUBLIC_HOLIDAY records are the one VacationType allowed to have
+    hours=0 (floor of 0, instead of the usual 0.5 minimum) — this exists
+    specifically to support 0-hour holiday imports (see the version-2
+    migration comment in db/database.py relaxing vacation_record.hours from
+    CHECK(hours > 0) to CHECK(hours >= 0))."""
+    controller.model.save_settings(2026, 160.0, 40.0)
+    rec = VacationRecord(None, date(2026, 12, 25), 0.0, VacationType.PUBLIC_HOLIDAY)
+
+    res = controller.save_record(rec)
+
+    assert res.ok is True
+    assert rec.id is not None
+
+
+def test_save_non_public_holiday_with_zero_hours_fails(controller: VacationController) -> None:
+    """The 0-hour floor is specific to PUBLIC_HOLIDAY, not a general
+    relaxation — every other VacationType still requires hours >= 0.5."""
+    controller.model.save_settings(2026, 160.0, 40.0)
+    rec = VacationRecord(None, date(2026, 12, 25), 0.0, VacationType.ANNUAL_LEAVE)
+
+    res = controller.save_record(rec)
+
+    assert res.ok is False
+    assert rec.id is None
+
+
 # ──────────── Defense-in-depth: mutate-then-save bypasses __post_init__ ─────
 
 def test_save_record_rejects_negative_hours_after_mutation(
