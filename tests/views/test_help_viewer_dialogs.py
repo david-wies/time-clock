@@ -326,3 +326,25 @@ def test_report_dialog_wrappers_delegate_with_correct_kind(
     getattr(help_viewer, func_name)(sentinel_parent)
 
     assert calls == [(sentinel_parent, kind)]
+
+
+def test_show_about_displays_app_version(monkeypatch):
+    """The About dialog must surface help_viewer._APP_VERSION (sourced from
+    version.__version__) so a user can answer bug_report.yml's "app
+    version" environment field without guessing."""
+    label_texts = []
+
+    def _fake_label(*_args, **kwargs):
+        if 'text' in kwargs:
+            label_texts.append(kwargs['text'])
+        return mock.MagicMock()
+
+    monkeypatch.setattr(help_viewer.tk, 'Toplevel', lambda *_a, **_k: mock.MagicMock())
+    monkeypatch.setattr(help_viewer.ttk, 'Frame', lambda *_a, **_k: mock.MagicMock())
+    monkeypatch.setattr(help_viewer.ttk, 'Label', _fake_label)
+    monkeypatch.setattr(help_viewer.tk, 'Label', _fake_label)
+    monkeypatch.setattr(help_viewer.ttk, 'Button', lambda *_a, **_k: mock.MagicMock())
+
+    help_viewer.show_about(None)
+
+    assert f'Version {help_viewer._APP_VERSION}' in label_texts

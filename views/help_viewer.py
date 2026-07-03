@@ -8,6 +8,8 @@ from urllib.parse import urlencode
 import tkinter as tk
 from tkinter import ttk
 
+from version import __version__ as _APP_VERSION
+
 
 _REPO_URL = 'https://github.com/david-wies/time-clock'
 
@@ -41,6 +43,12 @@ def _build_issue_url(kind: str, name: str, email: str, message: str) -> str:
         'contact': f'{name} <{email}>',
         config.field_id: message,
     }
+    if kind == 'bug':
+        # bug_report.yml's "Environment" field asks for OS, Python version,
+        # and app version -- prefill the one part we actually know so the
+        # user doesn't have to look it up, leaving OS/Python for them to
+        # fill in.
+        params['environment'] = f'App version: v{_APP_VERSION}\n'
     return f'{_REPO_URL}/issues/new?{urlencode(params)}'
 
 
@@ -88,7 +96,7 @@ def show_about(parent=None) -> None:
 
     lines = [
         'Time Clock Application',
-        'Version 1.1.0',
+        f'Version {_APP_VERSION}',
         '',
         'A desktop time tracking application',
         'for managing work hours, vacation,',

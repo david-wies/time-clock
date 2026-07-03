@@ -3,6 +3,7 @@ from urllib.parse import parse_qs, urlparse
 
 import pytest
 
+from version import __version__ as _APP_VERSION
 from views.help_viewer import _build_issue_url
 
 
@@ -27,6 +28,24 @@ def test_build_issue_url_feature():
     assert qs['template'] == ['feature_request.yml']
     assert qs['contact'] == ['John Smith <john@example.com>']
     assert qs['problem'] == ['Add dark mode']
+
+
+def test_build_issue_url_bug_prefills_environment_with_app_version():
+    """bug_report.yml's "Environment" field asks for OS/Python/app version;
+    prefill the one part we can answer ourselves so users reporting a bug
+    don't have to look it up manually. feature_request.yml has no
+    "environment" field, so this is bug-report-only."""
+    url = _build_issue_url(
+        'bug', 'Jane Doe', 'jane@example.com', 'It crashes on save')
+    qs = parse_qs(urlparse(url).query)
+    assert qs['environment'] == [f'App version: v{_APP_VERSION}\n']
+
+
+def test_build_issue_url_feature_has_no_environment_field():
+    url = _build_issue_url(
+        'feature', 'John Smith', 'john@example.com', 'Add dark mode')
+    qs = parse_qs(urlparse(url).query)
+    assert 'environment' not in qs
 
 
 def test_build_issue_url_encodes_special_characters():
