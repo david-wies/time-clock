@@ -79,5 +79,12 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements-dev.txt
 
-      - name: Run pytest
-        run: pytest tests/
+      # Scoped to this repo's first-party packages (excludes tests/ itself
+      # and main.py's entry point) so the report reflects meaningfully
+      # testable source, not noise.
+      - name: Run pytest with coverage
+        run: >
+          pytest tests/
+          --cov=domain --cov=core --cov=controllers --cov=db
+          --cov=models --cov=settings --cov=theme --cov=views
+          --cov-report=term-missing
