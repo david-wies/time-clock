@@ -1,7 +1,11 @@
+import logging
+import sqlite3
 from typing import Optional
 from domain.types import VacationRecord, Result
-from domain.enums import VacationType
+from domain.enums import VacationType, WarningCode
 from models.vacation_model import VacationModel
+
+logger = logging.getLogger(__name__)
 
 
 def validate_vacation_record(record: VacationRecord, max_hours: float = 24.0) -> list[str]:
@@ -64,7 +68,7 @@ class VacationController:
                 old_hours - record.hours
 
             if projected_remaining < 0 and not confirm_over_balance:
-                return Result(ok=False, errors=["OVER_BALANCE_WARNING"])
+                return Result(ok=False, errors=[WarningCode.OVER_BALANCE.value])
 
         try:
             if record.id is None:
@@ -73,8 +77,9 @@ class VacationController:
             else:
                 self.model.update_record(record)
             return Result(ok=True, errors=[])
-        except Exception as e:
-            return Result(ok=False, errors=[f"Database error: {str(e)}"])
+        except sqlite3.Error as e:
+            logger.exception("Database error while saving vacation record %r", record)
+            return Result(ok=False, errors=[f"Database error: {e}"])
 
     def add_carry_over(self, from_year: int, to_year: int, hours: float) -> Result:
         """Validates and records a carry-over allocation."""
@@ -94,12 +99,17 @@ class VacationController:
         try:
             self.model.add_carry_over(from_year, to_year, hours)
             return Result(ok=True, errors=[])
-        except Exception as e:
-            return Result(ok=False, errors=[f"Database error: {str(e)}"])
+        except sqlite3.Error as e:
+            logger.exception(
+                "Database error while adding carry-over from_year=%s to_year=%s",
+                from_year, to_year)
+            return Result(ok=False, errors=[f"Database error: {e}"])
 
     def delete_record(self, record_id: int) -> Result:
         try:
             self.model.delete_record(record_id)
             return Result(ok=True, errors=[])
-        except Exception as e:
-            return Result(ok=False, errors=[f"Database error: {str(e)}"])
+        except sqlite3.Error as e:
+            logger.exception(
+                "Database error while deleting vacation record id=%s", record_id)
+            return Result(ok=False, errors=[f"Database error: {e}"])

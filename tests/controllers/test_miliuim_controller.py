@@ -1,3 +1,5 @@
+import sqlite3
+
 import pytest
 from datetime import date
 from domain.types import MiliuimRecord
@@ -97,3 +99,128 @@ def test_clip_days_clips_to_month_when_given(controller: MiliuimController) -> N
     assert controller.model.clip_days(rec, 2026, month=2) == 5   # Feb 1-5
     assert controller.model.clip_days(rec, 2026, month=3) == 0   # no overlap
     assert controller.model.clip_days(rec, 2026) == 12           # whole year
+
+
+# ─────────────────────────── Overlap validation ─────────────────────────────
+
+def test_save_overlapping_period_rejected(controller: MiliuimController) -> None:
+    controller.save_record(MiliuimRecord(
+        None, date(2026, 6, 1), date(2026, 6, 10)))
+
+    overlapping = MiliuimRecord(None, date(2026, 6, 5), date(2026, 6, 15))
+    res = controller.save_record(overlapping)
+
+    assert res.ok is False
+    assert any("overlap" in e.lower() for e in res.errors)
+    assert overlapping.id is None
+
+
+def test_save_non_overlapping_period_accepted(controller: MiliuimController) -> None:
+    controller.save_record(MiliuimRecord(
+        None, date(2026, 6, 1), date(2026, 6, 10)))
+
+    non_overlapping = MiliuimRecord(None, date(2026, 7, 1), date(2026, 7, 10))
+    res = controller.save_record(non_overlapping)
+
+    assert res.ok is True
+    assert non_overlapping.id is not None
+
+
+def test_save_back_to_back_periods_accepted(controller: MiliuimController) -> None:
+    """Boundary case: one period ends the day before the next starts — not an overlap."""
+    controller.save_record(MiliuimRecord(
+        None, date(2026, 6, 1), date(2026, 6, 10)))
+
+    back_to_back = MiliuimRecord(None, date(2026, 6, 11), date(2026, 6, 20))
+    res = controller.save_record(back_to_back)
+
+    assert res.ok is True
+    assert back_to_back.id is not None
+
+
+def test_save_period_sharing_boundary_day_rejected(controller: MiliuimController) -> None:
+    """Boundary case: new period starts on the same day the existing one ends —
+    that day would be double-counted, so it must be rejected as an overlap."""
+    controller.save_record(MiliuimRecord(
+        None, date(2026, 6, 1), date(2026, 6, 10)))
+
+    shares_boundary = MiliuimRecord(None, date(2026, 6, 10), date(2026, 6, 20))
+    res = controller.save_record(shares_boundary)
+
+    assert res.ok is False
+    assert any("overlap" in e.lower() for e in res.errors)
+
+
+def test_editing_record_does_not_overlap_with_itself(controller: MiliuimController) -> None:
+    """Saving (updating) an existing record must not flag it as overlapping itself."""
+    rec = MiliuimRecord(None, date(2026, 6, 1), date(2026, 6, 10))
+    controller.save_record(rec)
+    assert rec.id is not None
+
+    rec.note = "updated"
+    res = controller.save_record(rec)
+
+    assert res.ok is True
+
+
+def test_editing_record_into_overlap_with_another_rejected(controller: MiliuimController) -> None:
+    controller.save_record(MiliuimRecord(
+        None, date(2026, 1, 1), date(2026, 1, 10)))
+    other = MiliuimRecord(None, date(2026, 3, 1), date(2026, 3, 10))
+    controller.save_record(other)
+    assert other.id is not None
+
+    other.start_date = date(2026, 1, 5)
+    other.end_date = date(2026, 1, 15)
+    res = controller.save_record(other)
+
+    assert res.ok is False
+    assert any("overlap" in e.lower() for e in res.errors)
+
+
+# ────────────────────── Exception narrowing (§ codebase review G2 #1) ───────
+
+def test_save_record_sqlite_error_is_caught_and_returned(
+        controller: MiliuimController, monkeypatch: pytest.MonkeyPatch) -> None:
+    rec = MiliuimRecord(None, date(2026, 6, 22), date(2026, 6, 22))
+
+    def _boom(_record: MiliuimRecord) -> int:
+        raise sqlite3.OperationalError("database is locked")
+    monkeypatch.setattr(controller.model, "insert_record", _boom)
+
+    res = controller.save_record(rec)
+    assert res.ok is False
+    assert "Database error" in res.errors[0]
+
+
+def test_save_record_non_sqlite_error_propagates(
+        controller: MiliuimController, monkeypatch: pytest.MonkeyPatch) -> None:
+    rec = MiliuimRecord(None, date(2026, 6, 22), date(2026, 6, 22))
+
+    def _boom(_record: MiliuimRecord) -> int:
+        raise AttributeError("boom")
+    monkeypatch.setattr(controller.model, "insert_record", _boom)
+
+    with pytest.raises(AttributeError):
+        controller.save_record(rec)
+
+
+def test_delete_record_sqlite_error_is_caught_and_returned(
+        controller: MiliuimController, monkeypatch: pytest.MonkeyPatch) -> None:
+    def _boom(_record_id: int) -> None:
+        raise sqlite3.Error("db error")
+    monkeypatch.setattr(controller.model, "delete_record", _boom)
+
+    res = controller.delete_record(1)
+    assert res.ok is False
+    assert "Database error" in res.errors[0]
+
+
+def test_delete_record_non_sqlite_error_propagates(
+        controller: MiliuimController, monkeypatch: pytest.MonkeyPatch) -> None:
+    def _boom(_record_id: int) -> None:
+        raise KeyError("boom")
+    monkeypatch.setattr(controller.model, "delete_record", _boom)
+
+    with pytest.raises(KeyError):
+        controller.delete_record(1)

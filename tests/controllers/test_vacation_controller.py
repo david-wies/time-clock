@@ -1,3 +1,5 @@
+import sqlite3
+
 import pytest
 from datetime import date
 from domain.types import VacationRecord
@@ -125,3 +127,80 @@ def test_save_hours_exceed_daily_target(controller: VacationController, event_bu
     rec2 = VacationRecord(None, date(2026, 6, 22), 8.0, VacationType.ANNUAL_LEAVE, None)
     res2 = controller.save_record(rec2)
     assert res2.ok is True
+
+
+# ────────────────────── Exception narrowing (§ codebase review G2 #1) ───────
+
+def test_save_record_sqlite_error_is_caught_and_returned(
+        controller: VacationController, monkeypatch: pytest.MonkeyPatch) -> None:
+    controller.model.save_settings(2026, 160.0, 40.0)
+    rec = VacationRecord(None, date(2026, 7, 15), 8.0, VacationType.ANNUAL_LEAVE)
+
+    def _boom(_record: VacationRecord) -> int:
+        raise sqlite3.OperationalError("database is locked")
+    monkeypatch.setattr(controller.model, "insert_record", _boom)
+
+    res = controller.save_record(rec)
+    assert res.ok is False
+    assert "Database error" in res.errors[0]
+
+
+def test_save_record_non_sqlite_error_propagates(
+        controller: VacationController, monkeypatch: pytest.MonkeyPatch) -> None:
+    controller.model.save_settings(2026, 160.0, 40.0)
+    rec = VacationRecord(None, date(2026, 7, 15), 8.0, VacationType.ANNUAL_LEAVE)
+
+    def _boom(_record: VacationRecord) -> int:
+        raise AttributeError("boom")
+    monkeypatch.setattr(controller.model, "insert_record", _boom)
+
+    with pytest.raises(AttributeError):
+        controller.save_record(rec)
+
+
+def test_add_carry_over_sqlite_error_is_caught_and_returned(
+        controller: VacationController, monkeypatch: pytest.MonkeyPatch) -> None:
+    controller.model.save_settings(2025, 40.0, 10.0)
+    controller.model.save_settings(2026, 40.0, 10.0)
+
+    def _boom(_from: int, _to: int, _hours: float) -> None:
+        raise sqlite3.Error("db error")
+    monkeypatch.setattr(controller.model, "add_carry_over", _boom)
+
+    res = controller.add_carry_over(2025, 2026, 5.0)
+    assert res.ok is False
+    assert "Database error" in res.errors[0]
+
+
+def test_add_carry_over_non_sqlite_error_propagates(
+        controller: VacationController, monkeypatch: pytest.MonkeyPatch) -> None:
+    controller.model.save_settings(2025, 40.0, 10.0)
+    controller.model.save_settings(2026, 40.0, 10.0)
+
+    def _boom(_from: int, _to: int, _hours: float) -> None:
+        raise TypeError("boom")
+    monkeypatch.setattr(controller.model, "add_carry_over", _boom)
+
+    with pytest.raises(TypeError):
+        controller.add_carry_over(2025, 2026, 5.0)
+
+
+def test_delete_record_sqlite_error_is_caught_and_returned(
+        controller: VacationController, monkeypatch: pytest.MonkeyPatch) -> None:
+    def _boom(_record_id: int) -> None:
+        raise sqlite3.Error("db error")
+    monkeypatch.setattr(controller.model, "delete_record", _boom)
+
+    res = controller.delete_record(1)
+    assert res.ok is False
+    assert "Database error" in res.errors[0]
+
+
+def test_delete_record_non_sqlite_error_propagates(
+        controller: VacationController, monkeypatch: pytest.MonkeyPatch) -> None:
+    def _boom(_record_id: int) -> None:
+        raise KeyError("boom")
+    monkeypatch.setattr(controller.model, "delete_record", _boom)
+
+    with pytest.raises(KeyError):
+        controller.delete_record(1)

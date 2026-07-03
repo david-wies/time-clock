@@ -1,3 +1,5 @@
+import sqlite3
+
 import pytest
 from datetime import date, time
 from domain.types import TimeRecord
@@ -139,3 +141,98 @@ def test_clock_out_multiple_open_records(controller: TimeClockController) -> Non
 
     # Remaining open records should be 1
     assert len(controller.model.get_open_records()) == 1
+
+
+# ────────────────────── Exception narrowing (§ codebase review G2 #1) ───────
+
+def _valid_record() -> TimeRecord:
+    return TimeRecord(None, date(2026, 6, 26), time(9, 0),
+                       time(17, 0), 30, WorkType.REMOTE)
+
+
+def test_save_record_sqlite_error_is_caught_and_returned(
+        controller: TimeClockController, monkeypatch: pytest.MonkeyPatch) -> None:
+    def _boom(_record: TimeRecord) -> int:
+        raise sqlite3.OperationalError("database is locked")
+    monkeypatch.setattr(controller.model, "insert_record", _boom)
+
+    res = controller.save_record(_valid_record())
+    assert res.ok is False
+    assert "Database error" in res.errors[0]
+
+
+def test_save_record_non_sqlite_error_propagates(
+        controller: TimeClockController, monkeypatch: pytest.MonkeyPatch) -> None:
+    def _boom(_record: TimeRecord) -> int:
+        raise AttributeError("boom: a real code bug, not a DB failure")
+    monkeypatch.setattr(controller.model, "insert_record", _boom)
+
+    with pytest.raises(AttributeError):
+        controller.save_record(_valid_record())
+
+
+def test_clock_in_sqlite_error_is_caught_and_returned(
+        controller: TimeClockController, monkeypatch: pytest.MonkeyPatch) -> None:
+    def _boom(_record: TimeRecord) -> int:
+        raise sqlite3.IntegrityError("constraint failed")
+    monkeypatch.setattr(controller.model, "insert_record", _boom)
+
+    res = controller.clock_in()
+    assert res.ok is False
+    assert "Database error" in res.errors[0]
+
+
+def test_clock_in_non_sqlite_error_propagates(
+        controller: TimeClockController, monkeypatch: pytest.MonkeyPatch) -> None:
+    def _boom(_record: TimeRecord) -> int:
+        raise TypeError("boom")
+    monkeypatch.setattr(controller.model, "insert_record", _boom)
+
+    with pytest.raises(TypeError):
+        controller.clock_in()
+
+
+def test_clock_out_sqlite_error_is_caught_and_returned(
+        controller: TimeClockController, monkeypatch: pytest.MonkeyPatch) -> None:
+    controller.clock_in()
+
+    def _boom(_record: TimeRecord) -> None:
+        raise sqlite3.Error("db error")
+    monkeypatch.setattr(controller.model, "update_record", _boom)
+
+    res = controller.clock_out()
+    assert res.ok is False
+    assert "Database error" in res.errors[0]
+
+
+def test_clock_out_non_sqlite_error_propagates(
+        controller: TimeClockController, monkeypatch: pytest.MonkeyPatch) -> None:
+    controller.clock_in()
+
+    def _boom(_record: TimeRecord) -> None:
+        raise ValueError("boom")
+    monkeypatch.setattr(controller.model, "update_record", _boom)
+
+    with pytest.raises(ValueError):
+        controller.clock_out()
+
+
+def test_delete_record_sqlite_error_is_caught_and_returned(
+        controller: TimeClockController, monkeypatch: pytest.MonkeyPatch) -> None:
+    def _boom(_record_id: int) -> None:
+        raise sqlite3.Error("db error")
+    monkeypatch.setattr(controller.model, "delete_record", _boom)
+
+    res = controller.delete_record(1)
+    assert res.ok is False
+    assert "Database error" in res.errors[0]
+
+
+def test_delete_record_non_sqlite_error_propagates(
+        controller: TimeClockController, monkeypatch: pytest.MonkeyPatch) -> None:
+    def _boom(_record_id: int) -> None:
+        raise KeyError("boom")
+    monkeypatch.setattr(controller.model, "delete_record", _boom)
+
+    with pytest.raises(KeyError):
+        controller.delete_record(1)

@@ -1,11 +1,15 @@
+import logging
+import sqlite3
 from datetime import date, time, datetime
 from typing import Optional, Callable
 
 from domain.types import TimeRecord, Result
-from domain.enums import WorkType
+from domain.enums import WarningCode, WorkType
 from models.time_clock_model import TimeClockModel
 from settings import SettingsManager
 from core.timeutil import duration
+
+logger = logging.getLogger(__name__)
 
 
 def times_overlap(s1: time, e1: Optional[time], s2: time, e2: Optional[time]) -> bool:
@@ -46,7 +50,7 @@ def validate_time_record(record: TimeRecord, existing_records: list[TimeRecord])
             pass
         elif end_mins < start_mins:
             # Overnight shift — warn, not error (§5.7)
-            errors.append("OVERNIGHT_SHIFT_WARNING")
+            errors.append(WarningCode.OVERNIGHT_SHIFT.value)
 
         # Break must not exceed shift duration
         raw_dur = duration(record.start_time, record.end_time, 0)
@@ -99,7 +103,7 @@ class TimeClockController:
         errors = validate_time_record(record, existing)
 
         # OVERNIGHT_SHIFT_WARNING is not a blocking error — filter it out before blocking
-        blocking = [e for e in errors if e != "OVERNIGHT_SHIFT_WARNING"]
+        blocking = [e for e in errors if e != WarningCode.OVERNIGHT_SHIFT.value]
         if blocking:
             return Result(ok=False, errors=blocking)
 
@@ -113,8 +117,9 @@ class TimeClockController:
             self.settings.set("last_used_work_type", record.work_type.value)
             # may contain OVERNIGHT_SHIFT_WARNING
             return Result(ok=True, errors=errors)
-        except Exception as e:
-            return Result(ok=False, errors=[f"Database error: {str(e)}"])
+        except sqlite3.Error as e:
+            logger.exception("Database error while saving time record %r", record)
+            return Result(ok=False, errors=[f"Database error: {e}"])
 
     def clock_in(self, work_type: Optional[WorkType] = None, force: bool = False) -> Result:
         """
@@ -124,7 +129,7 @@ class TimeClockController:
         """
         open_today = self.model.get_open_records_for_date(self._clock().date())
         if open_today and not force:
-            return Result(ok=False, errors=["OPEN_RECORD_EXISTS"])
+            return Result(ok=False, errors=[WarningCode.OPEN_RECORD_EXISTS.value])
 
         if work_type is None:
             last_wt = self.settings.get("last_used_work_type")
@@ -155,15 +160,16 @@ class TimeClockController:
 
         existing = self.model.get_records_by_date(record.date)
         errors = validate_time_record(record, existing)
-        blocking = [e for e in errors if e != "OVERNIGHT_SHIFT_WARNING"]
+        blocking = [e for e in errors if e != WarningCode.OVERNIGHT_SHIFT.value]
         if blocking:
             return Result(ok=False, errors=blocking)
 
         try:
             self.model.insert_record(record)
             return Result(ok=True, errors=[])
-        except Exception as e:
-            return Result(ok=False, errors=[f"Database error: {str(e)}"])
+        except sqlite3.Error as e:
+            logger.exception("Database error while clocking in")
+            return Result(ok=False, errors=[f"Database error: {e}"])
 
     def clock_out(self, record_id: Optional[int] = None) -> Result:
         """
@@ -185,7 +191,7 @@ class TimeClockController:
                 return Result(ok=False, errors=["Specified clock-in record not found."])
         else:
             if len(open_today) > 1:
-                return Result(ok=False, errors=["MULTIPLE_OPEN_RECORDS"])
+                return Result(ok=False, errors=[WarningCode.MULTIPLE_OPEN_RECORDS.value])
             target_record = open_today[0]
 
         now = self._clock()
@@ -195,19 +201,23 @@ class TimeClockController:
         existing_for_validation = [
             r for r in existing if r.id == target_record.id or r.end_time is not None]
         errors = validate_time_record(target_record, existing_for_validation)
-        blocking = [e for e in errors if e != "OVERNIGHT_SHIFT_WARNING"]
+        blocking = [e for e in errors if e != WarningCode.OVERNIGHT_SHIFT.value]
         if blocking:
             return Result(ok=False, errors=blocking)
 
         try:
             self.model.update_record(target_record)
             return Result(ok=True, errors=errors)
-        except Exception as e:
-            return Result(ok=False, errors=[f"Database error: {str(e)}"])
+        except sqlite3.Error as e:
+            logger.exception(
+                "Database error while clocking out record id=%s", target_record.id)
+            return Result(ok=False, errors=[f"Database error: {e}"])
 
     def delete_record(self, record_id: int) -> Result:
         try:
             self.model.delete_record(record_id)
             return Result(ok=True, errors=[])
-        except Exception as e:
-            return Result(ok=False, errors=[f"Database error: {str(e)}"])
+        except sqlite3.Error as e:
+            logger.exception(
+                "Database error while deleting time record id=%s", record_id)
+            return Result(ok=False, errors=[f"Database error: {e}"])

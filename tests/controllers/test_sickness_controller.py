@@ -1,3 +1,5 @@
+import sqlite3
+
 import pytest
 from datetime import date
 from domain.types import SicknessRecord
@@ -129,3 +131,72 @@ def test_save_range_threads_document_path(controller: SicknessController) -> Non
         date(2026, 6, 8), date(2026, 6, 10))
     assert len(records) == 3
     assert all(r.document_path == "/tmp/sick_note.pdf" for r in records)
+
+
+# ────────────────────── Exception narrowing (§ codebase review G2 #1) ───────
+
+def test_save_record_sqlite_error_is_caught_and_returned(
+        controller: SicknessController, monkeypatch: pytest.MonkeyPatch) -> None:
+    rec = SicknessRecord(None, date(2026, 2, 15), 8.0, "Flu")
+
+    def _boom(_record: SicknessRecord) -> int:
+        raise sqlite3.OperationalError("database is locked")
+    monkeypatch.setattr(controller.model, "insert_record", _boom)
+
+    res = controller.save_record(rec)
+    assert res.ok is False
+    assert "Database error" in res.errors[0]
+
+
+def test_save_record_non_sqlite_error_propagates(
+        controller: SicknessController, monkeypatch: pytest.MonkeyPatch) -> None:
+    rec = SicknessRecord(None, date(2026, 2, 15), 8.0, "Flu")
+
+    def _boom(_record: SicknessRecord) -> int:
+        raise AttributeError("boom")
+    monkeypatch.setattr(controller.model, "insert_record", _boom)
+
+    with pytest.raises(AttributeError):
+        controller.save_record(rec)
+
+
+def test_delete_record_sqlite_error_is_caught_and_returned(
+        controller: SicknessController, monkeypatch: pytest.MonkeyPatch) -> None:
+    def _boom(_record_id: int) -> None:
+        raise sqlite3.Error("db error")
+    monkeypatch.setattr(controller.model, "delete_record", _boom)
+
+    res = controller.delete_record(1)
+    assert res.ok is False
+    assert "Database error" in res.errors[0]
+
+
+def test_delete_record_non_sqlite_error_propagates(
+        controller: SicknessController, monkeypatch: pytest.MonkeyPatch) -> None:
+    def _boom(_record_id: int) -> None:
+        raise KeyError("boom")
+    monkeypatch.setattr(controller.model, "delete_record", _boom)
+
+    with pytest.raises(KeyError):
+        controller.delete_record(1)
+
+
+def test_save_range_sqlite_error_is_caught_and_returned(
+        controller: SicknessController, monkeypatch: pytest.MonkeyPatch) -> None:
+    def _boom(_records: list) -> None:
+        raise sqlite3.Error("db error")
+    monkeypatch.setattr(controller.model, "insert_records_bulk", _boom)
+
+    res = controller.save_range(date(2026, 6, 8), date(2026, 6, 10), 8.0)
+    assert res.ok is False
+    assert "Database error" in res.errors[0]
+
+
+def test_save_range_non_sqlite_error_propagates(
+        controller: SicknessController, monkeypatch: pytest.MonkeyPatch) -> None:
+    def _boom(_records: list) -> None:
+        raise TypeError("boom")
+    monkeypatch.setattr(controller.model, "insert_records_bulk", _boom)
+
+    with pytest.raises(TypeError):
+        controller.save_range(date(2026, 6, 8), date(2026, 6, 10), 8.0)
