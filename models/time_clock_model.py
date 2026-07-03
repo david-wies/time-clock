@@ -30,19 +30,15 @@ class TimeClockModel:
         )
 
     def get_record_by_id(self, record_id: int) -> Optional[TimeRecord]:
-        conn = self.db.get_connection()
-        try:
+        with self.db.connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
                 "SELECT * FROM time_record WHERE id = ?;", (record_id,))
             row = cursor.fetchone()
             return self._row_to_record(row) if row else None
-        finally:
-            conn.close()
 
     def get_records_by_date(self, target_date: date) -> list[TimeRecord]:
-        conn = self.db.get_connection()
-        try:
+        with self.db.connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
                 "SELECT * FROM time_record WHERE date = ? ORDER BY start_time ASC;",
@@ -50,16 +46,13 @@ class TimeClockModel:
             )
             rows = cursor.fetchall()
             return [self._row_to_record(row) for row in rows]
-        finally:
-            conn.close()
 
     def get_records_for_period(self, year: int, month: Optional[int] = None) -> list[TimeRecord]:
         """
         Retrieves all time records for the given year and optionally month.
         Ordered by date DESC, start_time ASC.
         """
-        conn = self.db.get_connection()
-        try:
+        with self.db.connection() as conn:
             cursor = conn.cursor()
             if month is not None:
                 start_date = f"{year:04d}-{month:02d}-01"
@@ -77,13 +70,10 @@ class TimeClockModel:
                 )
             rows = cursor.fetchall()
             return [self._row_to_record(row) for row in rows]
-        finally:
-            conn.close()
 
     def get_records_for_date_range(self, start: date, end: date) -> list[TimeRecord]:
         """Returns all time records whose date falls in [start, end], ordered by date ASC, start_time ASC."""
-        conn = self.db.get_connection()
-        try:
+        with self.db.connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
                 "SELECT * FROM time_record WHERE date >= ? AND date <= ? "
@@ -91,25 +81,19 @@ class TimeClockModel:
                 (date_to_iso(start), date_to_iso(end)),
             )
             return [self._row_to_record(r) for r in cursor.fetchall()]
-        finally:
-            conn.close()
 
     def get_open_records(self) -> list[TimeRecord]:
         """Finds all records that are currently open (end_time is NULL), across all dates."""
-        conn = self.db.get_connection()
-        try:
+        with self.db.connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
                 "SELECT * FROM time_record WHERE end_time IS NULL ORDER BY date DESC, start_time ASC;")
             rows = cursor.fetchall()
             return [self._row_to_record(row) for row in rows]
-        finally:
-            conn.close()
 
     def get_open_records_for_date(self, d: date) -> list[TimeRecord]:
         """Finds open records (end_time IS NULL) for a specific date (§10.4, §10.5)."""
-        conn = self.db.get_connection()
-        try:
+        with self.db.connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
                 "SELECT * FROM time_record WHERE date = ? AND end_time IS NULL ORDER BY start_time ASC;",
@@ -117,16 +101,13 @@ class TimeClockModel:
             )
             rows = cursor.fetchall()
             return [self._row_to_record(row) for row in rows]
-        finally:
-            conn.close()
 
     def get_open_records_for_today(self) -> list[TimeRecord]:
         """Finds open records (end_time IS NULL) for today only. Convenience wrapper."""
         return self.get_open_records_for_date(date.today())
 
     def insert_record(self, record: TimeRecord) -> int:
-        conn = self.db.get_connection()
-        try:
+        with self.db.connection() as conn:
             with conn:
                 cursor = conn.cursor()
                 cursor.execute(
@@ -149,14 +130,11 @@ class TimeClockModel:
                 record_id = cursor.lastrowid or 0
             self.bus.publish(Event.TIME_RECORDS_CHANGED)
             return record_id
-        finally:
-            conn.close()
 
     def update_record(self, record: TimeRecord) -> None:
         if record.id is None:
             raise ValueError("Cannot update a record without an ID.")
-        conn = self.db.get_connection()
-        try:
+        with self.db.connection() as conn:
             with conn:
                 conn.execute(
                     """
@@ -179,35 +157,26 @@ class TimeClockModel:
                     )
                 )
             self.bus.publish(Event.TIME_RECORDS_CHANGED)
-        finally:
-            conn.close()
 
     def delete_record(self, record_id: int) -> None:
-        conn = self.db.get_connection()
-        try:
+        with self.db.connection() as conn:
             with conn:
                 conn.execute(
                     "DELETE FROM time_record WHERE id = ?;", (record_id,))
             self.bus.publish(Event.TIME_RECORDS_CHANGED)
-        finally:
-            conn.close()
 
     # --- Target Hours & Exceptions Queries ---
 
     def get_work_day_targets(self) -> dict[int, float]:
         """Returns a dict mapping day_of_week (0-6) to hours."""
-        conn = self.db.get_connection()
-        try:
+        with self.db.connection() as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT day_of_week, hours FROM work_day_target;")
             rows = cursor.fetchall()
             return {row["day_of_week"]: row["hours"] for row in rows}
-        finally:
-            conn.close()
 
     def save_work_day_targets(self, targets: dict[int, float]) -> None:
-        conn = self.db.get_connection()
-        try:
+        with self.db.connection() as conn:
             with conn:
                 for day_of_week, hours in targets.items():
                     conn.execute(
@@ -218,13 +187,10 @@ class TimeClockModel:
                         (day_of_week, hours)
                     )
             self.bus.publish(Event.SETTINGS_CHANGED)
-        finally:
-            conn.close()
 
     def get_date_exceptions(self, year: Optional[int] = None) -> list[WorkDayException]:
         """Returns work day exceptions. If year is specified, filters by that year."""
-        conn = self.db.get_connection()
-        try:
+        with self.db.connection() as conn:
             cursor = conn.cursor()
             if year is not None:
                 start_date = f"{year:04d}-01-01"
@@ -257,12 +223,9 @@ class TimeClockModel:
                     )
                 )
             return exceptions
-        finally:
-            conn.close()
 
     def save_date_exception(self, date_str: str, hours: float, label: Optional[str] = None) -> None:
-        conn = self.db.get_connection()
-        try:
+        with self.db.connection() as conn:
             with conn:
                 conn.execute(
                     """
@@ -272,25 +235,17 @@ class TimeClockModel:
                     (date_str, hours, label)
                 )
             self.bus.publish(Event.SETTINGS_CHANGED)
-        finally:
-            conn.close()
 
     def delete_date_exception(self, exception_id: int) -> None:
-        conn = self.db.get_connection()
-        try:
+        with self.db.connection() as conn:
             with conn:
                 conn.execute(
                     "DELETE FROM work_day_exception WHERE id = ?;", (exception_id,))
             self.bus.publish(Event.SETTINGS_CHANGED)
-        finally:
-            conn.close()
 
     def delete_date_exception_by_date(self, date_str: str) -> None:
-        conn = self.db.get_connection()
-        try:
+        with self.db.connection() as conn:
             with conn:
                 conn.execute(
                     "DELETE FROM work_day_exception WHERE date = ?;", (date_str,))
             self.bus.publish(Event.SETTINGS_CHANGED)
-        finally:
-            conn.close()

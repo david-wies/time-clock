@@ -1,6 +1,8 @@
 import os
 import sqlite3
 import platform
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Optional, Any
 
@@ -80,11 +82,11 @@ class Database:
         # fresh connection would see an empty DB every time); for file-based
         # DBs it avoids re-opening + re-configuring a brand new
         # sqlite3.Connection (re-running the PRAGMAs below) on every single
-        # get_connection() call. The ~40 `conn = self.db.get_connection();
-        # try: ...; finally: conn.close()` call sites across models/*.py are
-        # unaffected: SharedConnectionWrapper.close() is a no-op, so those
-        # call sites safely "close" the shared connection without ever
-        # actually closing it, for both DB kinds.
+        # get_connection()/connection() call. The `with self.db.connection()
+        # as conn:` call sites across models/*.py are unaffected by this: the
+        # underlying SharedConnectionWrapper.close() is a no-op, so those
+        # call sites safely "close" the shared connection on `with`-exit
+        # without ever actually closing it, for both DB kinds.
         raw_conn = sqlite3.connect(self.db_path)
         raw_conn.row_factory = sqlite3.Row
         raw_conn.execute("PRAGMA journal_mode=WAL;")
@@ -98,6 +100,18 @@ class Database:
     def get_connection(self) -> SharedConnectionWrapper:
         """Returns the single persistent connection shared for the app's lifetime."""
         return self._shared_conn
+
+    @contextmanager
+    def connection(self) -> Iterator[SharedConnectionWrapper]:
+        """Yields the single persistent connection shared for the app's lifetime.
+
+        This exists purely for readable call-site syntax (``with self.db.connection()
+        as conn:``); it performs no actual acquire/release. The connection is opened
+        once in ``__init__`` and lives for the app's lifetime, and
+        ``SharedConnectionWrapper.close()`` is a documented no-op, so there is nothing
+        to clean up on exit.
+        """
+        yield self._shared_conn
 
     def _init_db(self) -> None:
         """Initializes tables and migrations."""

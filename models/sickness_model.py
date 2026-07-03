@@ -22,19 +22,15 @@ class SicknessModel:
         )
 
     def get_record_by_id(self, record_id: int) -> Optional[SicknessRecord]:
-        conn = self.db.get_connection()
-        try:
+        with self.db.connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
                 "SELECT * FROM sickness_record WHERE id = ?;", (record_id,))
             row = cursor.fetchone()
             return self._row_to_record(row) if row else None
-        finally:
-            conn.close()
 
     def get_records_for_year(self, year: int, month: Optional[int] = None) -> list[SicknessRecord]:
-        conn = self.db.get_connection()
-        try:
+        with self.db.connection() as conn:
             cursor = conn.cursor()
             if month is not None:
                 start_date = f"{year:04d}-{month:02d}-01"
@@ -52,24 +48,18 @@ class SicknessModel:
                 )
             rows = cursor.fetchall()
             return [self._row_to_record(row) for row in rows]
-        finally:
-            conn.close()
 
     def get_records_in_date_range(self, start: date, end: date) -> list[SicknessRecord]:
-        conn = self.db.get_connection()
-        try:
+        with self.db.connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
                 "SELECT * FROM sickness_record WHERE date >= ? AND date <= ? ORDER BY date;",
                 (date_to_iso(start), date_to_iso(end)),
             )
             return [self._row_to_record(row) for row in cursor.fetchall()]
-        finally:
-            conn.close()
 
     def insert_record(self, record: SicknessRecord) -> int:
-        conn = self.db.get_connection()
-        try:
+        with self.db.connection() as conn:
             with conn:
                 cursor = conn.cursor()
                 cursor.execute(
@@ -87,14 +77,11 @@ class SicknessModel:
                 record_id = cursor.lastrowid or 0
             self.bus.publish(Event.SICKNESS_CHANGED)
             return record_id
-        finally:
-            conn.close()
 
     def insert_records_bulk(self, records: list[SicknessRecord]) -> None:
         if not records:
             return
-        conn = self.db.get_connection()
-        try:
+        with self.db.connection() as conn:
             with conn:
                 for record in records:
                     conn.execute(
@@ -104,14 +91,11 @@ class SicknessModel:
                          record.note, record.document_path),
                     )
             self.bus.publish(Event.SICKNESS_CHANGED)
-        finally:
-            conn.close()
 
     def update_record(self, record: SicknessRecord) -> None:
         if record.id is None:
             raise ValueError("Cannot update a record without an ID.")
-        conn = self.db.get_connection()
-        try:
+        with self.db.connection() as conn:
             with conn:
                 conn.execute(
                     """
@@ -129,36 +113,27 @@ class SicknessModel:
                     )
                 )
             self.bus.publish(Event.SICKNESS_CHANGED)
-        finally:
-            conn.close()
 
     def delete_record(self, record_id: int) -> None:
-        conn = self.db.get_connection()
-        try:
+        with self.db.connection() as conn:
             with conn:
                 conn.execute(
                     "DELETE FROM sickness_record WHERE id = ?;", (record_id,))
             self.bus.publish(Event.SICKNESS_CHANGED)
-        finally:
-            conn.close()
 
     # --- Sickness Settings Queries ---
 
     def get_settings(self, year: int) -> Optional[float]:
         """Returns hours_per_year allowance for the given year."""
-        conn = self.db.get_connection()
-        try:
+        with self.db.connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
                 "SELECT hours_per_year FROM sickness_settings WHERE year = ?;", (year,))
             row = cursor.fetchone()
             return row["hours_per_year"] if row else None
-        finally:
-            conn.close()
 
     def save_settings(self, year: int, hours_per_year: float) -> None:
-        conn = self.db.get_connection()
-        try:
+        with self.db.connection() as conn:
             with conn:
                 conn.execute(
                     """
@@ -168,8 +143,6 @@ class SicknessModel:
                     (year, hours_per_year)
                 )
             self.bus.publish(Event.SETTINGS_CHANGED)
-        finally:
-            conn.close()
 
     # --- Sickness Calculations & Summaries ---
 

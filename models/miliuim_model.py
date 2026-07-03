@@ -23,19 +23,15 @@ class MiliuimModel:
         )
 
     def get_record_by_id(self, record_id: int) -> Optional[MiliuimRecord]:
-        conn = self.db.get_connection()
-        try:
+        with self.db.connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
                 "SELECT * FROM miliuim_period WHERE id = ?;", (record_id,))
             row = cursor.fetchone()
             return self._row_to_record(row) if row else None
-        finally:
-            conn.close()
 
     def get_records_for_year(self, year: int, month: Optional[int] = None) -> list[MiliuimRecord]:
-        conn = self.db.get_connection()
-        try:
+        with self.db.connection() as conn:
             cursor = conn.cursor()
             if month is not None:
                 last_day = calendar.monthrange(year, month)[1]
@@ -50,12 +46,9 @@ class MiliuimModel:
                 (period_end, period_start),
             )
             return [self._row_to_record(row) for row in cursor.fetchall()]
-        finally:
-            conn.close()
 
     def get_records_in_date_range(self, start: date, end: date) -> list[MiliuimRecord]:
-        conn = self.db.get_connection()
-        try:
+        with self.db.connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
                 "SELECT * FROM miliuim_period WHERE start_date <= ? AND end_date >= ?"
@@ -63,12 +56,9 @@ class MiliuimModel:
                 (date_to_iso(end), date_to_iso(start)),
             )
             return [self._row_to_record(row) for row in cursor.fetchall()]
-        finally:
-            conn.close()
 
     def insert_record(self, record: MiliuimRecord) -> int:
-        conn = self.db.get_connection()
-        try:
+        with self.db.connection() as conn:
             with conn:
                 cursor = conn.cursor()
                 cursor.execute(
@@ -80,14 +70,11 @@ class MiliuimModel:
                 record_id = cursor.lastrowid or 0
             self.bus.publish(Event.MILIUIM_CHANGED)
             return record_id
-        finally:
-            conn.close()
 
     def update_record(self, record: MiliuimRecord) -> None:
         if record.id is None:
             raise ValueError("Cannot update a record without an ID.")
-        conn = self.db.get_connection()
-        try:
+        with self.db.connection() as conn:
             with conn:
                 conn.execute(
                     "UPDATE miliuim_period SET start_date = ?, end_date = ?, note = ?,"
@@ -96,18 +83,13 @@ class MiliuimModel:
                      record.note, record.document_path, record.id),
                 )
             self.bus.publish(Event.MILIUIM_CHANGED)
-        finally:
-            conn.close()
 
     def delete_record(self, record_id: int) -> None:
-        conn = self.db.get_connection()
-        try:
+        with self.db.connection() as conn:
             with conn:
                 conn.execute(
                     "DELETE FROM miliuim_period WHERE id = ?;", (record_id,))
             self.bus.publish(Event.MILIUIM_CHANGED)
-        finally:
-            conn.close()
 
     @staticmethod
     def clip_days(record: MiliuimRecord, year: int, month: Optional[int] = None) -> int:
