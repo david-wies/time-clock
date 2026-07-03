@@ -5,6 +5,8 @@ from domain.enums import WorkType
 from core.balance import (
     get_daily_target,
     calculate_period_balance,
+    group_records_by_date,
+    period_balance_from_grouped,
     get_week_range,
     get_month_range,
     get_year_range
@@ -102,6 +104,87 @@ def test_calculate_period_balance_overtime_rate() -> None:
     assert res_deficit.balance == -2.0
     assert res_deficit.weighted_overtime == - \
         2.0  # Deficit is raw, rate not applied
+
+
+# ─────────────── group_records_by_date / period_balance_from_grouped ───────
+# These back calculate_period_balance's O(N)-per-call contract: group once,
+# reuse the same records_by_date dict across many sub-range slices (used by
+# core/report.py's monthly-breakdown loop, avoiding an O(13N) rescan).
+
+def test_group_records_by_date_groups_by_date_key() -> None:
+    records = [
+        TimeRecord(1, date(2026, 6, 22), time(9, 0), time(17, 0), 0, WorkType.REMOTE),
+        TimeRecord(2, date(2026, 6, 22), time(18, 0), time(19, 0), 0, WorkType.REMOTE),
+        TimeRecord(3, date(2026, 6, 23), time(9, 0), time(17, 0), 0, WorkType.REMOTE),
+    ]
+    grouped = group_records_by_date(records)
+    assert set(grouped.keys()) == {date(2026, 6, 22), date(2026, 6, 23)}
+    assert [r.id for r in grouped[date(2026, 6, 22)]] == [1, 2]
+    assert [r.id for r in grouped[date(2026, 6, 23)]] == [3]
+
+
+def test_group_records_by_date_empty_list() -> None:
+    assert group_records_by_date([]) == {}
+
+
+def test_period_balance_from_grouped_matches_calculate_period_balance() -> None:
+    """The grouped-input helper must produce bit-for-bit identical results
+    to calculate_period_balance() for the same records/range — it's the
+    same computation, just fed a pre-built records_by_date instead of a
+    raw list."""
+    targets = {0: 8.0, 1: 8.0, 2: 8.0, 3: 8.0, 4: 8.0, 5: 0.0, 6: 0.0}
+    exceptions: dict = {}
+    records = [
+        TimeRecord(1, date(2026, 6, 22), time(9, 0), time(17, 0),
+                   30, WorkType.REMOTE),
+        TimeRecord(2, date(2026, 6, 23), time(9, 0), time(18, 0),
+                   0, WorkType.REMOTE),
+    ]
+
+    expected = calculate_period_balance(
+        records, start_date=date(2026, 6, 22), end_date=date(2026, 6, 23),
+        targets=targets, exceptions=exceptions, overtime_rate=1.5,
+        today=date(2026, 6, 26),
+    )
+
+    grouped = group_records_by_date(records)
+    actual = period_balance_from_grouped(
+        grouped, start_date=date(2026, 6, 22), end_date=date(2026, 6, 23),
+        targets=targets, exceptions=exceptions, overtime_rate=1.5,
+        today=date(2026, 6, 26),
+    )
+
+    assert actual == expected
+
+
+def test_period_balance_from_grouped_reused_dict_across_sub_ranges() -> None:
+    """A single records_by_date built from a full year's records must give
+    correct, independent results when reused for multiple, non-overlapping
+    sub-range slices (the core/report.py monthly-breakdown use case)."""
+    targets = {0: 8.0, 1: 8.0, 2: 8.0, 3: 8.0, 4: 8.0, 5: 0.0, 6: 0.0}
+    exceptions: dict = {}
+    records = [
+        TimeRecord(1, date(2026, 1, 5), time(9, 0), time(17, 0), 0, WorkType.REMOTE),
+        TimeRecord(2, date(2026, 2, 10), time(9, 0), time(17, 0), 0, WorkType.REMOTE),
+    ]
+    grouped = group_records_by_date(records)
+
+    jan = period_balance_from_grouped(
+        grouped, date(2026, 1, 1), date(2026, 1, 31), targets, exceptions,
+        today=date(2026, 12, 31),
+    )
+    feb = period_balance_from_grouped(
+        grouped, date(2026, 2, 1), date(2026, 2, 28), targets, exceptions,
+        today=date(2026, 12, 31),
+    )
+    mar = period_balance_from_grouped(
+        grouped, date(2026, 3, 1), date(2026, 3, 31), targets, exceptions,
+        today=date(2026, 12, 31),
+    )
+
+    assert jan.worked_hours == 8.0
+    assert feb.worked_hours == 8.0
+    assert mar.worked_hours == 0.0
 
 
 def test_date_range_helpers() -> None:

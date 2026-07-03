@@ -25,30 +25,42 @@ def get_record_duration(rec: TimeRecord, today: date, now_time: time) -> float:
     return 0.0
 
 
-def calculate_period_balance(
-    records: list[TimeRecord],
+def group_records_by_date(records: list[TimeRecord]) -> dict[date, list[TimeRecord]]:
+    """Groups records by their `date` field. O(N) — call once and reuse the
+    result across multiple `period_balance_from_grouped()` calls (e.g. an
+    overall-period balance plus a per-month breakdown over the same
+    records) instead of re-scanning the full list for every sub-range."""
+    records_by_date: dict[date, list[TimeRecord]] = {}
+    for rec in records:
+        records_by_date.setdefault(rec.date, []).append(rec)
+    return records_by_date
+
+
+def period_balance_from_grouped(
+    records_by_date: dict[date, list[TimeRecord]],
     start_date: date,
     end_date: date,
     targets: dict[int, float],
     exceptions: dict[date, float],
     overtime_rate: float = 1.0,
     today: Optional[date] = None,
-    now_time: Optional[time] = None
+    now_time: Optional[time] = None,
 ) -> PeriodBalance:
     """
-    Computes total worked hours, target hours, and balances for a date range.
+    Computes total worked hours, target hours, and balances for a date range,
+    given records already grouped by date (see `group_records_by_date`).
     Overtime rate multiplier is applied only to positive balances.
+
+    This is the O(days_in_range) core of `calculate_period_balance` --
+    factored out so callers that need the balance for several sub-ranges of
+    the same underlying record set (e.g. core/report.py's monthly
+    breakdown) can group once and slice many times, instead of re-grouping
+    the full record list on every call.
     """
     if today is None:
         today = date.today()
     if now_time is None:
         now_time = datetime.now().time()
-
-    # Group records by date for easy access
-    records_by_date: dict[date, list[TimeRecord]] = {}
-    for rec in records:
-        if start_date <= rec.date <= end_date:
-            records_by_date.setdefault(rec.date, []).append(rec)
 
     total_worked = 0.0
     total_target = 0.0
@@ -83,6 +95,27 @@ def calculate_period_balance(
         balance=balance,
         weighted_overtime=weighted_overtime,
         days_in_period=num_days,
+    )
+
+
+def calculate_period_balance(
+    records: list[TimeRecord],
+    start_date: date,
+    end_date: date,
+    targets: dict[int, float],
+    exceptions: dict[date, float],
+    overtime_rate: float = 1.0,
+    today: Optional[date] = None,
+    now_time: Optional[time] = None
+) -> PeriodBalance:
+    """
+    Computes total worked hours, target hours, and balances for a date range.
+    Overtime rate multiplier is applied only to positive balances.
+    """
+    records_by_date = group_records_by_date(records)
+    return period_balance_from_grouped(
+        records_by_date, start_date, end_date, targets, exceptions,
+        overtime_rate=overtime_rate, today=today, now_time=now_time,
     )
 
 

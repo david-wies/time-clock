@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from datetime import date
 from typing import Optional
 
-from core.balance import calculate_period_balance
+from core.balance import group_records_by_date, period_balance_from_grouped
 from models.miliuim_model import MiliuimModel
 from models.time_clock_model import TimeClockModel
 from models.vacation_model import VacationModel
@@ -152,9 +152,14 @@ def period_summary(
         for d in model_tc.get_date_exceptions(year)
     }
 
+    # Group once (O(N)) and reuse for both the overall balance and every
+    # monthly slice below, instead of re-scanning `records` from scratch on
+    # each of up to 13 calculate_period_balance() calls (O(13N)).
+    records_by_date = group_records_by_date(records)
+
     # Main period balance
-    bal = calculate_period_balance(
-        records, start_date, end_date, targets, exceptions, overtime_rate
+    bal = period_balance_from_grouped(
+        records_by_date, start_date, end_date, targets, exceptions, overtime_rate
     )
 
     # Monthly breakdown rows (only for quarter / year periods)
@@ -167,8 +172,8 @@ def period_summary(
         )
         for m in months_in_period:
             m_start, m_end = _month_range(year, m)
-            m_bal = calculate_period_balance(
-                records, m_start, m_end, targets, exceptions, overtime_rate
+            m_bal = period_balance_from_grouped(
+                records_by_date, m_start, m_end, targets, exceptions, overtime_rate
             )
             monthly_rows.append(MonthlyRow(
                 month=m,

@@ -1,8 +1,9 @@
 """Unit tests for core/report.py: pure helpers, dataclasses, and period_summary()."""
 
 import pytest
-from datetime import date
+from datetime import date, time
 
+from core.balance import calculate_period_balance
 from core.report import (
     _month_range,
     _period_label,
@@ -11,6 +12,8 @@ from core.report import (
     MonthlyRow,
     period_summary,
 )
+from domain.enums import WorkType
+from domain.types import TimeRecord
 from models.time_clock_model import TimeClockModel
 from models.vacation_model import VacationModel
 from models.sickness_model import SicknessModel
@@ -244,6 +247,68 @@ def test_period_summary_year_has_twelve_rows(period_models):
     assert data.quarter is None
     assert len(data.monthly_rows) == 12
     assert [row.month for row in data.monthly_rows] == list(range(1, 13))
+
+
+# ─────────── Monthly-breakdown regression (O(13N) -> O(N) refactor) ─────────
+
+def test_period_summary_year_monthly_rows_match_independent_per_month_balance(
+    period_models,
+) -> None:
+    """period_summary()'s monthly-breakdown loop now groups the year's
+    records once (group_records_by_date) and slices per month via
+    period_balance_from_grouped(), instead of re-scanning the full record
+    list on every one of the (up to 13) calculate_period_balance() calls.
+    This must be a pure performance refactor: every MonthlyRow (and the
+    overall bal) must be bit-for-bit identical to computing each month's
+    balance independently with calculate_period_balance() on the same raw
+    records list."""
+    tc, vac, sick, sm = period_models
+    tc.save_work_day_targets({0: 8.0, 1: 8.0, 2: 8.0, 3: 8.0, 4: 8.0, 5: 0.0, 6: 0.0})
+
+    # Records spread across several months of 2026, including an overtime
+    # month (Feb) and a deficit month (Mar), so the balances aren't all zero.
+    tc.insert_record(TimeRecord(
+        None, date(2026, 1, 5), time(9, 0), time(17, 0), 0, WorkType.REMOTE))
+    tc.insert_record(TimeRecord(
+        None, date(2026, 2, 10), time(8, 0), time(19, 0), 0, WorkType.REMOTE))
+    tc.insert_record(TimeRecord(
+        None, date(2026, 3, 3), time(9, 0), time(13, 0), 0, WorkType.REMOTE))
+    tc.insert_record(TimeRecord(
+        None, date(2026, 6, 15), time(9, 0), time(17, 30), 15, WorkType.IN_SITE,
+        office="HQ"))
+
+    data = period_summary(
+        "year", 2026, month=None, quarter=None,
+        model_tc=tc, model_vacation=vac,
+        model_sickness=sick, settings=sm,
+    )
+
+    # Independently recompute each month's balance directly, from a fresh
+    # full-year fetch, exactly like the pre-refactor code path did.
+    raw_records = tc.get_records_for_period(2026)
+    targets = tc.get_work_day_targets()
+    exceptions = {d.date: d.hours for d in tc.get_date_exceptions(2026)}
+    overtime_rate = float(sm.get("overtime_rate", 1.0))
+
+    assert len(data.monthly_rows) == 12
+    for row in data.monthly_rows:
+        m_start, m_end = _month_range(2026, row.month)
+        expected = calculate_period_balance(
+            raw_records, m_start, m_end, targets, exceptions, overtime_rate,
+        )
+        assert row.worked_hours == pytest.approx(expected.worked_hours)
+        assert row.target_hours == pytest.approx(expected.target_hours)
+        assert row.balance == pytest.approx(expected.balance)
+
+    overall_expected = calculate_period_balance(
+        raw_records, date(2026, 1, 1), date(2026, 12, 31),
+        targets, exceptions, overtime_rate,
+    )
+    assert data.worked_hours == pytest.approx(overall_expected.worked_hours)
+    assert data.target_hours == pytest.approx(overall_expected.target_hours)
+    assert data.time_balance == pytest.approx(overall_expected.balance)
+    assert data.weighted_overtime == pytest.approx(
+        overall_expected.weighted_overtime)
 
 
 def test_period_summary_vac_defaults_with_no_settings(period_models):
