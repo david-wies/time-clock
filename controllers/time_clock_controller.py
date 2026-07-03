@@ -3,7 +3,7 @@ import sqlite3
 from datetime import date, time, datetime
 from typing import Optional, Callable
 
-from domain.types import TimeRecord, Result
+from domain.types import TimeRecord, Result, time_record_invariant_errors
 from domain.enums import WarningCode, WorkType
 from models.time_clock_model import TimeClockModel
 from settings import SettingsManager
@@ -77,6 +77,14 @@ class TimeClockController:
 
     def save_record(self, record: TimeRecord) -> Result:
         """Validates and saves (inserts or updates) a TimeRecord."""
+        # Re-run TimeRecord's context-free invariants: __post_init__ only
+        # fires at construction time, so a caller that fetched an existing
+        # record and mutated a field (e.g. record.break_minutes = ...)
+        # before calling save_record() would otherwise bypass them.
+        invariant_errors = time_record_invariant_errors(record)
+        if invariant_errors:
+            return Result(ok=False, errors=invariant_errors)
+
         existing = self.model.get_records_by_date(record.date)
         errors = validate_time_record(record, existing)
 
@@ -174,6 +182,13 @@ class TimeClockController:
 
         now = self._clock()
         target_record.end_time = now.time().replace(second=0, microsecond=0)
+
+        # target_record was fetched then mutated above (end_time), not
+        # freshly constructed — re-run the context-free invariants that
+        # __post_init__ only checked at its original construction time.
+        invariant_errors = time_record_invariant_errors(target_record)
+        if invariant_errors:
+            return Result(ok=False, errors=invariant_errors)
 
         existing = self.model.get_records_by_date(target_record.date)
         existing_for_validation = [

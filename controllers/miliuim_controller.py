@@ -1,7 +1,7 @@
 import logging
 import sqlite3
 
-from domain.types import MiliuimRecord, Result
+from domain.types import MiliuimRecord, Result, miliuim_record_invariant_errors
 from models.miliuim_model import MiliuimModel
 
 logger = logging.getLogger(__name__)
@@ -12,13 +12,22 @@ class MiliuimController:
     every check it used to perform (start/end date required, end >= start,
     note length) was context-free and is now enforced unconditionally by
     MiliuimRecord.__post_init__. Only the overlap check remains here, since
-    it needs other persisted records (context-dependent)."""
+    it needs other persisted records (context-dependent).
+
+    save_record() re-runs miliuim_record_invariant_errors() below because
+    __post_init__ only fires at construction time — a caller that fetches
+    an existing record and mutates a field (e.g. record.end_date = ...)
+    before calling save_record() would otherwise bypass those invariants
+    entirely."""
 
     def __init__(self, model: MiliuimModel) -> None:
         self.model = model
 
     def save_record(self, record: MiliuimRecord) -> Result:
-        errors: list[str] = []
+        errors: list[str] = miliuim_record_invariant_errors(record)
+        if errors:
+            return Result(ok=False, errors=errors)
+
         existing = self.model.get_records_in_date_range(
             record.start_date, record.end_date)
         for other in existing:

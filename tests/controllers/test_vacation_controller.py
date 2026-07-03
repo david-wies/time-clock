@@ -54,6 +54,38 @@ def test_save_invalid_hours(controller: VacationController) -> None:
     assert controller.save_record(rec_high).ok is False
 
 
+# ──────────── Defense-in-depth: mutate-then-save bypasses __post_init__ ─────
+
+def test_save_record_rejects_negative_hours_after_mutation(
+        controller: VacationController) -> None:
+    """VacationRecord.__post_init__ only runs at construction time, so
+    mutating a field on an already-saved record and calling save_record()
+    again must still be caught — by VacationController.save_record()
+    re-running vacation_record_invariant_errors(), not by __post_init__."""
+    controller.model.save_settings(2026, 160.0, 40.0)
+    rec = VacationRecord(None, date(2026, 7, 15), 8.0, VacationType.ANNUAL_LEAVE)
+    assert controller.save_record(rec).ok is True
+
+    rec.hours = -1.0
+    res = controller.save_record(rec)
+
+    assert res.ok is False
+    assert res.errors == ["Hours must be non-negative."]
+
+
+def test_save_record_rejects_note_too_long_after_mutation(
+        controller: VacationController) -> None:
+    controller.model.save_settings(2026, 160.0, 40.0)
+    rec = VacationRecord(None, date(2026, 7, 15), 8.0, VacationType.ANNUAL_LEAVE)
+    assert controller.save_record(rec).ok is True
+
+    rec.note = "x" * 501
+    res = controller.save_record(rec)
+
+    assert res.ok is False
+    assert "Note is too long" in res.errors[0]
+
+
 def test_save_balance_warning_and_override(controller: VacationController, event_bus: EventBus) -> None:
     # 1. Setup year settings: 16h allowance, 0h carry-over
     controller.model.save_settings(2026, 16.0, 10.0)

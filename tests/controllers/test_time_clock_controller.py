@@ -56,6 +56,48 @@ def test_save_overlapping_record(controller: TimeClockController) -> None:
 # test_time_record_note_too_long_raises).
 
 
+# ──────────── Defense-in-depth: mutate-then-save bypasses __post_init__ ─────
+
+def test_save_record_rejects_negative_break_minutes_after_mutation(
+        controller: TimeClockController) -> None:
+    """TimeRecord.__post_init__ only runs at construction time, so
+    mutating a field on an already-saved record and calling save_record()
+    again must still be caught — by TimeClockController.save_record()
+    re-running time_record_invariant_errors(), not by __post_init__."""
+    rec = TimeRecord(None, date(2026, 6, 26), time(9, 0), time(17, 0), 30, WorkType.REMOTE)
+    assert controller.save_record(rec).ok is True
+
+    rec.break_minutes = -1
+    res = controller.save_record(rec)
+
+    assert res.ok is False
+    assert res.errors == ["Break minutes must be non-negative."]
+
+
+def test_clock_out_rejects_break_exceeding_shift_length_after_mutation(
+        controller: TimeClockController) -> None:
+    """clock_out() itself fetches an open record and mutates end_time
+    in-place before saving. TimeRecord.__post_init__ ran successfully when
+    the open record was first constructed (break_minutes was consistent
+    with an end-time-less shift) but never re-runs once end_time is set
+    here. clock_out() must re-run time_record_invariant_errors() to catch a
+    stale break_minutes value that now exceeds the shift length —
+    fixed_clock pins clock-in and clock-out at the same instant (09:00), so
+    the resulting shift is zero-length and any positive break exceeds it."""
+    open_rec = TimeRecord(None, date(2026, 6, 26), time(9, 0), None, 0, WorkType.REMOTE)
+    record_id = controller.model.insert_record(open_rec)
+
+    stored = controller.model.get_record_by_id(record_id)
+    assert stored is not None
+    stored.break_minutes = 30  # valid while still open (end_time is None)
+    controller.model.update_record(stored)
+
+    res = controller.clock_out()
+
+    assert res.ok is False
+    assert res.errors == ["Break cannot exceed shift length."]
+
+
 def test_clock_in_out_flow(controller: TimeClockController) -> None:
     # Set default config
     controller.settings.set("last_used_work_type", "remote")

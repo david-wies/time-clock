@@ -172,6 +172,36 @@ def test_editing_record_into_overlap_with_another_rejected(controller: MiliuimCo
     assert any("overlap" in e.lower() for e in res.errors)
 
 
+# ──────────── Defense-in-depth: mutate-then-save bypasses __post_init__ ─────
+
+def test_save_record_rejects_end_before_start_after_mutation(
+        controller: MiliuimController) -> None:
+    """MiliuimRecord.__post_init__ only runs at construction time, so
+    mutating a field on an already-saved record and calling save_record()
+    again must still be caught — by MiliuimController.save_record()
+    re-running miliuim_record_invariant_errors(), not by __post_init__."""
+    rec = MiliuimRecord(None, date(2026, 6, 1), date(2026, 6, 10))
+    assert controller.save_record(rec).ok is True
+
+    rec.end_date = date(2026, 5, 20)  # now before start_date
+    res = controller.save_record(rec)
+
+    assert res.ok is False
+    assert res.errors == ["End date must be on or after start date."]
+
+
+def test_save_record_rejects_note_too_long_after_mutation(
+        controller: MiliuimController) -> None:
+    rec = MiliuimRecord(None, date(2026, 6, 1), date(2026, 6, 10))
+    assert controller.save_record(rec).ok is True
+
+    rec.note = "x" * 501
+    res = controller.save_record(rec)
+
+    assert res.ok is False
+    assert "Note is too long" in res.errors[0]
+
+
 # ────────────────────── Exception narrowing (§ codebase review G2 #1) ───────
 
 def test_save_record_sqlite_error_is_caught_and_returned(

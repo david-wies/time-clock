@@ -1,7 +1,7 @@
 import logging
 import sqlite3
 from typing import Optional
-from domain.types import VacationRecord, Result
+from domain.types import VacationRecord, Result, vacation_record_invariant_errors
 from domain.enums import VacationType, WarningCode
 from models.vacation_model import VacationModel
 
@@ -14,8 +14,11 @@ def validate_vacation_record(record: VacationRecord, max_hours: float = 24.0) ->
     max_hours comes from a live settings lookup
     (VacationModel.get_daily_target_for_date()) at save time, so this bound
     is context-dependent and cannot move into VacationRecord.__post_init__.
-    The note-length check IS context-free and is enforced unconditionally
-    by VacationRecord.__post_init__ instead.
+    The note-length and non-negative-hours checks ARE context-free and are
+    enforced unconditionally by VacationRecord.__post_init__ instead — but
+    VacationController.save_record() re-runs them via
+    vacation_record_invariant_errors() below, since __post_init__ never
+    re-fires for a record fetched from the DB and then mutated in place.
     """
     errors = []
 
@@ -45,6 +48,10 @@ class VacationController:
         # add_carry_over().
         if record.vtype == VacationType.CARRY_OVER:
             return Result(ok=False, errors=["Use add_carry_over() to record carry-over hours."])
+
+        invariant_errors = vacation_record_invariant_errors(record)
+        if invariant_errors:
+            return Result(ok=False, errors=invariant_errors)
 
         max_hours = self.model.get_daily_target_for_date(record.date)
         if max_hours == 0.0:

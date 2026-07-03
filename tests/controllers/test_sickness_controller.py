@@ -35,6 +35,36 @@ def test_save_invalid_hours(controller: SicknessController) -> None:
     assert controller.save_record(rec_high).ok is False
 
 
+# ──────────── Defense-in-depth: mutate-then-save bypasses __post_init__ ─────
+
+def test_save_record_rejects_negative_hours_after_mutation(
+        controller: SicknessController) -> None:
+    """SicknessRecord.__post_init__ only runs at construction time, so
+    mutating a field on an already-saved record and calling save_record()
+    again must still be caught — by SicknessController.save_record()
+    re-running sickness_record_invariant_errors(), not by __post_init__."""
+    rec = SicknessRecord(None, date(2026, 2, 15), 8.0, "Flu")
+    assert controller.save_record(rec).ok is True
+
+    rec.hours = -1.0
+    res = controller.save_record(rec)
+
+    assert res.ok is False
+    assert res.errors == ["Hours must be non-negative."]
+
+
+def test_save_record_rejects_note_too_long_after_mutation(
+        controller: SicknessController) -> None:
+    rec = SicknessRecord(None, date(2026, 2, 15), 8.0, "Flu")
+    assert controller.save_record(rec).ok is True
+
+    rec.note = "x" * 501
+    res = controller.save_record(rec)
+
+    assert res.ok is False
+    assert "Note is too long" in res.errors[0]
+
+
 def test_save_balance_warning_and_override(controller: SicknessController) -> None:
     # Allowance = 16h (2 days × 8h); two records of 8h each exhaust it.
     controller.model.save_settings(2026, 16.0)

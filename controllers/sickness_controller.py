@@ -2,7 +2,7 @@ import logging
 import sqlite3
 from datetime import date, timedelta
 from typing import Optional
-from domain.types import SicknessRecord, Result
+from domain.types import SicknessRecord, Result, sickness_record_invariant_errors
 from domain.enums import WarningCode
 from models.sickness_model import SicknessModel
 
@@ -15,9 +15,12 @@ def validate_sick_record(record: SicknessRecord) -> list[str]:
     The 0.5-24 bound is fixed policy (not context-dependent), but is kept
     here rather than in SicknessRecord.__post_init__: only the universal
     non-negative floor is enforced at construction (see task report for the
-    "fold non-negative into __post_init__" decision). Note-length is
-    context-free and is enforced unconditionally by
-    SicknessRecord.__post_init__ instead.
+    "fold non-negative into __post_init__" decision). Note-length and that
+    non-negative floor ARE context-free and are enforced unconditionally by
+    SicknessRecord.__post_init__ at construction time — but
+    SicknessController.save_record() re-runs them via
+    sickness_record_invariant_errors() below, since __post_init__ never
+    re-fires for a record fetched from the DB and then mutated in place.
     """
     errors = []
 
@@ -33,6 +36,10 @@ class SicknessController:
 
     def save_record(self, record: SicknessRecord, confirm_over_balance: bool = False) -> Result:
         """Validates and saves a SicknessRecord."""
+        invariant_errors = sickness_record_invariant_errors(record)
+        if invariant_errors:
+            return Result(ok=False, errors=invariant_errors)
+
         errors = validate_sick_record(record)
         if errors:
             return Result(ok=False, errors=errors)
