@@ -1,3 +1,4 @@
+import copy
 import json
 import sqlite3
 import sys
@@ -40,7 +41,10 @@ class SettingsManager:
         finally:
             conn.close()
 
-        return self.DEFAULTS.get(key, default)
+        # Deep-copy so callers can never mutate the shared DEFAULTS list/dict
+        # (or a value returned from a previous call) and corrupt it for the
+        # rest of the process's lifetime.
+        return copy.deepcopy(self.DEFAULTS.get(key, default))
 
     def set(self, key: str, value: Any) -> None:
         """Stores a configuration value as JSON-serialized text."""

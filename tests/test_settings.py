@@ -117,3 +117,39 @@ def test_changing_one_key_does_not_affect_another(settings_manager):
     settings_manager.set("key_y", "unchanged")
     settings_manager.set("key_x", "updated")
     assert settings_manager.get("key_y") == "unchanged"
+
+
+# ─────────────── get() returns independent copies (no shared mutable state) ──
+
+def test_mutating_returned_default_list_does_not_corrupt_shared_default(settings_manager):
+    # Regression test: SettingsManager.DEFAULTS["offices"] is a class-level
+    # mutable list. get() must never hand back a reference to it — otherwise
+    # a caller appending to the returned list corrupts the default for the
+    # rest of the process's lifetime.
+    offices = settings_manager.get("offices")
+    offices.append("Injected Office")
+
+    assert settings_manager.get("offices") == ["Office A", "Office B", "Office C"]
+    assert SettingsManager.DEFAULTS["offices"] == ["Office A", "Office B", "Office C"]
+
+
+def test_mutating_returned_default_break_presets_does_not_corrupt_shared_default(settings_manager):
+    presets = settings_manager.get("break_presets")
+    presets.clear()
+
+    assert settings_manager.get("break_presets") == [15, 30, 45, 60]
+    assert SettingsManager.DEFAULTS["break_presets"] == [15, 30, 45, 60]
+
+
+def test_two_calls_to_get_return_independent_list_objects(settings_manager):
+    first = settings_manager.get("offices")
+    second = settings_manager.get("offices")
+    assert first == second
+    assert first is not second
+
+
+def test_mutating_caller_supplied_mutable_default_does_not_leak(settings_manager):
+    fallback = {"a": 1}
+    result = settings_manager.get("no_such_key", fallback)
+    result["a"] = 999
+    assert fallback == {"a": 1}
