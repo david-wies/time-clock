@@ -58,10 +58,10 @@ def test_calculate_period_balance() -> None:
     )
 
     # Worked: 7.5 + 9.0 = 16.5h
-    assert result["worked_hours"] == 16.5
-    assert result["target_hours"] == 16.0
-    assert result["balance"] == 0.5
-    assert result["weighted_overtime"] == 0.5  # default rate 1.0
+    assert result.worked_hours == 16.5
+    assert result.target_hours == 16.0
+    assert result.balance == 0.5
+    assert result.weighted_overtime == 0.5  # default rate 1.0
 
 
 def test_calculate_period_balance_overtime_rate() -> None:
@@ -82,8 +82,8 @@ def test_calculate_period_balance_overtime_rate() -> None:
         overtime_rate=1.5,
         today=date(2026, 6, 26)
     )
-    assert res_surplus["balance"] == 2.0
-    assert res_surplus["weighted_overtime"] == 3.0  # 2.0 * 1.5
+    assert res_surplus.balance == 2.0
+    assert res_surplus.weighted_overtime == 3.0  # 2.0 * 1.5
 
     # Negative balance (deficit)
     records_deficit = [
@@ -99,8 +99,8 @@ def test_calculate_period_balance_overtime_rate() -> None:
         overtime_rate=1.5,
         today=date(2026, 6, 26)
     )
-    assert res_deficit["balance"] == -2.0
-    assert res_deficit["weighted_overtime"] == - \
+    assert res_deficit.balance == -2.0
+    assert res_deficit.weighted_overtime == - \
         2.0  # Deficit is raw, rate not applied
 
 

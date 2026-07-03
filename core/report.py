@@ -173,9 +173,9 @@ def period_summary(
             monthly_rows.append(MonthlyRow(
                 month=m,
                 year=year,
-                worked_hours=m_bal["worked_hours"],
-                target_hours=m_bal["target_hours"],
-                balance=m_bal["balance"],
+                worked_hours=m_bal.worked_hours,
+                target_hours=m_bal.target_hours,
+                balance=m_bal.balance,
             ))
 
     # Vacation and sickness summaries are always year-level
@@ -190,10 +190,10 @@ def period_summary(
         year=year,
         month=month,
         quarter=quarter,
-        worked_hours=bal["worked_hours"],
-        target_hours=bal["target_hours"],
-        time_balance=bal["balance"],
-        weighted_overtime=bal["weighted_overtime"],
+        worked_hours=bal.worked_hours,
+        target_hours=bal.target_hours,
+        time_balance=bal.balance,
+        weighted_overtime=bal.weighted_overtime,
         overtime_rate=overtime_rate,
         vac_allowance=vac.allowance,
         vac_carry_over=vac.carry_over,

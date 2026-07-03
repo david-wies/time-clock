@@ -452,7 +452,7 @@ class TimeClockTab(ttk.Frame):
 
         month_text = (
             f"── {_MONTH_NAMES[month]} {year}"
-            f"  ({_fmt_h(balance['worked_hours'])} / {_fmt_h(balance['target_hours'])}) ──"
+            f"  ({_fmt_h(balance.worked_hours)} / {_fmt_h(balance.target_hours)}) ──"
         )
         month_node = self._tree.insert(
             "", "end", text=month_text,
@@ -506,7 +506,7 @@ class TimeClockTab(ttk.Frame):
 
         week_text = (
             f"── Week  {to_display_date(week_start)} – {to_display_date(week_end)}"
-            f"  ({_fmt_h(balance['worked_hours'])} / {_fmt_h(balance['target_hours'])}) ──"
+            f"  ({_fmt_h(balance.worked_hours)} / {_fmt_h(balance.target_hours)}) ──"
         )
         week_node = self._tree.insert(
             "", "end", text=week_text,
@@ -533,7 +533,7 @@ class TimeClockTab(ttk.Frame):
                 self._insert_record_row(
                     day_node, rec, today, now_t, is_overtime_day)
 
-        bal = balance["balance"]
+        bal = balance.balance
         sign = "+" if bal >= 0 else "-"
         self._tree.insert(
             "", "end",

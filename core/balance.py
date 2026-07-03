@@ -1,6 +1,6 @@
 from datetime import date, time, datetime, timedelta
-from typing import Optional, Any, Union
-from domain.types import TimeRecord
+from typing import Optional, Union
+from domain.types import PeriodBalance, TimeRecord
 from core.timeutil import duration
 
 
@@ -34,7 +34,7 @@ def calculate_period_balance(
     overtime_rate: float = 1.0,
     today: Optional[date] = None,
     now_time: Optional[time] = None
-) -> dict[str, Any]:
+) -> PeriodBalance:
     """
     Computes total worked hours, target hours, and balances for a date range.
     Overtime rate multiplier is applied only to positive balances.
@@ -77,13 +77,13 @@ def calculate_period_balance(
     else:
         weighted_overtime = balance
 
-    return {
-        "worked_hours": total_worked,
-        "target_hours": total_target,
-        "balance": balance,
-        "weighted_overtime": weighted_overtime,
-        "days_in_period": num_days
-    }
+    return PeriodBalance(
+        worked_hours=total_worked,
+        target_hours=total_target,
+        balance=balance,
+        weighted_overtime=weighted_overtime,
+        days_in_period=num_days,
+    )
 
 
 def get_week_range(target_date: date) -> tuple[date, date]:
@@ -134,6 +134,6 @@ def overtime(
         records, start_date, end_date, targets, exceptions,
         overtime_rate=rate, today=today, now_time=now_time
     )
-    raw = result["balance"]
-    weighted = result["weighted_overtime"]
+    raw = result.balance
+    weighted = result.weighted_overtime
     return raw, weighted
