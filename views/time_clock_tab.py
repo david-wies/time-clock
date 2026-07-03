@@ -385,14 +385,34 @@ class TimeClockTab(ttk.Frame):
                 self._selected_month = idx
         self._refresh_tree()
 
+    # ─────────────────────────── Shared fetch cache ─────────────────────────
+
+    def _exceptions_for_year(
+        self, year: int, cache: dict[int, dict[date, float]]
+    ) -> dict[date, float]:
+        """Returns the {date: hours} exception lookup for `year`, fetching
+        and caching it in `cache` on first use within the current refresh
+        cycle. `cache` is a short-lived dict built fresh per _refresh()/
+        _auto_refresh() call — this only dedupes fetches *within* one
+        refresh cycle, not across cycles."""
+        if year not in cache:
+            cache[year] = _build_exc_dict(self.model.get_date_exceptions(year))
+        return cache[year]
+
     # ─────────────────────────── Header Bar ─────────────────────────────────
 
-    def _refresh_header(self) -> None:
+    def _refresh_header(
+        self,
+        targets: Optional[dict[int, float]] = None,
+        exc_cache: Optional[dict[int, dict[date, float]]] = None,
+    ) -> None:
         today = date.today()
         now_t = _now_time()
-        targets = self.model.get_work_day_targets()
-        exceptions = _build_exc_dict(
-            self.model.get_date_exceptions(today.year))
+        if targets is None:
+            targets = self.model.get_work_day_targets()
+        if exc_cache is None:
+            exc_cache = {}
+        exceptions = self._exceptions_for_year(today.year, exc_cache)
 
         target_h = get_daily_target(today, targets, exceptions)
         worked_h = sum(
@@ -426,22 +446,33 @@ class TimeClockTab(ttk.Frame):
         if children:
             self._tree.delete(*children)
 
-    def _refresh_tree(self) -> None:
+    def _refresh_tree(
+        self,
+        targets: Optional[dict[int, float]] = None,
+        exc_cache: Optional[dict[int, dict[date, float]]] = None,
+    ) -> None:
         self._clear_tree()
+        if targets is None:
+            targets = self.model.get_work_day_targets()
+        if exc_cache is None:
+            exc_cache = {}
         if self._view_mode == "week":
-            self._populate_week()
+            self._populate_week(targets, exc_cache)
         else:
-            self._populate_month()
+            self._populate_month(targets, exc_cache)
 
-    def _populate_month(self) -> None:
+    def _populate_month(
+        self,
+        targets: dict[int, float],
+        exc_cache: dict[int, dict[date, float]],
+    ) -> None:
         year = self._selected_year
         month = self._selected_month
         today = date.today()
         now_t = _now_time()
 
         records = self.model.get_records_for_period(year, month)
-        targets = self.model.get_work_day_targets()
-        exceptions = _build_exc_dict(self.model.get_date_exceptions(year))
+        exceptions = self._exceptions_for_year(year, exc_cache)
         period_start, period_end = get_month_range(date(year, month, 1))
         overtime_rate: float = self.settings.get("overtime_rate") or 1.0
 
@@ -482,7 +513,11 @@ class TimeClockTab(ttk.Frame):
                 self._insert_record_row(
                     day_node, rec, today, now_t, is_overtime_day)
 
-    def _populate_week(self) -> None:
+    def _populate_week(
+        self,
+        targets: dict[int, float],
+        exc_cache: dict[int, dict[date, float]],
+    ) -> None:
         week_start = self._selected_week_start
         week_end = week_start + timedelta(days=6)
         today = date.today()
@@ -491,12 +526,9 @@ class TimeClockTab(ttk.Frame):
         # Fetch records — single date-range query handles cross-month weeks correctly
         records = self.model.get_records_for_date_range(week_start, week_end)
 
-        targets = self.model.get_work_day_targets()
-        exceptions = _build_exc_dict(
-            self.model.get_date_exceptions(week_start.year))
+        exceptions = dict(self._exceptions_for_year(week_start.year, exc_cache))
         if week_end.year != week_start.year:
-            exceptions.update(_build_exc_dict(
-                self.model.get_date_exceptions(week_end.year)))
+            exceptions.update(self._exceptions_for_year(week_end.year, exc_cache))
         overtime_rate: float = self.settings.get("overtime_rate") or 1.0
 
         balance = calculate_period_balance(
@@ -602,9 +634,19 @@ class TimeClockTab(ttk.Frame):
     # ─────────────────────────── Refresh ────────────────────────────────────
 
     def _refresh(self, **_kw: object) -> None:
-        self._refresh_header()
-        self._refresh_tree()
+        self._refresh_header_and_tree()
         self._update_button_states()
+
+    def _refresh_header_and_tree(self) -> None:
+        """Fetches targets/exceptions once and shares them between
+        _refresh_header() and _refresh_tree() — both independently called
+        get_work_day_targets()/get_date_exceptions() before this fix, so
+        every refresh cycle (including the 60s auto-refresh tick) queried
+        the DB twice for the same data."""
+        targets = self.model.get_work_day_targets()
+        exc_cache: dict[int, dict[date, float]] = {}
+        self._refresh_header(targets, exc_cache)
+        self._refresh_tree(targets, exc_cache)
 
     def _on_event(self, **_kw: object) -> None:
         # Re-anchor week start in case week_first_day setting changed.
@@ -624,8 +666,7 @@ class TimeClockTab(ttk.Frame):
     def _auto_refresh(self) -> None:
         self._after_id = None
         if self.model.get_open_records():
-            self._refresh_header()
-            self._refresh_tree()
+            self._refresh_header_and_tree()
             self._after_id = self.root.after(60_000, self._auto_refresh)
 
     def _cancel_auto_refresh(self) -> None:
