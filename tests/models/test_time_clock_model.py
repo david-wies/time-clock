@@ -1,12 +1,13 @@
 import logging
+from datetime import date, time
 
 import pytest
-from datetime import date, time
-from domain.types import TimeRecord
-from domain.enums import WorkType
-from models.time_clock_model import TimeClockModel
-from core.events import EventBus, Event
+
+from core.events import Event, EventBus
 from db.database import Database
+from domain.enums import WorkType
+from domain.types import TimeRecord
+from models.time_clock_model import TimeClockModel
 
 
 def test_time_record_crud(db: Database, event_bus: EventBus) -> None:
@@ -21,7 +22,7 @@ def test_time_record_crud(db: Database, event_bus: EventBus) -> None:
         break_minutes=30,
         work_type=WorkType.REMOTE,
         office=None,
-        note="Test record"
+        note="Test record",
     )
 
     # Listen to changes
@@ -30,6 +31,7 @@ def test_time_record_crud(db: Database, event_bus: EventBus) -> None:
     def on_change() -> None:
         nonlocal change_called
         change_called = True
+
     event_bus.subscribe(Event.TIME_RECORDS_CHANGED, on_change)
 
     rec_id = model.insert_record(rec)
@@ -65,12 +67,11 @@ def test_time_record_crud(db: Database, event_bus: EventBus) -> None:
 def test_get_records_for_period(db: Database, event_bus: EventBus) -> None:
     model = TimeClockModel(db, event_bus)
 
-    r1 = TimeRecord(None, date(2026, 6, 1), time(
-        9, 0), time(17, 0), 0, WorkType.REMOTE)
-    r2 = TimeRecord(None, date(2026, 6, 15), time(10, 0),
-                    None, 0, WorkType.REMOTE)  # Open record
-    r3 = TimeRecord(None, date(2026, 7, 1), time(
-        9, 0), time(17, 0), 0, WorkType.REMOTE)
+    r1 = TimeRecord(None, date(2026, 6, 1), time(9, 0), time(17, 0), 0, WorkType.REMOTE)
+    r2 = TimeRecord(
+        None, date(2026, 6, 15), time(10, 0), None, 0, WorkType.REMOTE
+    )  # Open record
+    r3 = TimeRecord(None, date(2026, 7, 1), time(9, 0), time(17, 0), 0, WorkType.REMOTE)
 
     model.insert_record(r1)
     model.insert_record(r2)
@@ -117,7 +118,8 @@ def test_get_records_for_period_uses_real_month_end_date(
         conn.set_trace_callback(None)
 
     select_statements = [
-        s for s in captured_statements if s.startswith("SELECT * FROM time_record")]
+        s for s in captured_statements if s.startswith("SELECT * FROM time_record")
+    ]
     assert len(select_statements) == 1
     expected_end_date = f"{year:04d}-{month:02d}-{expected_last_day:02d}"
     assert expected_end_date in select_statements[0]
@@ -129,12 +131,13 @@ def test_get_records_for_period_uses_real_month_end_date(
 def test_get_records_by_date(db: Database, event_bus: EventBus) -> None:
     model = TimeClockModel(db, event_bus)
 
-    r1 = TimeRecord(None, date(2026, 6, 26), time(
-        9, 0), time(12, 0), 0, WorkType.REMOTE)
-    r2 = TimeRecord(None, date(2026, 6, 26), time(
-        13, 0), time(17, 0), 0, WorkType.ROAD)
-    r3 = TimeRecord(None, date(2026, 6, 27), time(
-        9, 0), time(17, 0), 0, WorkType.REMOTE)
+    r1 = TimeRecord(
+        None, date(2026, 6, 26), time(9, 0), time(12, 0), 0, WorkType.REMOTE
+    )
+    r2 = TimeRecord(None, date(2026, 6, 26), time(13, 0), time(17, 0), 0, WorkType.ROAD)
+    r3 = TimeRecord(
+        None, date(2026, 6, 27), time(9, 0), time(17, 0), 0, WorkType.REMOTE
+    )
 
     model.insert_record(r1)
     model.insert_record(r2)
@@ -182,7 +185,8 @@ def test_targets_and_exceptions(db: Database, event_bus: EventBus) -> None:
 
 
 def test_get_date_exceptions_skips_malformed_date_and_logs_warning(
-        db: Database, event_bus: EventBus, caplog) -> None:
+    db: Database, event_bus: EventBus, caplog
+) -> None:
     """A corrupted `date` column value (e.g. from manual DB editing) must
     not crash get_date_exceptions() — it should be logged and skipped,
     exactly like the (pre-existing) view-layer handling in

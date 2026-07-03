@@ -2,27 +2,35 @@
 
 from __future__ import annotations
 
+import tkinter as tk
 from datetime import date
+from tkinter import messagebox, ttk
 from typing import Callable
 
-import tkinter as tk
-from tkinter import ttk, messagebox
-
 from controllers.miliuim_controller import MiliuimController
-from models.miliuim_model import MiliuimModel
-from settings import SettingsManager
-from core.events import EventBus, Event
+from core.events import Event, EventBus
+from core.hebrew_date import to_hebrew_label as _safe_hebrew
 from core.timeutil import to_display_date
 from domain.types import MiliuimRecord
+from models.miliuim_model import MiliuimModel
+from settings import SettingsManager
 from theme.style import COLORS, resolve_theme_mode
-
-from core.hebrew_date import to_hebrew_label as _safe_hebrew
 from views.miliuim_record_dialog import MiliuimRecordDialog
 
-
 _MONTH_NAMES = [
-    "", "January", "February", "March", "April", "May", "June",
-    "July", "August", "September", "October", "November", "December",
+    "",
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
 ]
 
 
@@ -53,8 +61,7 @@ class MiliuimTab(ttk.Frame):
         self._build_ui()
         self._refresh()
 
-        self._unsubs.append(bus.subscribe(
-            Event.MILIUIM_CHANGED, self._on_event))
+        self._unsubs.append(bus.subscribe(Event.MILIUIM_CHANGED, self._on_event))
 
         self.bind("<Destroy>", self._on_destroy)
         self.pack(fill="both", expand=True)
@@ -74,7 +81,9 @@ class MiliuimTab(ttk.Frame):
         cur_year = date.today().year
         self._var_year = tk.StringVar(value=str(self._selected_year))
         self._cbo_year = ttk.Combobox(
-            bar, textvariable=self._var_year, width=6,
+            bar,
+            textvariable=self._var_year,
+            width=6,
             values=[str(y) for y in range(cur_year - 10, cur_year + 3)],
             state="readonly",
         )
@@ -84,7 +93,9 @@ class MiliuimTab(ttk.Frame):
         ttk.Label(bar, text="Month:").pack(side="left")
         self._var_month = tk.StringVar(value="All")
         self._cbo_month = ttk.Combobox(
-            bar, textvariable=self._var_month, width=11,
+            bar,
+            textvariable=self._var_month,
+            width=11,
             values=["All"] + _MONTH_NAMES[1:],
             state="readonly",
         )
@@ -107,27 +118,28 @@ class MiliuimTab(ttk.Frame):
         cols = ["start_date", "end_date", "hebrew_date", "days", "note"]
 
         self._tree = ttk.Treeview(
-            frame, columns=cols, show="headings", selectmode="browse",
+            frame,
+            columns=cols,
+            show="headings",
+            selectmode="browse",
         )
-        self._tree.column("start_date", width=110,
-                          minwidth=90, stretch=False, anchor="w")
+        self._tree.column(
+            "start_date", width=110, minwidth=90, stretch=False, anchor="w"
+        )
         self._tree.heading("start_date", text="Start Date", anchor="center")
 
-        self._tree.column("end_date", width=110, minwidth=90,
-                          stretch=False, anchor="w")
+        self._tree.column("end_date", width=110, minwidth=90, stretch=False, anchor="w")
         self._tree.heading("end_date", text="End Date", anchor="center")
 
-        self._tree.column("hebrew_date", width=150,
-                          minwidth=120, stretch=False, anchor="w")
-        self._tree.heading(
-            "hebrew_date", text="Hebrew Date (Start)", anchor="center")
+        self._tree.column(
+            "hebrew_date", width=150, minwidth=120, stretch=False, anchor="w"
+        )
+        self._tree.heading("hebrew_date", text="Hebrew Date (Start)", anchor="center")
 
-        self._tree.column("days", width=60, minwidth=50,
-                          stretch=False, anchor="e")
+        self._tree.column("days", width=60, minwidth=50, stretch=False, anchor="e")
         self._tree.heading("days", text="Days", anchor="center")
 
-        self._tree.column("note", width=200, minwidth=80,
-                          stretch=True, anchor="w")
+        self._tree.column("note", width=200, minwidth=80, stretch=True, anchor="w")
         self._tree.heading("note", text="Note", anchor="center")
 
         vsb = ttk.Scrollbar(frame, orient="vertical", command=self._tree.yview)
@@ -147,17 +159,20 @@ class MiliuimTab(ttk.Frame):
         inner = ttk.Frame(bar)
         inner.pack(fill="x")
 
-        self._btn_add = ttk.Button(
-            inner, text="+ Add", command=self._do_add, width=12)
+        self._btn_add = ttk.Button(inner, text="+ Add", command=self._do_add, width=12)
         self._btn_add.pack(side="left", padx=(0, 4))
 
         self._btn_edit = ttk.Button(
-            inner, text="✏ Edit", command=self._do_edit, width=12)
+            inner, text="✏ Edit", command=self._do_edit, width=12
+        )
         self._btn_edit.pack(side="left", padx=(0, 4))
 
         self._btn_delete = ttk.Button(
-            inner, text="🗑 Remove", style="Danger.TButton",
-            command=self._do_delete, width=12,
+            inner,
+            text="🗑 Remove",
+            style="Danger.TButton",
+            command=self._do_delete,
+            width=12,
         )
         self._btn_delete.pack(side="left")
 
@@ -173,6 +188,7 @@ class MiliuimTab(ttk.Frame):
                         fn()
                 except tk.TclError:
                     pass
+
             return _handler
 
         self.root.bind_all("<Control-Shift-M>", _guard(self._do_add), add=True)
@@ -224,20 +240,22 @@ class MiliuimTab(ttk.Frame):
         total_days = 0
         for rec in records:
             self._tree.insert(
-                "", "end", iid=f"rec_{rec.id}",
-                values=self._make_row_values(rec, month))
+                "", "end", iid=f"rec_{rec.id}", values=self._make_row_values(rec, month)
+            )
             total_days += self.model.clip_days(rec, self._selected_year, month)
 
         if records:
             self._tree.insert(
-                "", "end", iid="__total__",
-                values=("", "", "", str(total_days),
-                        f"Total: {total_days} days"),
+                "",
+                "end",
+                iid="__total__",
+                values=("", "", "", str(total_days), f"Total: {total_days} days"),
                 tags=("total",),
             )
             c = COLORS.get(self._theme_mode, COLORS["light"])
             self._tree.tag_configure(
-                "total", foreground=c["fg.muted"], font=("Helvetica", 9, "bold"))
+                "total", foreground=c["fg.muted"], font=("Helvetica", 9, "bold")
+            )
 
     def _refresh(self, **_kw) -> None:
         self._refresh_summary()
@@ -280,15 +298,17 @@ class MiliuimTab(ttk.Frame):
         self._btn_delete.config(state=state)
 
     def _do_add(self) -> None:
-        MiliuimRecordDialog(self, controller=self.controller,
-                            model=self.model, record=None)
+        MiliuimRecordDialog(
+            self, controller=self.controller, model=self.model, record=None
+        )
 
     def _do_edit(self) -> None:
         rec = self._get_selected_record()
         if rec is None:
             return
-        MiliuimRecordDialog(self, controller=self.controller,
-                            model=self.model, record=rec)
+        MiliuimRecordDialog(
+            self, controller=self.controller, model=self.model, record=rec
+        )
 
     def _do_delete(self) -> None:
         rec_id = self._get_selected_record_id()
@@ -303,8 +323,7 @@ class MiliuimTab(ttk.Frame):
             return
         result = self.controller.delete_record(rec_id)
         if not result.ok:
-            messagebox.showerror("Remove Failed", "\n".join(
-                result.errors), parent=self)
+            messagebox.showerror("Remove Failed", "\n".join(result.errors), parent=self)
 
     def _on_destroy(self, _event=None) -> None:
         for unsub in self._unsubs:

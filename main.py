@@ -16,11 +16,11 @@ from models.time_clock_model import TimeClockModel
 from models.vacation_model import VacationModel
 from settings import SettingsManager
 from theme.style import apply_theme
-from views.tray import SystemTray
 from views.main_window import MainWindow
 from views.miliuim_tab import MiliuimTab
 from views.sickness_tab import SicknessTab
 from views.time_clock_tab import TimeClockTab
+from views.tray import SystemTray
 from views.vacation_tab import VacationTab
 
 
@@ -46,7 +46,8 @@ def main() -> None:
     apply_theme(root, mode)
 
     window = MainWindow(
-        root, bus,
+        root,
+        bus,
         settings=settings,
         model_tc=time_model,
         model_vacation=vacation_model,
@@ -98,7 +99,9 @@ def main() -> None:
     root.mainloop()
 
 
-def _boot_checks(root: tk.Tk, model: TimeClockModel, ctrl: TimeClockController, tab: TimeClockTab) -> None:
+def _boot_checks(
+    root: tk.Tk, model: TimeClockModel, ctrl: TimeClockController, tab: TimeClockTab
+) -> None:
     """Warn about open records from a previous day on startup."""
     open_records = model.get_open_records()
     today = date.today()

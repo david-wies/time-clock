@@ -5,13 +5,13 @@ from __future__ import annotations
 import logging
 import sqlite3
 import tkinter as tk
-from tkinter import ttk, messagebox
 from datetime import date
+from tkinter import messagebox, ttk
 
 from controllers.vacation_controller import VacationController
-from models.vacation_model import VacationModel
 from domain.enums import VacationType, WarningCode
 from domain.types import VacationRecord
+from models.vacation_model import VacationModel
 from views.date_picker import make_date_picker
 
 logger = logging.getLogger(__name__)
@@ -30,7 +30,6 @@ _VTYPE_OPTIONS: list[tuple[VacationType, str]] = [
 
 
 class VacationRecordDialog(tk.Toplevel):
-
     def __init__(
         self,
         parent,
@@ -66,24 +65,26 @@ class VacationRecordDialog(tk.Toplevel):
         # ── Date ──────────────────────────────────────────────────────────────
         date_row = ttk.Frame(outer)
         date_row.pack(fill="x", pady=(0, 6))
-        ttk.Label(date_row, text="Date:", width=8,
-                  anchor="e").pack(side="left")
+        ttk.Label(date_row, text="Date:", width=8, anchor="e").pack(side="left")
 
-        self._date_widget, self._get_date, self._set_date = make_date_picker(
-            date_row)
+        self._date_widget, self._get_date, self._set_date = make_date_picker(date_row)
         self._date_widget.pack(side="left", padx=(4, 0))
-        self._date_widget.bind("<<DateEntrySelected>>",
-                               lambda _e: self._update_hours_cap())
+        self._date_widget.bind(
+            "<<DateEntrySelected>>", lambda _e: self._update_hours_cap()
+        )
 
         # ── Hours ─────────────────────────────────────────────────────────────
         hours_row = ttk.Frame(outer)
         hours_row.pack(fill="x", pady=(0, 6))
-        ttk.Label(hours_row, text="Hours:", width=8,
-                  anchor="e").pack(side="left")
+        ttk.Label(hours_row, text="Hours:", width=8, anchor="e").pack(side="left")
         self._var_hours = tk.StringVar(value="8.0")
         self._spn_hours = ttk.Spinbox(
-            hours_row, textvariable=self._var_hours,
-            from_=0.5, to=24.0, increment=0.5, width=8,
+            hours_row,
+            textvariable=self._var_hours,
+            from_=0.5,
+            to=24.0,
+            increment=0.5,
+            width=8,
             format="%.1f",
         )
         self._spn_hours.pack(side="left", padx=(4, 0))
@@ -93,8 +94,7 @@ class VacationRecordDialog(tk.Toplevel):
         # ── Vacation Type ─────────────────────────────────────────────────────
         type_lbl_row = ttk.Frame(outer)
         type_lbl_row.pack(fill="x", pady=(0, 2))
-        ttk.Label(type_lbl_row, text="Type:", width=8,
-                  anchor="e").pack(side="left")
+        ttk.Label(type_lbl_row, text="Type:", width=8, anchor="e").pack(side="left")
 
         self._var_vtype = tk.StringVar(value=str(VacationType.ANNUAL_LEAVE))
         for vt, label in _VTYPE_OPTIONS:
@@ -108,8 +108,7 @@ class VacationRecordDialog(tk.Toplevel):
         # ── Note ──────────────────────────────────────────────────────────────
         note_row = ttk.Frame(outer)
         note_row.pack(fill="x", pady=(0, 10))
-        ttk.Label(note_row, text="Note:", width=8,
-                  anchor="e").pack(side="left")
+        ttk.Label(note_row, text="Note:", width=8, anchor="e").pack(side="left")
         vcmd = (self.register(self._validate_note), "%P")
         self._var_note = tk.StringVar()
         ttk.Entry(
@@ -132,8 +131,7 @@ class VacationRecordDialog(tk.Toplevel):
         ttk.Button(btn_row, text="Cancel", command=self.destroy).pack(
             side="right", padx=(6, 0)
         )
-        ttk.Button(btn_row, text="Save",
-                   command=self._on_save).pack(side="right")
+        ttk.Button(btn_row, text="Save", command=self._on_save).pack(side="right")
 
     # ─────────────────────────── Data Population ────────────────────────────
 
@@ -162,7 +160,8 @@ class VacationRecordDialog(tk.Toplevel):
         except sqlite3.Error:
             logger.exception(
                 "Database error looking up the daily hours cap for %s; "
-                "the max-hours hint will not update", d
+                "the max-hours hint will not update",
+                d,
             )
             return
 
@@ -225,7 +224,8 @@ class VacationRecordDialog(tk.Toplevel):
             return
 
         result = self._controller.save_record(
-            record, confirm_over_balance=confirm_over_balance)
+            record, confirm_over_balance=confirm_over_balance
+        )
         if result.ok:
             self.destroy()
         elif WarningCode.OVER_BALANCE.value in result.errors:

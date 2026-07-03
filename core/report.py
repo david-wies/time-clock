@@ -8,39 +8,49 @@ from datetime import date
 
 from core.balance import group_records_by_date, period_balance_from_grouped
 from models.miliuim_model import MiliuimModel
+from models.sickness_model import SicknessModel
 from models.time_clock_model import TimeClockModel
 from models.vacation_model import VacationModel
-from models.sickness_model import SicknessModel
 from settings import SettingsManager
 
-
 MONTH_NAMES = [
-    "", "January", "February", "March", "April", "May", "June",
-    "July", "August", "September", "October", "November", "December",
+    "",
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
 ]
 
 
 @dataclass(slots=True)
 class MonthlyRow:
-    month: int        # 1-12
+    month: int  # 1-12
     year: int
     worked_hours: float
     target_hours: float
-    balance: float    # positive = overtime, negative = deficit
+    balance: float  # positive = overtime, negative = deficit
 
 
 @dataclass(slots=True)
 class ReportData:
-    period_label: str         # e.g. "June 2026", "Q2 2026", "2026"
-    period_type: str          # "month" | "quarter" | "year"
+    period_label: str  # e.g. "June 2026", "Q2 2026", "2026"
+    period_type: str  # "month" | "quarter" | "year"
     year: int
-    month: int | None    # None for year/quarter reports
+    month: int | None  # None for year/quarter reports
     quarter: int | None  # None for month/year reports
 
     # Time clock
     worked_hours: float
     target_hours: float
-    time_balance: float       # worked - target
+    time_balance: float  # worked - target
     weighted_overtime: float  # time_balance * rate if positive
     overtime_rate: float
 
@@ -65,6 +75,7 @@ class ReportData:
 
 
 # ──────────────────────────── Internal helpers ────────────────────────────────
+
 
 def _quarter_months(quarter: int) -> list[int]:
     """Returns the three month numbers (1-12) for a given quarter (1-4)."""
@@ -117,6 +128,7 @@ def _period_label(
 
 # ──────────────────────────── Public API ─────────────────────────────────────
 
+
 def period_summary(
     period_type: str,  # "month" | "quarter" | "year"
     year: int,
@@ -147,8 +159,7 @@ def period_summary(
     targets = model_tc.get_work_day_targets()
 
     exceptions: dict[date, float] = {
-        d.date: d.hours
-        for d in model_tc.get_date_exceptions(year)
+        d.date: d.hours for d in model_tc.get_date_exceptions(year)
     }
 
     # Group once (O(N)) and reuse for both the overall balance and every
@@ -166,8 +177,7 @@ def period_summary(
     if period_type in ("quarter", "year"):
         if period_type == "quarter":
             if quarter is None:
-                raise ValueError(
-                    "quarter is required for period_type='quarter'")
+                raise ValueError("quarter is required for period_type='quarter'")
             months_in_period: list[int] = _quarter_months(quarter)
         else:
             months_in_period = list(range(1, 13))
@@ -176,19 +186,22 @@ def period_summary(
             m_bal = period_balance_from_grouped(
                 records_by_date, m_start, m_end, targets, exceptions, overtime_rate
             )
-            monthly_rows.append(MonthlyRow(
-                month=m,
-                year=year,
-                worked_hours=m_bal.worked_hours,
-                target_hours=m_bal.target_hours,
-                balance=m_bal.balance,
-            ))
+            monthly_rows.append(
+                MonthlyRow(
+                    month=m,
+                    year=year,
+                    worked_hours=m_bal.worked_hours,
+                    target_hours=m_bal.target_hours,
+                    balance=m_bal.balance,
+                )
+            )
 
     # Vacation and sickness summaries are always year-level
     vac = model_vacation.calculate_vacation_summary(year)
     sick = model_sickness.calculate_sickness_summary(year)
-    miliuim = model_miliuim.calculate_summary(
-        year) if model_miliuim is not None else None
+    miliuim = (
+        model_miliuim.calculate_summary(year) if model_miliuim is not None else None
+    )
 
     return ReportData(
         period_label=label,

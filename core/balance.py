@@ -1,9 +1,12 @@
-from datetime import date, time, datetime, timedelta
-from domain.types import PeriodBalance, TimeRecord
+from datetime import date, datetime, time, timedelta
+
 from core.timeutil import duration
+from domain.types import PeriodBalance, TimeRecord
 
 
-def get_daily_target(target_date: date, targets: dict[int, float], exceptions: dict[date, float]) -> float:
+def get_daily_target(
+    target_date: date, targets: dict[int, float], exceptions: dict[date, float]
+) -> float:
     """Returns the target hours for a specific date, checking exceptions first."""
     if target_date in exceptions:
         return exceptions[target_date]
@@ -105,7 +108,7 @@ def calculate_period_balance(
     exceptions: dict[date, float],
     overtime_rate: float = 1.0,
     today: date | None = None,
-    now_time: time | None = None
+    now_time: time | None = None,
 ) -> PeriodBalance:
     """
     Computes total worked hours, target hours, and balances for a date range.
@@ -113,8 +116,14 @@ def calculate_period_balance(
     """
     records_by_date = group_records_by_date(records)
     return period_balance_from_grouped(
-        records_by_date, start_date, end_date, targets, exceptions,
-        overtime_rate=overtime_rate, today=today, now_time=now_time,
+        records_by_date,
+        start_date,
+        end_date,
+        targets,
+        exceptions,
+        overtime_rate=overtime_rate,
+        today=today,
+        now_time=now_time,
     )
 
 
@@ -163,8 +172,14 @@ def overtime(
     Rate applies only to positive balances (surplus); deficit is returned raw.
     """
     result = calculate_period_balance(
-        records, start_date, end_date, targets, exceptions,
-        overtime_rate=rate, today=today, now_time=now_time
+        records,
+        start_date,
+        end_date,
+        targets,
+        exceptions,
+        overtime_rate=rate,
+        today=today,
+        now_time=now_time,
     )
     raw = result.balance
     weighted = result.weighted_overtime

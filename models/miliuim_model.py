@@ -1,10 +1,11 @@
 import calendar
 import sqlite3
 from datetime import date
-from domain.types import MiliuimRecord, MiliuimSummary
-from core.events import EventBus, Event
-from core.timeutil import iso_to_date, date_to_iso
+
+from core.events import Event, EventBus
+from core.timeutil import date_to_iso, iso_to_date
 from db.database import Database
+from domain.types import MiliuimRecord, MiliuimSummary
 
 
 class MiliuimModel:
@@ -24,12 +25,13 @@ class MiliuimModel:
     def get_record_by_id(self, record_id: int) -> MiliuimRecord | None:
         with self.db.connection() as conn:
             cursor = conn.cursor()
-            cursor.execute(
-                "SELECT * FROM miliuim_period WHERE id = ?;", (record_id,))
+            cursor.execute("SELECT * FROM miliuim_period WHERE id = ?;", (record_id,))
             row = cursor.fetchone()
             return self._row_to_record(row) if row else None
 
-    def get_records_for_year(self, year: int, month: int | None = None) -> list[MiliuimRecord]:
+    def get_records_for_year(
+        self, year: int, month: int | None = None
+    ) -> list[MiliuimRecord]:
         with self.db.connection() as conn:
             cursor = conn.cursor()
             if month is not None:
@@ -61,10 +63,15 @@ class MiliuimModel:
             with conn:
                 cursor = conn.cursor()
                 cursor.execute(
-                    "INSERT INTO miliuim_period (start_date, end_date, note, document_path)"
+                    "INSERT INTO miliuim_period "
+                    "(start_date, end_date, note, document_path)"
                     " VALUES (?, ?, ?, ?);",
-                    (date_to_iso(record.start_date), date_to_iso(record.end_date),
-                     record.note, record.document_path),
+                    (
+                        date_to_iso(record.start_date),
+                        date_to_iso(record.end_date),
+                        record.note,
+                        record.document_path,
+                    ),
                 )
                 record_id = cursor.lastrowid or 0
             self.bus.publish(Event.MILIUIM_CHANGED)
@@ -78,16 +85,20 @@ class MiliuimModel:
                 conn.execute(
                     "UPDATE miliuim_period SET start_date = ?, end_date = ?, note = ?,"
                     " document_path = ?, updated_at = datetime('now') WHERE id = ?;",
-                    (date_to_iso(record.start_date), date_to_iso(record.end_date),
-                     record.note, record.document_path, record.id),
+                    (
+                        date_to_iso(record.start_date),
+                        date_to_iso(record.end_date),
+                        record.note,
+                        record.document_path,
+                        record.id,
+                    ),
                 )
             self.bus.publish(Event.MILIUIM_CHANGED)
 
     def delete_record(self, record_id: int) -> None:
         with self.db.connection() as conn:
             with conn:
-                conn.execute(
-                    "DELETE FROM miliuim_period WHERE id = ?;", (record_id,))
+                conn.execute("DELETE FROM miliuim_period WHERE id = ?;", (record_id,))
             self.bus.publish(Event.MILIUIM_CHANGED)
 
     @staticmethod

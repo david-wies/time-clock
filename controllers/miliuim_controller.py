@@ -29,7 +29,8 @@ class MiliuimController:
             return Result(ok=False, errors=errors)
 
         existing = self.model.get_records_in_date_range(
-            record.start_date, record.end_date)
+            record.start_date, record.end_date
+        )
         for other in existing:
             if other.id == record.id:
                 continue
@@ -49,8 +50,7 @@ class MiliuimController:
                 self.model.update_record(record)
             return Result(ok=True, errors=[])
         except sqlite3.Error as e:
-            logger.exception(
-                "Database error while saving Miliuim record %r", record)
+            logger.exception("Database error while saving Miliuim record %r", record)
             return Result(ok=False, errors=[f"Database error: {e}"])
 
     def delete_record(self, record_id: int) -> Result:
@@ -59,5 +59,6 @@ class MiliuimController:
             return Result(ok=True, errors=[])
         except sqlite3.Error as e:
             logger.exception(
-                "Database error while deleting Miliuim record id=%s", record_id)
+                "Database error while deleting Miliuim record id=%s", record_id
+            )
             return Result(ok=False, errors=[f"Database error: {e}"])

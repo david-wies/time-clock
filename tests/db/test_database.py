@@ -10,6 +10,7 @@ call sites across ``models/*.py`` are unchanged by this fix — for both
 DB kinds, ``.close()`` is now a safe no-op (see ``SharedConnectionWrapper``),
 so nothing at those call sites needs to change.
 """
+
 import sqlite3
 
 import pytest
@@ -101,7 +102,9 @@ def test_row_factory_is_sqlite3_row_for_file_db(tmp_path) -> None:
     assert conn.row_factory is sqlite3.Row
 
 
-def test_wrapper_attribute_write_does_not_leak_onto_wrapped_connection(tmp_path) -> None:
+def test_wrapper_attribute_write_does_not_leak_onto_wrapped_connection(
+    tmp_path,
+) -> None:
     """SharedConnectionWrapper.__setattr__ was narrowed to plain (default)
     attribute assignment: writes must land on the wrapper instance itself,
     not silently forward onto the wrapped sqlite3.Connection, so future
@@ -147,6 +150,7 @@ def test_repeated_model_style_usage_does_not_reopen_connection(tmp_path) -> None
 
 # ─────────────────────── Missing index (open-records query) ────────────────
 
+
 def test_time_record_open_index_exists(tmp_path) -> None:
     """`WHERE end_time IS NULL` queries (get_open_records() and ~5 other
     call sites, including the 60s auto-refresh timer) must be backed by a
@@ -182,7 +186,8 @@ def test_time_record_open_index_present_on_migrated_existing_db(tmp_path) -> Non
             start_time    TEXT    NOT NULL,
             end_time      TEXT    DEFAULT NULL,
             break_minutes INTEGER NOT NULL DEFAULT 0,
-            work_type     TEXT    NOT NULL CHECK(work_type IN ('in_site', 'road', 'remote')),
+            work_type     TEXT    NOT NULL
+                CHECK(work_type IN ('in_site', 'road', 'remote')),
             office        TEXT,
             note          TEXT,
             document_path TEXT,
@@ -218,6 +223,7 @@ def test_time_record_open_index_present_on_migrated_existing_db(tmp_path) -> Non
 # populate it with real rows, then open it through Database (triggering the
 # migration path) and verify every row survived intact.
 
+
 def test_vacation_record_v2_migration_preserves_existing_rows(tmp_path) -> None:
     """version 1 schema has CHECK(hours > 0) on vacation_record; version 2
     relaxes it to CHECK(hours >= 0) via a full table rebuild. Pre-existing
@@ -235,7 +241,9 @@ def test_vacation_record_v2_migration_preserves_existing_rows(tmp_path) -> None:
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
             date        TEXT    NOT NULL,
             hours       REAL    NOT NULL CHECK(hours > 0),
-            vtype       TEXT    NOT NULL CHECK(vtype IN ('annual_leave', 'public_holiday', 'unpaid_leave', 'special_leave', 'carry_over')),
+            vtype       TEXT    NOT NULL
+                CHECK(vtype IN ('annual_leave', 'public_holiday',
+                    'unpaid_leave', 'special_leave', 'carry_over')),
             note        TEXT,
             created_at  TEXT    NOT NULL DEFAULT (datetime('now')),
             updated_at  TEXT    NOT NULL DEFAULT (datetime('now'))
@@ -287,7 +295,8 @@ def test_vacation_record_v2_migration_preserves_existing_rows(tmp_path) -> None:
 
 
 def test_sickness_settings_v3_migration_converts_days_to_hours_and_preserves_rows(
-        tmp_path) -> None:
+    tmp_path,
+) -> None:
     """version 3 rebuilds sickness_settings from a days_per_year column to
     hours_per_year (days_per_year * 8.0). A regression here could corrupt
     the conversion math or drop rows during the rebuild."""

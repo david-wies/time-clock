@@ -10,13 +10,14 @@ mirroring the ``_make_dialog`` bypass pattern in
 tests/views/test_report_dialog.py. Tree/label/button widgets are replaced
 with lightweight fakes exposing only the methods the tab calls on them.
 """
+
 from datetime import date
 from unittest import mock
 
-from db.database import Database
 from core.events import EventBus
-from models.sickness_model import SicknessModel
+from db.database import Database
 from domain.types import SicknessRecord
+from models.sickness_model import SicknessModel
 from views.sickness_tab import SicknessTab
 
 
@@ -66,7 +67,9 @@ def _make_tab(model: SicknessModel, year: int, month: int) -> SicknessTab:
     return tab
 
 
-def test_refresh_fetches_year_records_only_once(db: Database, event_bus: EventBus) -> None:
+def test_refresh_fetches_year_records_only_once(
+    db: Database, event_bus: EventBus
+) -> None:
     """_refresh() must call get_records_for_year() exactly once per cycle
     and reuse the same list for both the balance summary and the tree --
     previously calculate_sickness_summary() and _refresh_tree() each

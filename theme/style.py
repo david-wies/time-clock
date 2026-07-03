@@ -60,14 +60,26 @@ def _configure_named_styles(root, mode: str) -> None:
     c = COLORS.get(mode, COLORS["light"])
     style = ttk.Style()
 
-    style.configure("Accent.TButton", foreground=c["fg.default"], background=c["accent"])
-    style.configure("Danger.TButton", foreground=c["fg.default"], background=c["danger"])
-    style.configure("Success.TButton", foreground=c["fg.default"], background=c["success"])
+    style.configure(
+        "Accent.TButton", foreground=c["fg.default"], background=c["accent"]
+    )
+    style.configure(
+        "Danger.TButton", foreground=c["fg.default"], background=c["danger"]
+    )
+    style.configure(
+        "Success.TButton", foreground=c["fg.default"], background=c["success"]
+    )
     style.configure("Card.TFrame", background=c["bg.card"])
-    style.configure("DayHeader.TLabel", foreground=c["fg.muted"], font=("Helvetica", 10, "bold"))
-    style.configure("Total.TLabel", foreground=c["fg.default"], font=("Helvetica", 11, "bold"))
+    style.configure(
+        "DayHeader.TLabel", foreground=c["fg.muted"], font=("Helvetica", 10, "bold")
+    )
+    style.configure(
+        "Total.TLabel", foreground=c["fg.default"], font=("Helvetica", 11, "bold")
+    )
     style.configure("StatusBar.TLabel", foreground=c["fg.muted"], font=("Helvetica", 9))
     style.configure("OpenRecord.TFrame", background=c["inprogress_bg"])
-    style.map("Treeview",
-              background=[("selected", c["accent"])],
-              foreground=[("selected", "#FFFFFF")])
+    style.map(
+        "Treeview",
+        background=[("selected", c["accent"])],
+        foreground=[("selected", "#FFFFFF")],
+    )

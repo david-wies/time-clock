@@ -16,8 +16,16 @@ logger = logging.getLogger(__name__)
 class MainWindow(ttk.Frame):
     """Root application window with notebook tabs, menu, and status bar."""
 
-    def __init__(self, root, bus: EventBus, settings=None, model_tc=None,
-                 model_vacation=None, model_sickness=None, model_miliuim=None) -> None:
+    def __init__(
+        self,
+        root,
+        bus: EventBus,
+        settings=None,
+        model_tc=None,
+        model_vacation=None,
+        model_sickness=None,
+        model_miliuim=None,
+    ) -> None:
         super().__init__(root)
         self.root = root
         self.bus = bus
@@ -47,18 +55,26 @@ class MainWindow(ttk.Frame):
         self.pack(fill="both", expand=True)
 
         self._unsubs: list = [
-            self.bus.subscribe(Event.TIME_RECORDS_CHANGED, lambda **
-                               _: self._set_status("Records updated")),
-            self.bus.subscribe(Event.VACATION_CHANGED, lambda **
-                               _: self._set_status("Vacation records updated")),
-            self.bus.subscribe(Event.SICKNESS_CHANGED, lambda **
-                               _: self._set_status("Sick records updated")),
-            self.bus.subscribe(Event.MILIUIM_CHANGED, lambda **
-                               _: self._set_status("Miliuim records updated")),
-            self.bus.subscribe(Event.SETTINGS_CHANGED, lambda **
-                               _: self._set_status("Settings changed")),
-            self.bus.subscribe(Event.CLOCK_STATE_CHANGED,
-                               self._on_clock_state_changed),
+            self.bus.subscribe(
+                Event.TIME_RECORDS_CHANGED,
+                lambda **_: self._set_status("Records updated"),
+            ),
+            self.bus.subscribe(
+                Event.VACATION_CHANGED,
+                lambda **_: self._set_status("Vacation records updated"),
+            ),
+            self.bus.subscribe(
+                Event.SICKNESS_CHANGED,
+                lambda **_: self._set_status("Sick records updated"),
+            ),
+            self.bus.subscribe(
+                Event.MILIUIM_CHANGED,
+                lambda **_: self._set_status("Miliuim records updated"),
+            ),
+            self.bus.subscribe(
+                Event.SETTINGS_CHANGED, lambda **_: self._set_status("Settings changed")
+            ),
+            self.bus.subscribe(Event.CLOCK_STATE_CHANGED, self._on_clock_state_changed),
         ]
 
         root.bind("<Destroy>", self._on_destroy)
@@ -71,12 +87,15 @@ class MainWindow(ttk.Frame):
         menubar = Menu(root)
 
         file_menu = Menu(menubar, tearoff=0)
-        file_menu.add_command(label="Export Time Records",
-                              command=lambda: self._open_export("time"))
-        file_menu.add_command(label="Export Vacation",
-                              command=lambda: self._open_export("vacation"))
-        file_menu.add_command(label="Export Sickness",
-                              command=lambda: self._open_export("sickness"))
+        file_menu.add_command(
+            label="Export Time Records", command=lambda: self._open_export("time")
+        )
+        file_menu.add_command(
+            label="Export Vacation", command=lambda: self._open_export("vacation")
+        )
+        file_menu.add_command(
+            label="Export Sickness", command=lambda: self._open_export("sickness")
+        )
         file_menu.add_separator()
         file_menu.add_command(label="Reports", command=self._open_report)
         file_menu.add_separator()
@@ -85,24 +104,28 @@ class MainWindow(ttk.Frame):
 
         settings_menu = Menu(menubar, tearoff=0)
         settings_menu.add_command(
-            label="Settings", command=self._open_settings, accelerator="Ctrl+S")
+            label="Settings", command=self._open_settings, accelerator="Ctrl+S"
+        )
         menubar.add_cascade(label="Settings", menu=settings_menu)
 
         help_menu = Menu(menubar, tearoff=0)
         help_menu.add_command(label="Usage Guide", command=open_help)
-        help_menu.add_command(
-            label="About", command=lambda: show_about(self.root))
+        help_menu.add_command(label="About", command=lambda: show_about(self.root))
         help_menu.add_separator()
         help_menu.add_command(
-            label="Report a Bug", command=lambda: report_bug(self.root))
+            label="Report a Bug", command=lambda: report_bug(self.root)
+        )
         help_menu.add_command(
-            label="Suggest a Feature", command=lambda: suggest_feature(self.root))
+            label="Suggest a Feature", command=lambda: suggest_feature(self.root)
+        )
         menubar.add_cascade(label="Help", menu=help_menu)
 
         root.config(menu=menubar)
 
     def _open_settings(self) -> None:
-        if not all([self._settings, self._model_tc, self._model_vacation, self._model_sickness]):
+        if not all(
+            [self._settings, self._model_tc, self._model_vacation, self._model_sickness]
+        ):
             self._set_status("Settings not available")
             return
 
@@ -129,7 +152,9 @@ class MainWindow(ttk.Frame):
         )
 
     def _open_report(self) -> None:
-        if not all([self._settings, self._model_tc, self._model_vacation, self._model_sickness]):
+        if not all(
+            [self._settings, self._model_tc, self._model_vacation, self._model_sickness]
+        ):
             self._set_status("Reports not available")
             return
 
@@ -164,24 +189,25 @@ class MainWindow(ttk.Frame):
         sep = ttk.Separator(bar, orient="horizontal")
         sep.pack(fill="x")
 
-        self.status_label = ttk.Label(bar, textvariable=self.status_var,
-                                      style="StatusBar.TLabel", padding=(4, 2))
+        self.status_label = ttk.Label(
+            bar, textvariable=self.status_var, style="StatusBar.TLabel", padding=(4, 2)
+        )
         self.status_label.pack(side="left", fill="x", expand=True)
 
-        ttk.Separator(bar, orient="vertical").pack(
-            side="left", fill="y", padx=4)
-        ttk.Label(bar, textvariable=self._count_var,
-                  style="StatusBar.TLabel", padding=(4, 2)).pack(side="left")
+        ttk.Separator(bar, orient="vertical").pack(side="left", fill="y", padx=4)
+        ttk.Label(
+            bar, textvariable=self._count_var, style="StatusBar.TLabel", padding=(4, 2)
+        ).pack(side="left")
 
-        ttk.Separator(bar, orient="vertical").pack(
-            side="left", fill="y", padx=4)
-        ttk.Label(bar, textvariable=self._clock_var,
-                  style="StatusBar.TLabel", padding=(4, 2)).pack(side="left")
+        ttk.Separator(bar, orient="vertical").pack(side="left", fill="y", padx=4)
+        ttk.Label(
+            bar, textvariable=self._clock_var, style="StatusBar.TLabel", padding=(4, 2)
+        ).pack(side="left")
 
-        ttk.Separator(bar, orient="vertical").pack(
-            side="left", fill="y", padx=4)
-        ttk.Label(bar, textvariable=self._tab_var,
-                  style="StatusBar.TLabel", padding=(4, 2)).pack(side="left")
+        ttk.Separator(bar, orient="vertical").pack(side="left", fill="y", padx=4)
+        ttk.Label(
+            bar, textvariable=self._tab_var, style="StatusBar.TLabel", padding=(4, 2)
+        ).pack(side="left")
 
     def _set_status(self, msg: str) -> None:
         self.status_var.set(msg)
@@ -191,8 +217,7 @@ class MainWindow(ttk.Frame):
 
     def set_clocked_in(self, is_in: bool, since: str = "") -> None:
         if is_in:
-            self._clock_var.set(
-                f"Clocked in{' since ' + since if since else ''}")
+            self._clock_var.set(f"Clocked in{' since ' + since if since else ''}")
         else:
             self._clock_var.set("Idle")
 
@@ -205,7 +230,9 @@ class MainWindow(ttk.Frame):
         for fn in self._unsubs:
             fn()
 
-    def _on_clock_state_changed(self, clocked_in: bool = False, since: str = "", **_: object) -> None:
+    def _on_clock_state_changed(
+        self, clocked_in: bool = False, since: str = "", **_: object
+    ) -> None:
         self.set_clocked_in(clocked_in, since)
 
     def _on_bus_handler_error(self, message: str) -> None:
@@ -220,12 +247,13 @@ class MainWindow(ttk.Frame):
             parent=self.root,
         )
 
-    def _on_tk_callback_exception(self, exc: type[BaseException], val: BaseException, tb: Any) -> None:
+    def _on_tk_callback_exception(
+        self, exc: type[BaseException], val: BaseException, tb: Any
+    ) -> None:
         """Tk.report_callback_exception override: catches exceptions raised
         inside any bound widget callback (button, combobox, tree, ...) that
         Tk would otherwise only print to stderr and silently swallow."""
-        logger.error("Unhandled exception in Tk callback",
-                      exc_info=(exc, val, tb))
+        logger.error("Unhandled exception in Tk callback", exc_info=(exc, val, tb))
         messagebox.showerror(
             "Unexpected Error",
             f"An unexpected error occurred:\n\n{exc.__name__}: {val}",

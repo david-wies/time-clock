@@ -1,18 +1,21 @@
 import sqlite3
+from datetime import date, time
 
 import pytest
-from datetime import date, time
-from domain.types import TimeRecord
-from domain.enums import WorkType
-from models.time_clock_model import TimeClockModel
+
 from controllers.time_clock_controller import TimeClockController
-from settings import SettingsManager
 from core.events import EventBus
 from db.database import Database
+from domain.enums import WorkType
+from domain.types import TimeRecord
+from models.time_clock_model import TimeClockModel
+from settings import SettingsManager
 
 
 @pytest.fixture
-def controller(db: Database, event_bus: EventBus, settings_manager: SettingsManager, fixed_clock) -> TimeClockController:
+def controller(
+    db: Database, event_bus: EventBus, settings_manager: SettingsManager, fixed_clock
+) -> TimeClockController:
     model = TimeClockModel(db, event_bus)
     return TimeClockController(model, settings_manager, clock=fixed_clock)
 
@@ -24,7 +27,7 @@ def test_save_valid_record(controller: TimeClockController) -> None:
         start_time=time(9, 0),
         end_time=time(17, 0),
         break_minutes=30,
-        work_type=WorkType.REMOTE
+        work_type=WorkType.REMOTE,
     )
 
     result = controller.save_record(rec)
@@ -34,13 +37,15 @@ def test_save_valid_record(controller: TimeClockController) -> None:
 
 def test_save_overlapping_record(controller: TimeClockController) -> None:
     # Save first record: 09:00 - 17:00
-    r1 = TimeRecord(None, date(2026, 6, 26), time(
-        9, 0), time(17, 0), 30, WorkType.REMOTE)
+    r1 = TimeRecord(
+        None, date(2026, 6, 26), time(9, 0), time(17, 0), 30, WorkType.REMOTE
+    )
     assert controller.save_record(r1).ok is True
 
     # Attempt overlap: 12:00 - 13:00
-    r2 = TimeRecord(None, date(2026, 6, 26), time(
-        12, 0), time(13, 0), 0, WorkType.REMOTE)
+    r2 = TimeRecord(
+        None, date(2026, 6, 26), time(12, 0), time(13, 0), 0, WorkType.REMOTE
+    )
     res = controller.save_record(r2)
     assert res.ok is False
     assert "overlaps" in res.errors[0]
@@ -58,13 +63,17 @@ def test_save_overlapping_record(controller: TimeClockController) -> None:
 
 # ──────────── Defense-in-depth: mutate-then-save bypasses __post_init__ ─────
 
+
 def test_save_record_rejects_negative_break_minutes_after_mutation(
-        controller: TimeClockController) -> None:
+    controller: TimeClockController,
+) -> None:
     """TimeRecord.__post_init__ only runs at construction time, so
     mutating a field on an already-saved record and calling save_record()
     again must still be caught — by TimeClockController.save_record()
     re-running time_record_invariant_errors(), not by __post_init__."""
-    rec = TimeRecord(None, date(2026, 6, 26), time(9, 0), time(17, 0), 30, WorkType.REMOTE)
+    rec = TimeRecord(
+        None, date(2026, 6, 26), time(9, 0), time(17, 0), 30, WorkType.REMOTE
+    )
     assert controller.save_record(rec).ok is True
 
     rec.break_minutes = -1
@@ -75,7 +84,8 @@ def test_save_record_rejects_negative_break_minutes_after_mutation(
 
 
 def test_clock_out_rejects_break_exceeding_shift_length_after_mutation(
-        controller: TimeClockController) -> None:
+    controller: TimeClockController,
+) -> None:
     """clock_out() itself fetches an open record and mutates end_time
     in-place before saving. TimeRecord.__post_init__ ran successfully when
     the open record was first constructed (break_minutes was consistent
@@ -135,8 +145,9 @@ def test_clock_in_out_flow(controller: TimeClockController) -> None:
 
 
 def test_save_overnight_record(controller: TimeClockController) -> None:
-    rec = TimeRecord(None, date(2026, 6, 26), time(
-        22, 0), time(6, 0), 0, WorkType.REMOTE)
+    rec = TimeRecord(
+        None, date(2026, 6, 26), time(22, 0), time(6, 0), 0, WorkType.REMOTE
+    )
     result = controller.save_record(rec)
     assert result.ok is True
     assert "OVERNIGHT_SHIFT_WARNING" in result.errors
@@ -171,15 +182,19 @@ def test_clock_out_multiple_open_records(controller: TimeClockController) -> Non
 
 # ────────────────────── Exception narrowing (§ codebase review G2 #1) ───────
 
+
 def _valid_record() -> TimeRecord:
-    return TimeRecord(None, date(2026, 6, 26), time(9, 0),
-                       time(17, 0), 30, WorkType.REMOTE)
+    return TimeRecord(
+        None, date(2026, 6, 26), time(9, 0), time(17, 0), 30, WorkType.REMOTE
+    )
 
 
 def test_save_record_sqlite_error_is_caught_and_returned(
-        controller: TimeClockController, monkeypatch: pytest.MonkeyPatch) -> None:
+    controller: TimeClockController, monkeypatch: pytest.MonkeyPatch
+) -> None:
     def _boom(_record: TimeRecord) -> int:
         raise sqlite3.OperationalError("database is locked")
+
     monkeypatch.setattr(controller.model, "insert_record", _boom)
 
     res = controller.save_record(_valid_record())
@@ -188,9 +203,11 @@ def test_save_record_sqlite_error_is_caught_and_returned(
 
 
 def test_save_record_non_sqlite_error_propagates(
-        controller: TimeClockController, monkeypatch: pytest.MonkeyPatch) -> None:
+    controller: TimeClockController, monkeypatch: pytest.MonkeyPatch
+) -> None:
     def _boom(_record: TimeRecord) -> int:
         raise AttributeError("boom: a real code bug, not a DB failure")
+
     monkeypatch.setattr(controller.model, "insert_record", _boom)
 
     with pytest.raises(AttributeError):
@@ -198,9 +215,11 @@ def test_save_record_non_sqlite_error_propagates(
 
 
 def test_clock_in_sqlite_error_is_caught_and_returned(
-        controller: TimeClockController, monkeypatch: pytest.MonkeyPatch) -> None:
+    controller: TimeClockController, monkeypatch: pytest.MonkeyPatch
+) -> None:
     def _boom(_record: TimeRecord) -> int:
         raise sqlite3.IntegrityError("constraint failed")
+
     monkeypatch.setattr(controller.model, "insert_record", _boom)
 
     res = controller.clock_in()
@@ -209,9 +228,11 @@ def test_clock_in_sqlite_error_is_caught_and_returned(
 
 
 def test_clock_in_non_sqlite_error_propagates(
-        controller: TimeClockController, monkeypatch: pytest.MonkeyPatch) -> None:
+    controller: TimeClockController, monkeypatch: pytest.MonkeyPatch
+) -> None:
     def _boom(_record: TimeRecord) -> int:
         raise TypeError("boom")
+
     monkeypatch.setattr(controller.model, "insert_record", _boom)
 
     with pytest.raises(TypeError):
@@ -219,11 +240,13 @@ def test_clock_in_non_sqlite_error_propagates(
 
 
 def test_clock_out_sqlite_error_is_caught_and_returned(
-        controller: TimeClockController, monkeypatch: pytest.MonkeyPatch) -> None:
+    controller: TimeClockController, monkeypatch: pytest.MonkeyPatch
+) -> None:
     controller.clock_in()
 
     def _boom(_record: TimeRecord) -> None:
         raise sqlite3.Error("db error")
+
     monkeypatch.setattr(controller.model, "update_record", _boom)
 
     res = controller.clock_out()
@@ -232,11 +255,13 @@ def test_clock_out_sqlite_error_is_caught_and_returned(
 
 
 def test_clock_out_non_sqlite_error_propagates(
-        controller: TimeClockController, monkeypatch: pytest.MonkeyPatch) -> None:
+    controller: TimeClockController, monkeypatch: pytest.MonkeyPatch
+) -> None:
     controller.clock_in()
 
     def _boom(_record: TimeRecord) -> None:
         raise ValueError("boom")
+
     monkeypatch.setattr(controller.model, "update_record", _boom)
 
     with pytest.raises(ValueError):
@@ -244,9 +269,11 @@ def test_clock_out_non_sqlite_error_propagates(
 
 
 def test_delete_record_sqlite_error_is_caught_and_returned(
-        controller: TimeClockController, monkeypatch: pytest.MonkeyPatch) -> None:
+    controller: TimeClockController, monkeypatch: pytest.MonkeyPatch
+) -> None:
     def _boom(_record_id: int) -> None:
         raise sqlite3.Error("db error")
+
     monkeypatch.setattr(controller.model, "delete_record", _boom)
 
     res = controller.delete_record(1)
@@ -255,9 +282,11 @@ def test_delete_record_sqlite_error_is_caught_and_returned(
 
 
 def test_delete_record_non_sqlite_error_propagates(
-        controller: TimeClockController, monkeypatch: pytest.MonkeyPatch) -> None:
+    controller: TimeClockController, monkeypatch: pytest.MonkeyPatch
+) -> None:
     def _boom(_record_id: int) -> None:
         raise KeyError("boom")
+
     monkeypatch.setattr(controller.model, "delete_record", _boom)
 
     with pytest.raises(KeyError):

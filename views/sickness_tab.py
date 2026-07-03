@@ -2,27 +2,35 @@
 
 from __future__ import annotations
 
+import tkinter as tk
 from datetime import date
+from tkinter import messagebox, ttk
 from typing import Callable
 
-import tkinter as tk
-from tkinter import ttk, messagebox
-
 from controllers.sickness_controller import SicknessController
-from models.sickness_model import SicknessModel
-from settings import SettingsManager
-from core.events import EventBus, Event
+from core.events import Event, EventBus
+from core.hebrew_date import to_hebrew_label as _safe_hebrew
 from core.timeutil import to_display_date
 from domain.types import SicknessRecord
+from models.sickness_model import SicknessModel
+from settings import SettingsManager
 from theme.style import COLORS, resolve_theme_mode
-
-from core.hebrew_date import to_hebrew_label as _safe_hebrew
 from views.sick_record_dialog import SickRecordDialog
 
-
 _MONTH_NAMES = [
-    "", "January", "February", "March", "April", "May", "June",
-    "July", "August", "September", "October", "November", "December",
+    "",
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
 ]
 
 
@@ -53,10 +61,8 @@ class SicknessTab(ttk.Frame):
         self._build_ui()
         self._refresh()
 
-        self._unsubs.append(bus.subscribe(
-            Event.SICKNESS_CHANGED, self._on_event))
-        self._unsubs.append(bus.subscribe(
-            Event.SETTINGS_CHANGED, self._on_event))
+        self._unsubs.append(bus.subscribe(Event.SICKNESS_CHANGED, self._on_event))
+        self._unsubs.append(bus.subscribe(Event.SETTINGS_CHANGED, self._on_event))
 
         self.bind("<Destroy>", self._on_destroy)
         self.pack(fill="both", expand=True)
@@ -78,7 +84,9 @@ class SicknessTab(ttk.Frame):
         cur_year = date.today().year
         self._var_year = tk.StringVar(value=str(self._selected_year))
         self._cbo_year = ttk.Combobox(
-            bar, textvariable=self._var_year, width=6,
+            bar,
+            textvariable=self._var_year,
+            width=6,
             values=[str(y) for y in range(cur_year - 10, cur_year + 3)],
             state="readonly",
         )
@@ -88,7 +96,9 @@ class SicknessTab(ttk.Frame):
         ttk.Label(bar, text="Month:").pack(side="left")
         self._var_month = tk.StringVar(value="All")
         self._cbo_month = ttk.Combobox(
-            bar, textvariable=self._var_month, width=11,
+            bar,
+            textvariable=self._var_month,
+            width=11,
             values=["All"] + _MONTH_NAMES[1:],
             state="readonly",
         )
@@ -108,8 +118,7 @@ class SicknessTab(ttk.Frame):
             side="left", fill="y", pady=5
         )
 
-        self._lbl_hours = ttk.Label(
-            self._frm_balance, text="", foreground="gray")
+        self._lbl_hours = ttk.Label(self._frm_balance, text="", foreground="gray")
         self._lbl_hours.pack(side="left", padx=10, pady=5)
 
     def _build_treeview(self) -> None:
@@ -125,20 +134,18 @@ class SicknessTab(ttk.Frame):
             selectmode="browse",
         )
 
-        self._tree.column("date", width=110, minwidth=90,
-                          stretch=False, anchor="w")
+        self._tree.column("date", width=110, minwidth=90, stretch=False, anchor="w")
         self._tree.heading("date", text="Date", anchor="center")
 
-        self._tree.column("hebrew_date", width=150,
-                          minwidth=120, stretch=False, anchor="w")
+        self._tree.column(
+            "hebrew_date", width=150, minwidth=120, stretch=False, anchor="w"
+        )
         self._tree.heading("hebrew_date", text="Hebrew Date", anchor="center")
 
-        self._tree.column("hours", width=70, minwidth=50,
-                          stretch=False, anchor="e")
+        self._tree.column("hours", width=70, minwidth=50, stretch=False, anchor="e")
         self._tree.heading("hours", text="Hours", anchor="center")
 
-        self._tree.column("note", width=200, minwidth=80,
-                          stretch=True, anchor="w")
+        self._tree.column("note", width=200, minwidth=80, stretch=True, anchor="w")
         self._tree.heading("note", text="Note", anchor="center")
 
         vsb = ttk.Scrollbar(frame, orient="vertical", command=self._tree.yview)
@@ -158,9 +165,7 @@ class SicknessTab(ttk.Frame):
         inner = ttk.Frame(bar)
         inner.pack(fill="x")
 
-        self._btn_add = ttk.Button(
-            inner, text="+ Add", command=self._do_add, width=12
-        )
+        self._btn_add = ttk.Button(inner, text="+ Add", command=self._do_add, width=12)
         self._btn_add.pack(side="left", padx=(0, 4))
 
         self._btn_edit = ttk.Button(
@@ -169,8 +174,11 @@ class SicknessTab(ttk.Frame):
         self._btn_edit.pack(side="left", padx=(0, 4))
 
         self._btn_delete = ttk.Button(
-            inner, text="🗑 Remove", style="Danger.TButton",
-            command=self._do_delete, width=12,
+            inner,
+            text="🗑 Remove",
+            style="Danger.TButton",
+            command=self._do_delete,
+            width=12,
         )
         self._btn_delete.pack(side="left")
 
@@ -186,12 +194,13 @@ class SicknessTab(ttk.Frame):
                         fn()
                 except tk.TclError:
                     pass
+
             return _handler
 
         self.root.bind_all("<Control-Shift-S>", _guard(self._do_add), add=True)
-        self.root.bind_all("<Control-e>",       _guard(self._do_edit), add=True)
-        self.root.bind_all("<Delete>",          _guard(self._do_delete), add=True)
-        self.root.bind_all("<F5>",              _guard(self._refresh), add=True)
+        self.root.bind_all("<Control-e>", _guard(self._do_edit), add=True)
+        self.root.bind_all("<Delete>", _guard(self._do_delete), add=True)
+        self.root.bind_all("<F5>", _guard(self._refresh), add=True)
 
     # ─────────────────────────── Period Filter ──────────────────────────────
 
@@ -241,7 +250,9 @@ class SicknessTab(ttk.Frame):
         if children:
             self._tree.delete(*children)
 
-    def _make_row_values(self, rec: SicknessRecord | None, override_date: str = "") -> tuple:
+    def _make_row_values(
+        self, rec: SicknessRecord | None, override_date: str = ""
+    ) -> tuple:
         if rec is None:
             return (override_date, "", "", "")
 
@@ -263,7 +274,8 @@ class SicknessTab(ttk.Frame):
         total_hours = 0.0
         for rec in records:
             self._tree.insert(
-                "", "end",
+                "",
+                "end",
                 iid=f"rec_{rec.id}",
                 values=self._make_row_values(rec),
             )
@@ -271,7 +283,8 @@ class SicknessTab(ttk.Frame):
 
         if records:
             self._tree.insert(
-                "", "end",
+                "",
+                "end",
                 iid="__total__",
                 values=self._make_row_values(None, f"Total: {total_hours:.1f}h"),
                 tags=("total",),
@@ -335,7 +348,10 @@ class SicknessTab(ttk.Frame):
 
     def _do_add(self) -> None:
         SickRecordDialog(
-            self, controller=self.controller, model=self.model, record=None,
+            self,
+            controller=self.controller,
+            model=self.model,
+            record=None,
         )
 
     def _do_edit(self) -> None:
@@ -343,7 +359,10 @@ class SicknessTab(ttk.Frame):
         if rec is None:
             return
         SickRecordDialog(
-            self, controller=self.controller, model=self.model, record=rec,
+            self,
+            controller=self.controller,
+            model=self.model,
+            record=rec,
         )
 
     def _do_delete(self) -> None:
@@ -359,8 +378,7 @@ class SicknessTab(ttk.Frame):
             return
         result = self.controller.delete_record(rec_id)
         if not result.ok:
-            messagebox.showerror("Remove Failed", "\n".join(
-                result.errors), parent=self)
+            messagebox.showerror("Remove Failed", "\n".join(result.errors), parent=self)
 
     # ─────────────────────────── Lifecycle ──────────────────────────────────
 

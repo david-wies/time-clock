@@ -13,6 +13,7 @@ a real `date` object by the time it reaches this view layer — see
 tests/models/test_time_clock_model.py for that coverage).
 ``_build_exc_dict`` only needs to guard against a malformed *hours* value.
 """
+
 import logging
 from datetime import date
 
@@ -33,7 +34,9 @@ def test_build_exc_dict_parses_valid_rows() -> None:
 
 
 def test_build_exc_dict_skips_malformed_hours_and_logs_warning(caplog) -> None:
-    raw = [WorkDayException(id=1, date=date(2026, 6, 1), hours="not-a-number", label=None)]  # type: ignore[arg-type]
+    raw = [
+        WorkDayException(id=1, date=date(2026, 6, 1), hours="not-a-number", label=None)
+    ]  # type: ignore[arg-type]
 
     with caplog.at_level(logging.WARNING, logger="views.time_clock_tab"):
         result = _build_exc_dict(raw)

@@ -3,12 +3,12 @@
 from datetime import date, time
 from types import SimpleNamespace
 
-from db.database import Database
 from core.events import EventBus
+from db.database import Database
 from domain.enums import WorkType
-from domain.types import TimeRecord, SicknessRecord
-from models.time_clock_model import TimeClockModel
+from domain.types import SicknessRecord, TimeRecord
 from models.sickness_model import SicknessModel
+from models.time_clock_model import TimeClockModel
 from views.report_dialog import ReportDialog
 
 
@@ -22,7 +22,9 @@ def _make_dialog(model_tc, model_sickness, model_miliuim=None):
     return dialog
 
 
-def test_collect_documents_includes_road_time_records(db: Database, event_bus: EventBus, tmp_path) -> None:
+def test_collect_documents_includes_road_time_records(
+    db: Database, event_bus: EventBus, tmp_path
+) -> None:
     tc_model = TimeClockModel(db, event_bus)
     sick_model = SicknessModel(db, event_bus)
 
@@ -41,8 +43,7 @@ def test_collect_documents_includes_road_time_records(db: Database, event_bus: E
     tc_model.insert_record(rec)
 
     dialog = _make_dialog(tc_model, sick_model)
-    data = SimpleNamespace(
-        period_type="month", year=2026, month=6, quarter=None)
+    data = SimpleNamespace(period_type="month", year=2026, month=6, quarter=None)
 
     image_docs, pdf_docs = dialog._collect_documents(data)
 
@@ -54,7 +55,9 @@ def test_collect_documents_includes_road_time_records(db: Database, event_bus: E
     assert image_docs == []
 
 
-def test_collect_documents_ignores_records_without_document(db: Database, event_bus: EventBus) -> None:
+def test_collect_documents_ignores_records_without_document(
+    db: Database, event_bus: EventBus
+) -> None:
     tc_model = TimeClockModel(db, event_bus)
     sick_model = SicknessModel(db, event_bus)
 
@@ -70,29 +73,33 @@ def test_collect_documents_ignores_records_without_document(db: Database, event_
     tc_model.insert_record(rec)
 
     dialog = _make_dialog(tc_model, sick_model)
-    data = SimpleNamespace(
-        period_type="month", year=2026, month=6, quarter=None)
+    data = SimpleNamespace(period_type="month", year=2026, month=6, quarter=None)
 
     image_docs, pdf_docs = dialog._collect_documents(data)
     assert image_docs == []
     assert pdf_docs == []
 
 
-def test_collect_documents_still_includes_sickness_docs(db: Database, event_bus: EventBus, tmp_path) -> None:
+def test_collect_documents_still_includes_sickness_docs(
+    db: Database, event_bus: EventBus, tmp_path
+) -> None:
     tc_model = TimeClockModel(db, event_bus)
     sick_model = SicknessModel(db, event_bus)
 
     doc_path = tmp_path / "sick_note.png"
     doc_path.write_bytes(b"fake image bytes")
 
-    sick_model.insert_record(SicknessRecord(
-        id=None, date=date(2026, 6, 20), hours=8.0,
-        document_path=str(doc_path),
-    ))
+    sick_model.insert_record(
+        SicknessRecord(
+            id=None,
+            date=date(2026, 6, 20),
+            hours=8.0,
+            document_path=str(doc_path),
+        )
+    )
 
     dialog = _make_dialog(tc_model, sick_model)
-    data = SimpleNamespace(
-        period_type="month", year=2026, month=6, quarter=None)
+    data = SimpleNamespace(period_type="month", year=2026, month=6, quarter=None)
 
     image_docs, pdf_docs = dialog._collect_documents(data)
     assert len(image_docs) == 1

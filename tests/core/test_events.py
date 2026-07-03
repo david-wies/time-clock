@@ -2,7 +2,7 @@ import logging
 
 import pytest
 
-from core.events import EventBus, Event
+from core.events import Event, EventBus
 
 
 def test_subscribe_and_publish() -> None:
@@ -67,7 +67,10 @@ def test_publish_unknown_event_is_silent() -> None:
 
 # ─────────────── Handler-exception handling ──────────────────────────────────
 
-def test_handler_exception_is_logged_not_raised(caplog: pytest.LogCaptureFixture) -> None:
+
+def test_handler_exception_is_logged_not_raised(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     bus = EventBus()
 
     def bad_handler() -> None:
@@ -84,7 +87,9 @@ def test_handler_exception_is_logged_not_raised(caplog: pytest.LogCaptureFixture
     assert record.exc_info is not None
 
 
-def test_handler_exception_does_not_stop_later_handlers(caplog: pytest.LogCaptureFixture) -> None:
+def test_handler_exception_does_not_stop_later_handlers(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     bus = EventBus()
     calls: list[str] = []
 

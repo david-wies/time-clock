@@ -1,15 +1,28 @@
-import pytest
 from datetime import date, time
-from core.timeutil import duration, str_to_time, time_to_str, date_to_iso, iso_to_date, to_display_date, now_hm
+
+import pytest
+
+from core.timeutil import (
+    date_to_iso,
+    duration,
+    iso_to_date,
+    now_hm,
+    str_to_time,
+    time_to_str,
+    to_display_date,
+)
 
 
-@pytest.mark.parametrize("start,end,brk,expected", [
-    ("09:00", "17:00", 30, 7.5),   # normal day
-    ("08:30", "12:00", 0,  3.5),   # no break
-    ("22:00", "06:00", 0,  8.0),   # overnight wrap
-    ("09:00", "09:00", 0,  0.0),   # zero-length
-    ("22:00", "06:00", 30, 7.5),  # overnight wrap with break
-])
+@pytest.mark.parametrize(
+    "start,end,brk,expected",
+    [
+        ("09:00", "17:00", 30, 7.5),  # normal day
+        ("08:30", "12:00", 0, 3.5),  # no break
+        ("22:00", "06:00", 0, 8.0),  # overnight wrap
+        ("09:00", "09:00", 0, 0.0),  # zero-length
+        ("22:00", "06:00", 30, 7.5),  # overnight wrap with break
+    ],
+)
 def test_duration(start, end, brk, expected) -> None:
     assert duration(start, end, brk) == pytest.approx(expected)
 

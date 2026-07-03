@@ -75,9 +75,9 @@ class CarryOverDialog(tk.Toplevel):
         # ── Hours input ───────────────────────────────────────────────────────
         input_row = ttk.Frame(outer)
         input_row.pack(fill="x", pady=(0, 6))
-        ttk.Label(input_row, text=f"Add to {self._to_year}:", width=18, anchor="e").pack(
-            side="left"
-        )
+        ttk.Label(
+            input_row, text=f"Add to {self._to_year}:", width=18, anchor="e"
+        ).pack(side="left")
         self._var_hours = tk.StringVar(value=f"{allowed:.1f}")
         self._spn_hours = ttk.Spinbox(
             input_row,
@@ -118,8 +118,7 @@ class CarryOverDialog(tk.Toplevel):
         try:
             hours = float(self._var_hours.get())
         except ValueError:
-            self._lbl_error.config(
-                text="Please enter a valid number of hours.")
+            self._lbl_error.config(text="Please enter a valid number of hours.")
             return
 
         allowed = self._allowance.allowed_transfer
@@ -132,8 +131,7 @@ class CarryOverDialog(tk.Toplevel):
             )
             return
 
-        result = self._controller.add_carry_over(
-            self._from_year, self._to_year, hours)
+        result = self._controller.add_carry_over(self._from_year, self._to_year, hours)
         if result.ok:
             self.destroy()
         else:

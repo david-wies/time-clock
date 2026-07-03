@@ -1,12 +1,13 @@
 import sqlite3
+from datetime import date
 
 import pytest
-from datetime import date
-from domain.types import SicknessRecord
-from models.sickness_model import SicknessModel
+
 from controllers.sickness_controller import SicknessController
 from core.events import EventBus
 from db.database import Database
+from domain.types import SicknessRecord
+from models.sickness_model import SicknessModel
 
 
 @pytest.fixture
@@ -17,12 +18,7 @@ def controller(db: Database, event_bus: EventBus) -> SicknessController:
 
 
 def test_save_valid_record(controller: SicknessController) -> None:
-    rec = SicknessRecord(
-        id=None,
-        date=date(2026, 2, 15),
-        hours=8.0,
-        note="Flu"
-    )
+    rec = SicknessRecord(id=None, date=date(2026, 2, 15), hours=8.0, note="Flu")
     res = controller.save_record(rec)
     assert res.ok is True
 
@@ -37,8 +33,10 @@ def test_save_invalid_hours(controller: SicknessController) -> None:
 
 # ──────────── Defense-in-depth: mutate-then-save bypasses __post_init__ ─────
 
+
 def test_save_record_rejects_negative_hours_after_mutation(
-        controller: SicknessController) -> None:
+    controller: SicknessController,
+) -> None:
     """SicknessRecord.__post_init__ only runs at construction time, so
     mutating a field on an already-saved record and calling save_record()
     again must still be caught — by SicknessController.save_record()
@@ -54,7 +52,8 @@ def test_save_record_rejects_negative_hours_after_mutation(
 
 
 def test_save_record_rejects_note_too_long_after_mutation(
-        controller: SicknessController) -> None:
+    controller: SicknessController,
+) -> None:
     rec = SicknessRecord(None, date(2026, 2, 15), 8.0, "Flu")
     assert controller.save_record(rec).ok is True
 
@@ -107,7 +106,9 @@ def test_edit_path_over_balance_warning(controller: SicknessController) -> None:
     assert res_override.ok is True
 
 
-def test_edit_across_year_boundary_credits_correct_year(controller: SicknessController) -> None:
+def test_edit_across_year_boundary_credits_correct_year(
+    controller: SicknessController,
+) -> None:
     # 2026 allowance = 8h, already fully used by a record we are about to edit.
     controller.model.save_settings(2026, 8.0)
     # 2027 allowance = 8h, already fully used by a different record.
@@ -134,43 +135,56 @@ def test_edit_across_year_boundary_credits_correct_year(controller: SicknessCont
     assert res_override.ok is True
 
 
-def test_save_range_rejects_overlapping_existing_record(controller: SicknessController) -> None:
+def test_save_range_rejects_overlapping_existing_record(
+    controller: SicknessController,
+) -> None:
     existing = SicknessRecord(None, date(2026, 6, 10), 8.0, "Existing")
     assert controller.save_record(existing).ok is True
 
     res = controller.save_range(
-        date(2026, 6, 8), date(2026, 6, 12), 8.0, "Range overlaps",
+        date(2026, 6, 8),
+        date(2026, 6, 12),
+        8.0,
+        "Range overlaps",
     )
     assert res.ok is False
     assert "2026-06-10" in res.errors[0]
 
     # No extra records were inserted for the conflicting date.
     records = controller.model.get_records_in_date_range(
-        date(2026, 6, 8), date(2026, 6, 12))
+        date(2026, 6, 8), date(2026, 6, 12)
+    )
     assert len(records) == 1
 
 
 def test_save_range_threads_document_path(controller: SicknessController) -> None:
     res = controller.save_range(
-        date(2026, 6, 8), date(2026, 6, 10), 8.0, "Range with doc",
+        date(2026, 6, 8),
+        date(2026, 6, 10),
+        8.0,
+        "Range with doc",
         document_path="/tmp/sick_note.pdf",
     )
     assert res.ok is True
 
     records = controller.model.get_records_in_date_range(
-        date(2026, 6, 8), date(2026, 6, 10))
+        date(2026, 6, 8), date(2026, 6, 10)
+    )
     assert len(records) == 3
     assert all(r.document_path == "/tmp/sick_note.pdf" for r in records)
 
 
 # ────────────────────── Exception narrowing (§ codebase review G2 #1) ───────
 
+
 def test_save_record_sqlite_error_is_caught_and_returned(
-        controller: SicknessController, monkeypatch: pytest.MonkeyPatch) -> None:
+    controller: SicknessController, monkeypatch: pytest.MonkeyPatch
+) -> None:
     rec = SicknessRecord(None, date(2026, 2, 15), 8.0, "Flu")
 
     def _boom(_record: SicknessRecord) -> int:
         raise sqlite3.OperationalError("database is locked")
+
     monkeypatch.setattr(controller.model, "insert_record", _boom)
 
     res = controller.save_record(rec)
@@ -179,11 +193,13 @@ def test_save_record_sqlite_error_is_caught_and_returned(
 
 
 def test_save_record_non_sqlite_error_propagates(
-        controller: SicknessController, monkeypatch: pytest.MonkeyPatch) -> None:
+    controller: SicknessController, monkeypatch: pytest.MonkeyPatch
+) -> None:
     rec = SicknessRecord(None, date(2026, 2, 15), 8.0, "Flu")
 
     def _boom(_record: SicknessRecord) -> int:
         raise AttributeError("boom")
+
     monkeypatch.setattr(controller.model, "insert_record", _boom)
 
     with pytest.raises(AttributeError):
@@ -191,9 +207,11 @@ def test_save_record_non_sqlite_error_propagates(
 
 
 def test_delete_record_sqlite_error_is_caught_and_returned(
-        controller: SicknessController, monkeypatch: pytest.MonkeyPatch) -> None:
+    controller: SicknessController, monkeypatch: pytest.MonkeyPatch
+) -> None:
     def _boom(_record_id: int) -> None:
         raise sqlite3.Error("db error")
+
     monkeypatch.setattr(controller.model, "delete_record", _boom)
 
     res = controller.delete_record(1)
@@ -202,9 +220,11 @@ def test_delete_record_sqlite_error_is_caught_and_returned(
 
 
 def test_delete_record_non_sqlite_error_propagates(
-        controller: SicknessController, monkeypatch: pytest.MonkeyPatch) -> None:
+    controller: SicknessController, monkeypatch: pytest.MonkeyPatch
+) -> None:
     def _boom(_record_id: int) -> None:
         raise KeyError("boom")
+
     monkeypatch.setattr(controller.model, "delete_record", _boom)
 
     with pytest.raises(KeyError):
@@ -212,9 +232,11 @@ def test_delete_record_non_sqlite_error_propagates(
 
 
 def test_save_range_sqlite_error_is_caught_and_returned(
-        controller: SicknessController, monkeypatch: pytest.MonkeyPatch) -> None:
+    controller: SicknessController, monkeypatch: pytest.MonkeyPatch
+) -> None:
     def _boom(_records: list) -> None:
         raise sqlite3.Error("db error")
+
     monkeypatch.setattr(controller.model, "insert_records_bulk", _boom)
 
     res = controller.save_range(date(2026, 6, 8), date(2026, 6, 10), 8.0)
@@ -223,9 +245,11 @@ def test_save_range_sqlite_error_is_caught_and_returned(
 
 
 def test_save_range_non_sqlite_error_propagates(
-        controller: SicknessController, monkeypatch: pytest.MonkeyPatch) -> None:
+    controller: SicknessController, monkeypatch: pytest.MonkeyPatch
+) -> None:
     def _boom(_records: list) -> None:
         raise TypeError("boom")
+
     monkeypatch.setattr(controller.model, "insert_records_bulk", _boom)
 
     with pytest.raises(TypeError):

@@ -1,8 +1,9 @@
 import logging
 import sqlite3
 from datetime import date, timedelta
-from domain.types import SicknessRecord, Result, sickness_record_invariant_errors
+
 from domain.enums import WarningCode
+from domain.types import Result, SicknessRecord, sickness_record_invariant_errors
 from models.sickness_model import SicknessModel
 
 logger = logging.getLogger(__name__)
@@ -33,7 +34,9 @@ class SicknessController:
     def __init__(self, model: SicknessModel) -> None:
         self.model = model
 
-    def save_record(self, record: SicknessRecord, confirm_over_balance: bool = False) -> Result:
+    def save_record(
+        self, record: SicknessRecord, confirm_over_balance: bool = False
+    ) -> Result:
         """Validates and saves a SicknessRecord."""
         invariant_errors = sickness_record_invariant_errors(record)
         if invariant_errors:
@@ -75,7 +78,8 @@ class SicknessController:
             return Result(ok=True, errors=[])
         except sqlite3.Error as e:
             logger.exception(
-                "Database error while deleting sick record id=%s", record_id)
+                "Database error while deleting sick record id=%s", record_id
+            )
             return Result(ok=False, errors=[f"Database error: {e}"])
 
     def save_range(
@@ -97,12 +101,10 @@ class SicknessController:
 
         existing = self.model.get_records_in_date_range(start_date, end_date)
         if existing:
-            conflict_dates = ", ".join(
-                sorted(d.date.isoformat() for d in existing))
+            conflict_dates = ", ".join(sorted(d.date.isoformat() for d in existing))
             return Result(
                 ok=False,
-                errors=[
-                    f"A sick record already exists for: {conflict_dates}."],
+                errors=[f"A sick record already exists for: {conflict_dates}."],
             )
 
         dates: list[date] = []
@@ -120,13 +122,19 @@ class SicknessController:
                 if summary.remaining_hours - hours * count < 0:
                     return Result(ok=False, errors=[WarningCode.OVER_BALANCE.value])
 
-        records = [SicknessRecord(
-            id=None, date=d, hours=hours, note=note,
-            document_path=document_path) for d in dates]
+        records = [
+            SicknessRecord(
+                id=None, date=d, hours=hours, note=note, document_path=document_path
+            )
+            for d in dates
+        ]
         try:
             self.model.insert_records_bulk(records)
             return Result(ok=True, errors=[])
         except sqlite3.Error as e:
             logger.exception(
-                "Database error while saving sick record range %s..%s", start_date, end_date)
+                "Database error while saving sick record range %s..%s",
+                start_date,
+                end_date,
+            )
             return Result(ok=False, errors=[f"Database error: {e}"])

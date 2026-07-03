@@ -21,10 +21,9 @@ call. The fix caches clocked-in state on the main thread
 EventBus), and has the menu predicates read the cache instead of querying
 the model.
 """
+
 from datetime import date, time
 from unittest import mock
-
-import pytest
 
 from core.events import EventBus
 from db.database import Database
@@ -77,7 +76,8 @@ def test_menu_predicates_read_cache_without_querying_model(
     assert clock_out_item.text == "Clock Out"
 
     with mock.patch.object(
-        model, "get_open_records_for_date",
+        model,
+        "get_open_records_for_date",
         wraps=model.get_open_records_for_date,
     ) as spy:
         # Default cache (set in __init__, before any main-thread refresh)
@@ -100,7 +100,8 @@ def test_on_records_changed_refreshes_cache_from_model(
     assert tray._clocked_in_cache is False
 
     with mock.patch.object(
-        model, "get_open_records_for_date",
+        model,
+        "get_open_records_for_date",
         wraps=model.get_open_records_for_date,
     ) as spy:
         tray._on_records_changed()
@@ -108,9 +109,7 @@ def test_on_records_changed_refreshes_cache_from_model(
     assert tray._clocked_in_cache is False
 
     today = date.today()
-    model.insert_record(
-        TimeRecord(None, today, time(9, 0), None, 0, WorkType.REMOTE)
-    )
+    model.insert_record(TimeRecord(None, today, time(9, 0), None, 0, WorkType.REMOTE))
 
     tray._on_records_changed()
     assert tray._clocked_in_cache is True

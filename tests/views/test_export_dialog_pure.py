@@ -7,6 +7,7 @@ tests/views/test_help_viewer_dialogs.py. ``tkinter.filedialog`` /
 ``tkinter.messagebox`` are monkeypatched module-level so no real dialog
 windows are created.
 """
+
 import os
 from datetime import date
 from unittest import mock
@@ -25,7 +26,9 @@ def _make_dialog(fmt: str = "csv") -> ExportDialog:
     return dialog
 
 
-def test_export_failure_leaves_no_partial_file_at_final_path(tmp_path, monkeypatch) -> None:
+def test_export_failure_leaves_no_partial_file_at_final_path(
+    tmp_path, monkeypatch
+) -> None:
     """A mid-export exception must not leave a truncated file at the
     user-chosen path — the old behaviour wrote incrementally to `path`
     directly and left whatever had been written so far in place."""
@@ -52,16 +55,20 @@ def test_export_failure_leaves_no_partial_file_at_final_path(tmp_path, monkeypat
 
     dialog._on_export()
 
-    assert not os.path.exists(final_path), \
+    assert not os.path.exists(final_path), (
         "a partial file must not be left at the final export path"
-    assert not os.path.exists(final_path + ".tmp"), \
+    )
+    assert not os.path.exists(final_path + ".tmp"), (
         "the temp file used for the failed write must be cleaned up"
+    )
     show_error.assert_called_once()
     show_info.assert_not_called()
     dialog.destroy.assert_not_called()
 
 
-def test_export_success_writes_final_path_and_leaves_no_temp_file(tmp_path, monkeypatch) -> None:
+def test_export_success_writes_final_path_and_leaves_no_temp_file(
+    tmp_path, monkeypatch
+) -> None:
     dialog = _make_dialog()
     final_path = str(tmp_path / "export.csv")
 
@@ -92,7 +99,9 @@ def test_export_success_writes_final_path_and_leaves_no_temp_file(tmp_path, monk
     dialog.destroy.assert_called_once()
 
 
-def test_export_invalid_date_range_shows_error_before_touching_filesystem(monkeypatch) -> None:
+def test_export_invalid_date_range_shows_error_before_touching_filesystem(
+    monkeypatch,
+) -> None:
     dialog = _make_dialog()
     dialog._get_from = lambda: date(2026, 12, 31)
     dialog._get_to = lambda: date(2026, 1, 1)  # to < from

@@ -6,6 +6,7 @@ MagicMocks so the method under test can run without a live Tk interpreter or
 display, matching this repo's headless-CI constraint (see the module
 docstring in tests/views/test_help_viewer_dialogs.py).
 """
+
 import logging
 import sqlite3
 from datetime import date
@@ -36,7 +37,8 @@ def test_update_hours_cap_happy_path_configures_widgets() -> None:
 
     dialog._spn_hours.config.assert_called_once_with(to=6.0)
     dialog._lbl_hours_hint.config.assert_called_once_with(
-        text="(max 6.0h for this day)")
+        text="(max 6.0h for this day)"
+    )
 
 
 def test_update_hours_cap_clamps_current_value_above_new_cap() -> None:
@@ -62,10 +64,12 @@ def test_update_hours_cap_zero_target_falls_back_to_eight() -> None:
 
 
 def test_update_hours_cap_sqlite_error_is_logged_not_swallowed_silently(
-        caplog: pytest.LogCaptureFixture) -> None:
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     model = mock.MagicMock()
     model.get_daily_target_for_date.side_effect = sqlite3.OperationalError(
-        "database is locked")
+        "database is locked"
+    )
     dialog = _make_dialog(model, lambda: date(2026, 6, 1))
 
     with caplog.at_level(logging.WARNING, logger="views.vacation_record_dialog"):
@@ -78,7 +82,8 @@ def test_update_hours_cap_sqlite_error_is_logged_not_swallowed_silently(
 
 
 def test_update_hours_cap_bad_date_is_logged_and_skips_db_lookup(
-        caplog: pytest.LogCaptureFixture) -> None:
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     model = mock.MagicMock()
 
     def _bad_get_date() -> date:

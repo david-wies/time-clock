@@ -1,7 +1,9 @@
-import pytest
 from datetime import datetime
-from db.database import Database
+
+import pytest
+
 from core.events import EventBus
+from db.database import Database
 from settings import SettingsManager
 
 
@@ -13,7 +15,7 @@ def event_bus() -> EventBus:
 
 @pytest.fixture
 def db() -> Database:
-    """Fixture providing a fresh in-memory SQLite database instance with the schema applied."""
+    """Fixture providing a fresh in-memory SQLite database with the schema applied."""
     return Database(db_path=":memory:")
 
 

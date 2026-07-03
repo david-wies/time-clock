@@ -19,13 +19,15 @@ from settings import SettingsManager
 logger = logging.getLogger(__name__)
 
 _ICON_SIZE = 64
-_BADGE_COLOR = (22, 163, 74, 255)   # success green
+_BADGE_COLOR = (22, 163, 74, 255)  # success green
 _PNG_PATH = Path(__file__).parent.parent / "resources" / "time-clock.png"
 
 
 def _load_base_icon() -> Image.Image:
-    return Image.open(_PNG_PATH).convert("RGBA").resize(
-        (_ICON_SIZE, _ICON_SIZE), Image.LANCZOS
+    return (
+        Image.open(_PNG_PATH)
+        .convert("RGBA")
+        .resize((_ICON_SIZE, _ICON_SIZE), Image.LANCZOS)
     )
 
 
@@ -71,8 +73,7 @@ class SystemTray:
         try:
             self._base_icon: Image.Image = _load_base_icon()
         except (FileNotFoundError, OSError):
-            logger.warning(
-                "icon file not found at %r; using fallback icon.", _PNG_PATH)
+            logger.warning("icon file not found at %r; using fallback icon.", _PNG_PATH)
             self._base_icon = Image.new(
                 "RGBA", (_ICON_SIZE, _ICON_SIZE), (80, 120, 200, 255)
             )
@@ -165,9 +166,7 @@ class SystemTray:
             errors = result.errors
             self._root.after(
                 0,
-                lambda: tk.messagebox.showerror(
-                    "Clock In Failed", "\n".join(errors)
-                ),
+                lambda: tk.messagebox.showerror("Clock In Failed", "\n".join(errors)),
             )
 
     def _do_clock_out(self) -> None:
@@ -186,9 +185,7 @@ class SystemTray:
             errors = result.errors
             self._root.after(
                 0,
-                lambda: tk.messagebox.showerror(
-                    "Clock Out Failed", "\n".join(errors)
-                ),
+                lambda: tk.messagebox.showerror("Clock Out Failed", "\n".join(errors)),
             )
 
     def _do_open(self) -> None:

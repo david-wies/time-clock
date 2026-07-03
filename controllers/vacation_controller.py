@@ -1,13 +1,16 @@
 import logging
 import sqlite3
-from domain.types import VacationRecord, Result, vacation_record_invariant_errors
+
 from domain.enums import VacationType, WarningCode
+from domain.types import Result, VacationRecord, vacation_record_invariant_errors
 from models.vacation_model import VacationModel
 
 logger = logging.getLogger(__name__)
 
 
-def validate_vacation_record(record: VacationRecord, max_hours: float = 24.0) -> list[str]:
+def validate_vacation_record(
+    record: VacationRecord, max_hours: float = 24.0
+) -> list[str]:
     """Pure validation function for VacationRecord (enforces §6.5 table).
 
     max_hours comes from a live settings lookup
@@ -35,7 +38,9 @@ class VacationController:
     def __init__(self, model: VacationModel) -> None:
         self.model = model
 
-    def save_record(self, record: VacationRecord, confirm_over_balance: bool = False) -> Result:
+    def save_record(
+        self, record: VacationRecord, confirm_over_balance: bool = False
+    ) -> Result:
         """Validates and saves a VacationRecord."""
         # NOT dead code: VacationRecord.__post_init__ deliberately does not
         # reject vtype=CARRY_OVER (it must remain constructible so records
@@ -46,7 +51,9 @@ class VacationController:
         # through the general debit/credit save path instead of
         # add_carry_over().
         if record.vtype == VacationType.CARRY_OVER:
-            return Result(ok=False, errors=["Use add_carry_over() to record carry-over hours."])
+            return Result(
+                ok=False, errors=["Use add_carry_over() to record carry-over hours."]
+            )
 
         invariant_errors = vacation_record_invariant_errors(record)
         if invariant_errors:
@@ -64,26 +71,26 @@ class VacationController:
         is_debit = record.vtype in (
             VacationType.ANNUAL_LEAVE,
             VacationType.PUBLIC_HOLIDAY,
-            VacationType.SPECIAL_LEAVE
+            VacationType.SPECIAL_LEAVE,
         )
 
         if is_debit:
             year = record.date.year
             summary = self.model.calculate_vacation_summary(year)
 
-            # If editing, subtract old record hours from used to calculate projected remaining
+            # If editing, subtract old record hours from used to calculate
+            # projected remaining
             old_hours = 0.0
             if record.id is not None:
                 old_rec = self.model.get_record_by_id(record.id)
                 if old_rec and old_rec.vtype in (
                     VacationType.ANNUAL_LEAVE,
                     VacationType.PUBLIC_HOLIDAY,
-                    VacationType.SPECIAL_LEAVE
+                    VacationType.SPECIAL_LEAVE,
                 ):
                     old_hours = old_rec.hours
 
-            projected_remaining = summary.remaining + \
-                old_hours - record.hours
+            projected_remaining = summary.remaining + old_hours - record.hours
 
             if projected_remaining < 0 and not confirm_over_balance:
                 return Result(ok=False, errors=[WarningCode.OVER_BALANCE.value])
@@ -102,7 +109,9 @@ class VacationController:
     def add_carry_over(self, from_year: int, to_year: int, hours: float) -> Result:
         """Validates and records a carry-over allocation."""
         if hours <= 0:
-            return Result(ok=False, errors=["Hours to transfer must be greater than zero."])
+            return Result(
+                ok=False, errors=["Hours to transfer must be greater than zero."]
+            )
 
         allowance = self.model.calculate_carry_over_allowance(to_year)
         allowed_max = allowance.allowed_transfer
@@ -111,7 +120,9 @@ class VacationController:
             return Result(
                 ok=False,
                 errors=[
-                    f"Cannot transfer {hours:.1f} hours. Max allowed is {allowed_max:.1f} hours."]
+                    f"Cannot transfer {hours:.1f} hours. "
+                    f"Max allowed is {allowed_max:.1f} hours."
+                ],
             )
 
         try:
@@ -120,7 +131,9 @@ class VacationController:
         except sqlite3.Error as e:
             logger.exception(
                 "Database error while adding carry-over from_year=%s to_year=%s",
-                from_year, to_year)
+                from_year,
+                to_year,
+            )
             return Result(ok=False, errors=[f"Database error: {e}"])
 
     def delete_record(self, record_id: int) -> Result:
@@ -129,5 +142,6 @@ class VacationController:
             return Result(ok=True, errors=[])
         except sqlite3.Error as e:
             logger.exception(
-                "Database error while deleting vacation record id=%s", record_id)
+                "Database error while deleting vacation record id=%s", record_id
+            )
             return Result(ok=False, errors=[f"Database error: {e}"])

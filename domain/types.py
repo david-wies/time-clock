@@ -1,13 +1,22 @@
-__all__ = ["TimeRecord", "VacationRecord", "SicknessRecord",
-           "MiliuimRecord", "MiliuimSummary", "Result", "PeriodBalance",
-           "time_record_invariant_errors", "vacation_record_invariant_errors",
-           "sickness_record_invariant_errors", "miliuim_record_invariant_errors"]
+__all__ = [
+    "TimeRecord",
+    "VacationRecord",
+    "SicknessRecord",
+    "MiliuimRecord",
+    "MiliuimSummary",
+    "Result",
+    "PeriodBalance",
+    "time_record_invariant_errors",
+    "vacation_record_invariant_errors",
+    "sickness_record_invariant_errors",
+    "miliuim_record_invariant_errors",
+]
 
 from dataclasses import dataclass
 from datetime import date, datetime, time
 
-from domain.enums import WorkType, VacationType
 from core.timeutil import duration
+from domain.enums import VacationType, WorkType
 
 _MAX_NOTE_LENGTH = 500
 
@@ -39,8 +48,7 @@ def time_record_invariant_errors(record: "TimeRecord") -> list[str]:
         errors.append("Please select or enter an office.")
 
     if record.note and len(record.note) > _MAX_NOTE_LENGTH:
-        errors.append(
-            f"Note is too long (max {_MAX_NOTE_LENGTH} characters).")
+        errors.append(f"Note is too long (max {_MAX_NOTE_LENGTH} characters).")
 
     return errors
 
@@ -89,8 +97,7 @@ def vacation_record_invariant_errors(record: "VacationRecord") -> list[str]:
         errors.append("Hours must be non-negative.")
 
     if record.note and len(record.note) > _MAX_NOTE_LENGTH:
-        errors.append(
-            f"Note is too long (max {_MAX_NOTE_LENGTH} characters).")
+        errors.append(f"Note is too long (max {_MAX_NOTE_LENGTH} characters).")
 
     return errors
 
@@ -143,8 +150,7 @@ def sickness_record_invariant_errors(record: "SicknessRecord") -> list[str]:
         errors.append("Hours must be non-negative.")
 
     if record.note and len(record.note) > _MAX_NOTE_LENGTH:
-        errors.append(
-            f"Note is too long (max {_MAX_NOTE_LENGTH} characters).")
+        errors.append(f"Note is too long (max {_MAX_NOTE_LENGTH} characters).")
 
     return errors
 
@@ -225,8 +231,7 @@ def miliuim_record_invariant_errors(record: "MiliuimRecord") -> list[str]:
         errors.append("End date must be on or after start date.")
 
     if record.note and len(record.note) > _MAX_NOTE_LENGTH:
-        errors.append(
-            f"Note is too long (max {_MAX_NOTE_LENGTH} characters).")
+        errors.append(f"Note is too long (max {_MAX_NOTE_LENGTH} characters).")
 
     return errors
 

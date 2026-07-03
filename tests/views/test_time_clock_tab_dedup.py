@@ -19,11 +19,12 @@ single ``targets`` fetch and a per-year exceptions cache through
 ``_refresh_header``/``_populate_month``/``_populate_week``, built once per
 refresh cycle in ``_refresh()``/``_auto_refresh()``.
 """
+
 from datetime import date, timedelta
 from unittest import mock
 
-from db.database import Database
 from core.events import EventBus
+from db.database import Database
 from models.time_clock_model import TimeClockModel
 from settings import SettingsManager
 from views.time_clock_tab import TimeClockTab
@@ -44,7 +45,9 @@ class _FakeTree:
     def delete(self, *_iids) -> None:
         self._rows.clear()
 
-    def insert(self, _parent, _pos, text="", iid=None, values=(), tags=(), open=None) -> str:
+    def insert(
+        self, _parent, _pos, text="", iid=None, values=(), tags=(), open=None
+    ) -> str:
         self._rows.append((text, values))
         return iid or f"row_{len(self._rows)}"
 
@@ -84,10 +87,12 @@ def _make_tab(
 
 def _spies(model: TimeClockModel):
     return (
-        mock.patch.object(model, "get_work_day_targets",
-                          wraps=model.get_work_day_targets),
-        mock.patch.object(model, "get_date_exceptions",
-                          wraps=model.get_date_exceptions),
+        mock.patch.object(
+            model, "get_work_day_targets", wraps=model.get_work_day_targets
+        ),
+        mock.patch.object(
+            model, "get_date_exceptions", wraps=model.get_date_exceptions
+        ),
     )
 
 
@@ -100,8 +105,11 @@ def test_refresh_fetches_targets_and_exceptions_once_when_same_year(
     model = TimeClockModel(db, event_bus)
     today = date.today()
     tab = _make_tab(
-        model, settings_manager, view_mode="month",
-        selected_year=today.year, selected_month=today.month,
+        model,
+        settings_manager,
+        view_mode="month",
+        selected_year=today.year,
+        selected_month=today.month,
         selected_week_start=today,
     )
 
@@ -125,8 +133,11 @@ def test_refresh_fetches_exceptions_once_per_distinct_year(
     today = date.today()
     other_year = today.year - 1
     tab = _make_tab(
-        model, settings_manager, view_mode="month",
-        selected_year=other_year, selected_month=6,
+        model,
+        settings_manager,
+        view_mode="month",
+        selected_year=other_year,
+        selected_month=6,
         selected_week_start=today,
     )
 
@@ -147,8 +158,11 @@ def test_refresh_week_mode_fetches_once_when_same_year(
     today = date.today()
     week_start = today - timedelta(days=today.weekday())
     tab = _make_tab(
-        model, settings_manager, view_mode="week",
-        selected_year=today.year, selected_month=today.month,
+        model,
+        settings_manager,
+        view_mode="week",
+        selected_year=today.year,
+        selected_month=today.month,
         selected_week_start=week_start,
     )
 
@@ -169,8 +183,11 @@ def test_auto_refresh_fetches_targets_and_exceptions_once(
     model = TimeClockModel(db, event_bus)
     today = date.today()
     tab = _make_tab(
-        model, settings_manager, view_mode="month",
-        selected_year=today.year, selected_month=today.month,
+        model,
+        settings_manager,
+        view_mode="month",
+        selected_year=today.year,
+        selected_month=today.month,
         selected_week_start=today,
     )
 
@@ -191,10 +208,11 @@ def test_auto_refresh_fetches_targets_and_exceptions_once(
 
     # Now with an open record present, it must refresh -- exactly once each.
     from datetime import time
+
     from domain.enums import WorkType
     from domain.types import TimeRecord
-    model.insert_record(TimeRecord(
-        None, today, time(9, 0), None, 0, WorkType.REMOTE))
+
+    model.insert_record(TimeRecord(None, today, time(9, 0), None, 0, WorkType.REMOTE))
 
     with targets_patch as targets_spy, exc_patch as exc_spy:
         tab._auto_refresh()
@@ -212,8 +230,11 @@ def test_standalone_refresh_tree_still_works_without_prefetch(
     model = TimeClockModel(db, event_bus)
     today = date.today()
     tab = _make_tab(
-        model, settings_manager, view_mode="month",
-        selected_year=today.year, selected_month=today.month,
+        model,
+        settings_manager,
+        view_mode="month",
+        selected_year=today.year,
+        selected_month=today.month,
         selected_week_start=today,
     )
     tab._refresh_tree()

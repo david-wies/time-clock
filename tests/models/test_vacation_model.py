@@ -1,11 +1,13 @@
-import pytest
 from datetime import date, datetime
-from domain.types import VacationRecord
-from domain.enums import VacationType
-from models.vacation_model import VacationModel
-from models.time_clock_model import TimeClockModel
-from core.events import EventBus, Event
+
+import pytest
+
+from core.events import Event, EventBus
 from db.database import Database
+from domain.enums import VacationType
+from domain.types import VacationRecord
+from models.time_clock_model import TimeClockModel
+from models.vacation_model import VacationModel
 
 
 def test_vacation_events(db: Database, event_bus: EventBus) -> None:
@@ -19,8 +21,7 @@ def test_vacation_events(db: Database, event_bus: EventBus) -> None:
 
     event_bus.subscribe(Event.VACATION_CHANGED, on_change)
 
-    rec = VacationRecord(None, date(2026, 7, 15), 8.0,
-                         VacationType.ANNUAL_LEAVE)
+    rec = VacationRecord(None, date(2026, 7, 15), 8.0, VacationType.ANNUAL_LEAVE)
     rec_id = model.insert_record(rec)
     assert change_called is True
 
@@ -64,7 +65,8 @@ def test_get_records_for_year_uses_real_month_end_date(
         conn.set_trace_callback(None)
 
     select_statements = [
-        s for s in captured_statements if s.startswith("SELECT * FROM vacation_record")]
+        s for s in captured_statements if s.startswith("SELECT * FROM vacation_record")
+    ]
     assert len(select_statements) == 1
     expected_end_date = f"{year:04d}-{month:02d}-{expected_last_day:02d}"
     assert expected_end_date in select_statements[0]
@@ -80,7 +82,7 @@ def test_vacation_record_crud(db: Database, event_bus: EventBus) -> None:
         date=date(2026, 7, 15),
         hours=8.0,
         vtype=VacationType.ANNUAL_LEAVE,
-        note="Summer vacation"
+        note="Summer vacation",
     )
 
     # Insert
@@ -123,8 +125,7 @@ def test_unpaid_leave_not_counted_as_used(db: Database, event_bus: EventBus) -> 
     model = VacationModel(db, event_bus)
     model.save_settings(2026, 160.0, 40.0)
 
-    rec = VacationRecord(None, date(2026, 7, 1), 8.0,
-                         VacationType.UNPAID_LEAVE)
+    rec = VacationRecord(None, date(2026, 7, 1), 8.0, VacationType.UNPAID_LEAVE)
     model.insert_record(rec)
 
     summary = model.calculate_vacation_summary(2026)
@@ -144,16 +145,21 @@ def test_calculate_vacation_summary_combines_carry_over_and_used_in_one_query(
     model.save_settings(2026, 160.0, 40.0)
 
     model.insert_record(
-        VacationRecord(None, date(2026, 1, 1), 15.0, VacationType.CARRY_OVER))
+        VacationRecord(None, date(2026, 1, 1), 15.0, VacationType.CARRY_OVER)
+    )
     model.insert_record(
-        VacationRecord(None, date(2026, 3, 10), 24.0, VacationType.ANNUAL_LEAVE))
+        VacationRecord(None, date(2026, 3, 10), 24.0, VacationType.ANNUAL_LEAVE)
+    )
     model.insert_record(
-        VacationRecord(None, date(2026, 5, 5), 8.0, VacationType.PUBLIC_HOLIDAY))
+        VacationRecord(None, date(2026, 5, 5), 8.0, VacationType.PUBLIC_HOLIDAY)
+    )
     model.insert_record(
-        VacationRecord(None, date(2026, 8, 20), 16.0, VacationType.SPECIAL_LEAVE))
+        VacationRecord(None, date(2026, 8, 20), 16.0, VacationType.SPECIAL_LEAVE)
+    )
     # Not counted as "used" -- must not leak into either bucket.
     model.insert_record(
-        VacationRecord(None, date(2026, 9, 1), 40.0, VacationType.UNPAID_LEAVE))
+        VacationRecord(None, date(2026, 9, 1), 40.0, VacationType.UNPAID_LEAVE)
+    )
 
     summary = model.calculate_vacation_summary(2026)
 
@@ -175,10 +181,8 @@ def test_vacation_balance_and_carry_over(db: Database, event_bus: EventBus) -> N
 
     # 2. Add some used vacation in 2025
     # Total used in 2025: 140h (so 20h remaining)
-    r1 = VacationRecord(None, date(2025, 6, 1), 120.0,
-                        VacationType.ANNUAL_LEAVE)
-    r2 = VacationRecord(None, date(2025, 12, 25), 20.0,
-                        VacationType.PUBLIC_HOLIDAY)
+    r1 = VacationRecord(None, date(2025, 6, 1), 120.0, VacationType.ANNUAL_LEAVE)
+    r2 = VacationRecord(None, date(2025, 12, 25), 20.0, VacationType.PUBLIC_HOLIDAY)
     model.insert_record(r1)
     model.insert_record(r2)
 
@@ -219,8 +223,7 @@ def test_carry_over_history(db: Database, event_bus: EventBus) -> None:
     model.save_settings(2026, 160.0, 40.0)
 
     # Use only 145h of 160h in 2025 (15h remaining)
-    r1 = VacationRecord(None, date(2025, 6, 1), 145.0,
-                        VacationType.ANNUAL_LEAVE)
+    r1 = VacationRecord(None, date(2025, 6, 1), 145.0, VacationType.ANNUAL_LEAVE)
     model.insert_record(r1)
 
     model.add_carry_over(2025, 2026, 15.0)
@@ -242,14 +245,15 @@ def test_daily_target_falls_back_to_weekday(db: Database, event_bus: EventBus) -
     assert model.get_daily_target_for_date(monday) == 9.0
 
 
-def test_daily_target_uses_date_exception_over_weekday(db: Database, event_bus: EventBus) -> None:
+def test_daily_target_uses_date_exception_over_weekday(
+    db: Database, event_bus: EventBus
+) -> None:
     model = VacationModel(db, event_bus)
     tc_model = TimeClockModel(db, event_bus)
     tc_model.save_work_day_targets({0: 9.0})
 
     exception_date = date(2026, 6, 22)  # a Monday, normally 9.0h
-    tc_model.save_date_exception(
-        exception_date.isoformat(), 4.0, "Short Friday-eve")
+    tc_model.save_date_exception(exception_date.isoformat(), 4.0, "Short Friday-eve")
 
     assert model.get_daily_target_for_date(exception_date) == 4.0
     # A day without an exception still falls back to the weekday target.

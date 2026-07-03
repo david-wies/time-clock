@@ -1,10 +1,11 @@
 import calendar
 import sqlite3
 from datetime import date
-from domain.types import SicknessRecord, SicknessSummary
-from core.events import EventBus, Event
-from core.timeutil import iso_to_date, date_to_iso
+
+from core.events import Event, EventBus
+from core.timeutil import date_to_iso, iso_to_date
 from db.database import Database
+from domain.types import SicknessRecord, SicknessSummary
 
 
 class SicknessModel:
@@ -24,12 +25,13 @@ class SicknessModel:
     def get_record_by_id(self, record_id: int) -> SicknessRecord | None:
         with self.db.connection() as conn:
             cursor = conn.cursor()
-            cursor.execute(
-                "SELECT * FROM sickness_record WHERE id = ?;", (record_id,))
+            cursor.execute("SELECT * FROM sickness_record WHERE id = ?;", (record_id,))
             row = cursor.fetchone()
             return self._row_to_record(row) if row else None
 
-    def get_records_for_year(self, year: int, month: int | None = None) -> list[SicknessRecord]:
+    def get_records_for_year(
+        self, year: int, month: int | None = None
+    ) -> list[SicknessRecord]:
         with self.db.connection() as conn:
             cursor = conn.cursor()
             if month is not None:
@@ -37,15 +39,17 @@ class SicknessModel:
                 start_date = f"{year:04d}-{month:02d}-01"
                 end_date = f"{year:04d}-{month:02d}-{last_day:02d}"
                 cursor.execute(
-                    "SELECT * FROM sickness_record WHERE date >= ? AND date <= ? ORDER BY date DESC;",
-                    (start_date, end_date)
+                    "SELECT * FROM sickness_record WHERE date >= ? AND date <= ? "
+                    "ORDER BY date DESC;",
+                    (start_date, end_date),
                 )
             else:
                 start_date = f"{year:04d}-01-01"
                 end_date = f"{year:04d}-12-31"
                 cursor.execute(
-                    "SELECT * FROM sickness_record WHERE date >= ? AND date <= ? ORDER BY date DESC;",
-                    (start_date, end_date)
+                    "SELECT * FROM sickness_record WHERE date >= ? AND date <= ? "
+                    "ORDER BY date DESC;",
+                    (start_date, end_date),
                 )
             rows = cursor.fetchall()
             return [self._row_to_record(row) for row in rows]
@@ -54,7 +58,8 @@ class SicknessModel:
         with self.db.connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
-                "SELECT * FROM sickness_record WHERE date >= ? AND date <= ? ORDER BY date;",
+                "SELECT * FROM sickness_record WHERE date >= ? AND date <= ? "
+                "ORDER BY date;",
                 (date_to_iso(start), date_to_iso(end)),
             )
             return [self._row_to_record(row) for row in cursor.fetchall()]
@@ -73,7 +78,7 @@ class SicknessModel:
                         record.hours,
                         record.note,
                         record.document_path,
-                    )
+                    ),
                 )
                 record_id = cursor.lastrowid or 0
             self.bus.publish(Event.SICKNESS_CHANGED)
@@ -88,8 +93,12 @@ class SicknessModel:
                     conn.execute(
                         "INSERT INTO sickness_record (date, hours, note, document_path)"
                         " VALUES (?, ?, ?, ?);",
-                        (date_to_iso(record.date), record.hours,
-                         record.note, record.document_path),
+                        (
+                            date_to_iso(record.date),
+                            record.hours,
+                            record.note,
+                            record.document_path,
+                        ),
                     )
             self.bus.publish(Event.SICKNESS_CHANGED)
 
@@ -111,15 +120,14 @@ class SicknessModel:
                         record.note,
                         record.document_path,
                         record.id,
-                    )
+                    ),
                 )
             self.bus.publish(Event.SICKNESS_CHANGED)
 
     def delete_record(self, record_id: int) -> None:
         with self.db.connection() as conn:
             with conn:
-                conn.execute(
-                    "DELETE FROM sickness_record WHERE id = ?;", (record_id,))
+                conn.execute("DELETE FROM sickness_record WHERE id = ?;", (record_id,))
             self.bus.publish(Event.SICKNESS_CHANGED)
 
     # --- Sickness Settings Queries ---
@@ -129,7 +137,8 @@ class SicknessModel:
         with self.db.connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
-                "SELECT hours_per_year FROM sickness_settings WHERE year = ?;", (year,))
+                "SELECT hours_per_year FROM sickness_settings WHERE year = ?;", (year,)
+            )
             row = cursor.fetchone()
             return row["hours_per_year"] if row else None
 
@@ -141,7 +150,7 @@ class SicknessModel:
                     INSERT OR REPLACE INTO sickness_settings (year, hours_per_year)
                     VALUES (?, ?);
                     """,
-                    (year, hours_per_year)
+                    (year, hours_per_year),
                 )
             self.bus.publish(Event.SETTINGS_CHANGED)
 
@@ -160,7 +169,7 @@ class SicknessModel:
         refresh), pass them in here to skip the redundant query."""
         allowance = self.get_settings(year)
         if allowance is None:
-            allowance = 80.0   # default 10 days × 8 h
+            allowance = 80.0  # default 10 days × 8 h
         if records is None:
             records = self.get_records_for_year(year)
         used_hours = sum(r.hours for r in records)

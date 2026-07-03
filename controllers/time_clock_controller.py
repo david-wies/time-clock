@@ -1,10 +1,10 @@
 import logging
 import sqlite3
-from datetime import date, time, datetime
+from datetime import datetime, time
 from typing import Callable
 
-from domain.types import TimeRecord, Result, time_record_invariant_errors
 from domain.enums import WarningCode, WorkType
+from domain.types import Result, TimeRecord, time_record_invariant_errors
 from models.time_clock_model import TimeClockModel
 from settings import SettingsManager
 
@@ -28,7 +28,9 @@ def times_overlap(s1: time, e1: time | None, s2: time, e2: time | None) -> bool:
     return start1 < end2 and start2 < end1
 
 
-def validate_time_record(record: TimeRecord, existing_records: list[TimeRecord]) -> list[str]:
+def validate_time_record(
+    record: TimeRecord, existing_records: list[TimeRecord]
+) -> list[str]:
     """Pure validation function for TimeRecord (enforces §5.6 table).
 
     Only context-dependent checks live here — they need data
@@ -55,8 +57,10 @@ def validate_time_record(record: TimeRecord, existing_records: list[TimeRecord])
         if existing.id == record.id:
             continue
         if times_overlap(
-            record.start_time, record.end_time,
-            existing.start_time, existing.end_time,
+            record.start_time,
+            record.end_time,
+            existing.start_time,
+            existing.end_time,
         ):
             errors.append("Record overlaps with an existing time record.")
             break
@@ -88,7 +92,8 @@ class TimeClockController:
         existing = self.model.get_records_by_date(record.date)
         errors = validate_time_record(record, existing)
 
-        # OVERNIGHT_SHIFT_WARNING is not a blocking error — filter it out before blocking
+        # OVERNIGHT_SHIFT_WARNING is not a blocking error — filter it out
+        # before blocking
         blocking = [e for e in errors if e != WarningCode.OVERNIGHT_SHIFT.value]
         if blocking:
             return Result(ok=False, errors=blocking)
@@ -107,11 +112,13 @@ class TimeClockController:
             logger.exception("Database error while saving time record %r", record)
             return Result(ok=False, errors=[f"Database error: {e}"])
 
-    def clock_in(self, work_type: WorkType | None = None, force: bool = False) -> Result:
+    def clock_in(
+        self, work_type: WorkType | None = None, force: bool = False
+    ) -> Result:
         """
         Clocks in the user. Creates a new record with start_time = now.
-        Returns Result(ok=False, errors=["OPEN_RECORD_EXISTS"]) if a today-open record exists
-        and force=False.
+        Returns Result(ok=False, errors=["OPEN_RECORD_EXISTS"]) if a today-open
+        record exists and force=False.
         """
         open_today = self.model.get_open_records_for_date(self._clock().date())
         if open_today and not force:
@@ -141,7 +148,7 @@ class TimeClockController:
             break_minutes=0,
             work_type=work_type,
             office=office,
-            note=""
+            note="",
         )
 
         existing = self.model.get_records_by_date(record.date)
@@ -177,7 +184,9 @@ class TimeClockController:
                 return Result(ok=False, errors=["Specified clock-in record not found."])
         else:
             if len(open_today) > 1:
-                return Result(ok=False, errors=[WarningCode.MULTIPLE_OPEN_RECORDS.value])
+                return Result(
+                    ok=False, errors=[WarningCode.MULTIPLE_OPEN_RECORDS.value]
+                )
             target_record = open_today[0]
 
         now = self._clock()
@@ -192,7 +201,8 @@ class TimeClockController:
 
         existing = self.model.get_records_by_date(target_record.date)
         existing_for_validation = [
-            r for r in existing if r.id == target_record.id or r.end_time is not None]
+            r for r in existing if r.id == target_record.id or r.end_time is not None
+        ]
         errors = validate_time_record(target_record, existing_for_validation)
         blocking = [e for e in errors if e != WarningCode.OVERNIGHT_SHIFT.value]
         if blocking:
@@ -203,7 +213,8 @@ class TimeClockController:
             return Result(ok=True, errors=errors)
         except sqlite3.Error as e:
             logger.exception(
-                "Database error while clocking out record id=%s", target_record.id)
+                "Database error while clocking out record id=%s", target_record.id
+            )
             return Result(ok=False, errors=[f"Database error: {e}"])
 
     def delete_record(self, record_id: int) -> Result:
@@ -212,5 +223,6 @@ class TimeClockController:
             return Result(ok=True, errors=[])
         except sqlite3.Error as e:
             logger.exception(
-                "Database error while deleting time record id=%s", record_id)
+                "Database error while deleting time record id=%s", record_id
+            )
             return Result(ok=False, errors=[f"Database error: {e}"])

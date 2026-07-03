@@ -1,6 +1,6 @@
 import os
-import sqlite3
 import platform
+import sqlite3
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -67,8 +67,8 @@ class SharedConnectionWrapper:
 class Database:
     def __init__(self, db_path: str | None = None) -> None:
         """
-        Initializes the database. If db_path is None, the default OS-specific path is used.
-        Pass ':memory:' for in-memory DB testing.
+        Initializes the database. If db_path is None, the default OS-specific
+        path is used. Pass ':memory:' for in-memory DB testing.
         """
         if db_path is None:
             self.db_path = str(get_default_db_path())
@@ -153,7 +153,8 @@ class Database:
                 start_time    TEXT    NOT NULL,
                 end_time      TEXT    DEFAULT NULL,
                 break_minutes INTEGER NOT NULL DEFAULT 0,
-                work_type     TEXT    NOT NULL CHECK(work_type IN ('in_site', 'road', 'remote')),
+                work_type     TEXT    NOT NULL
+                    CHECK(work_type IN ('in_site', 'road', 'remote')),
                 office        TEXT,
                 note          TEXT,
                 created_at    TEXT    NOT NULL DEFAULT (datetime('now')),
@@ -161,7 +162,8 @@ class Database:
             );
         """)
         conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_time_record_date ON time_record(date);")
+            "CREATE INDEX IF NOT EXISTS idx_time_record_date ON time_record(date);"
+        )
         # Partial index supporting get_open_records() and the other
         # `WHERE end_time IS NULL` queries (including the 60s auto-refresh
         # timer) — CREATE INDEX IF NOT EXISTS runs unconditionally on every
@@ -170,7 +172,8 @@ class Database:
         # migration bump, exactly like idx_time_record_date above.
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_time_record_open "
-            "ON time_record(end_time) WHERE end_time IS NULL;")
+            "ON time_record(end_time) WHERE end_time IS NULL;"
+        )
 
         # 4. Vacation settings
         conn.execute("""
@@ -187,14 +190,18 @@ class Database:
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
                 date        TEXT    NOT NULL,
                 hours       REAL    NOT NULL CHECK(hours >= 0),
-                vtype       TEXT    NOT NULL CHECK(vtype IN ('annual_leave', 'public_holiday', 'unpaid_leave', 'special_leave', 'carry_over')),
+                vtype       TEXT    NOT NULL
+                    CHECK(vtype IN ('annual_leave', 'public_holiday',
+                        'unpaid_leave', 'special_leave', 'carry_over')),
                 note        TEXT,
                 created_at  TEXT    NOT NULL DEFAULT (datetime('now')),
                 updated_at  TEXT    NOT NULL DEFAULT (datetime('now'))
             );
         """)
         conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_vacation_record_date ON vacation_record(date);")
+            "CREATE INDEX IF NOT EXISTS idx_vacation_record_date "
+            "ON vacation_record(date);"
+        )
 
         # 6. Sickness settings
         conn.execute("""
@@ -216,7 +223,9 @@ class Database:
             );
         """)
         conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_sickness_record_date ON sickness_record(date);")
+            "CREATE INDEX IF NOT EXISTS idx_sickness_record_date "
+            "ON sickness_record(date);"
+        )
 
         # 8. Carry-over log
         conn.execute("""
@@ -239,23 +248,29 @@ class Database:
 
         # Triggers to update updated_at automatically
         conn.execute("""
-            CREATE TRIGGER IF NOT EXISTS trg_time_record_updated_at AFTER UPDATE ON time_record
+            CREATE TRIGGER IF NOT EXISTS trg_time_record_updated_at
+            AFTER UPDATE ON time_record
             BEGIN
-                UPDATE time_record SET updated_at = datetime('now') WHERE id = NEW.id;
+                UPDATE time_record SET updated_at = datetime('now')
+                    WHERE id = NEW.id;
             END;
         """)
 
         conn.execute("""
-            CREATE TRIGGER IF NOT EXISTS trg_vacation_record_updated_at AFTER UPDATE ON vacation_record
+            CREATE TRIGGER IF NOT EXISTS trg_vacation_record_updated_at
+            AFTER UPDATE ON vacation_record
             BEGIN
-                UPDATE vacation_record SET updated_at = datetime('now') WHERE id = NEW.id;
+                UPDATE vacation_record SET updated_at = datetime('now')
+                    WHERE id = NEW.id;
             END;
         """)
 
         conn.execute("""
-            CREATE TRIGGER IF NOT EXISTS trg_sickness_record_updated_at AFTER UPDATE ON sickness_record
+            CREATE TRIGGER IF NOT EXISTS trg_sickness_record_updated_at
+            AFTER UPDATE ON sickness_record
             BEGIN
-                UPDATE sickness_record SET updated_at = datetime('now') WHERE id = NEW.id;
+                UPDATE sickness_record SET updated_at = datetime('now')
+                    WHERE id = NEW.id;
             END;
         """)
         return
@@ -272,25 +287,31 @@ class Database:
             cursor.execute("PRAGMA user_version = 1;")
 
         if version < 2:
-            # Relax vacation_record.hours constraint from > 0 to >= 0 (allow 0-hour holiday imports)
+            # Relax vacation_record.hours constraint from > 0 to >= 0
+            # (allow 0-hour holiday imports)
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS vacation_record_v2 (
                     id          INTEGER PRIMARY KEY AUTOINCREMENT,
                     date        TEXT    NOT NULL,
                     hours       REAL    NOT NULL CHECK(hours >= 0),
-                    vtype       TEXT    NOT NULL CHECK(vtype IN ('annual_leave', 'public_holiday', 'unpaid_leave', 'special_leave', 'carry_over')),
+                    vtype       TEXT    NOT NULL
+                    CHECK(vtype IN ('annual_leave', 'public_holiday',
+                        'unpaid_leave', 'special_leave', 'carry_over')),
                     note        TEXT,
                     created_at  TEXT    NOT NULL DEFAULT (datetime('now')),
                     updated_at  TEXT    NOT NULL DEFAULT (datetime('now'))
                 );
             """)
             conn.execute(
-                "INSERT OR IGNORE INTO vacation_record_v2 SELECT * FROM vacation_record;")
+                "INSERT OR IGNORE INTO vacation_record_v2 "
+                "SELECT * FROM vacation_record;"
+            )
             conn.execute("DROP TABLE vacation_record;")
+            conn.execute("ALTER TABLE vacation_record_v2 RENAME TO vacation_record;")
             conn.execute(
-                "ALTER TABLE vacation_record_v2 RENAME TO vacation_record;")
-            conn.execute(
-                "CREATE INDEX IF NOT EXISTS idx_vacation_record_date ON vacation_record(date);")
+                "CREATE INDEX IF NOT EXISTS idx_vacation_record_date "
+                "ON vacation_record(date);"
+            )
             cursor.execute("PRAGMA user_version = 2;")
 
         if version < 3:
@@ -305,8 +326,7 @@ class Database:
                 "SELECT year, days_per_year * 8.0 FROM sickness_settings"
             )
             conn.execute("DROP TABLE IF EXISTS sickness_settings")
-            conn.execute(
-                "ALTER TABLE sickness_settings_v3 RENAME TO sickness_settings")
+            conn.execute("ALTER TABLE sickness_settings_v3 RENAME TO sickness_settings")
             cursor.execute("PRAGMA user_version = 3")
 
         if version < 4:
@@ -327,24 +347,27 @@ class Database:
                 )
             """)
             conn.execute(
-                "CREATE INDEX IF NOT EXISTS idx_miliuim_record_date ON miliuim_record(date);")
+                "CREATE INDEX IF NOT EXISTS idx_miliuim_record_date "
+                "ON miliuim_record(date);"
+            )
             conn.execute("""
-                CREATE TRIGGER IF NOT EXISTS trg_miliuim_record_updated_at AFTER UPDATE ON miliuim_record
+                CREATE TRIGGER IF NOT EXISTS trg_miliuim_record_updated_at
+                AFTER UPDATE ON miliuim_record
                 BEGIN
-                    UPDATE miliuim_record SET updated_at = datetime('now') WHERE id = NEW.id;
+                    UPDATE miliuim_record SET updated_at = datetime('now')
+                        WHERE id = NEW.id;
                 END;
             """)
             cursor.execute("PRAGMA user_version = 4")
 
         if version < 5:
-            conn.execute(
-                "ALTER TABLE sickness_record ADD COLUMN document_path TEXT;")
-            conn.execute(
-                "ALTER TABLE miliuim_record ADD COLUMN document_path TEXT;")
+            conn.execute("ALTER TABLE sickness_record ADD COLUMN document_path TEXT;")
+            conn.execute("ALTER TABLE miliuim_record ADD COLUMN document_path TEXT;")
             cursor.execute("PRAGMA user_version = 5")
 
         if version < 6:
-            # Replace per-day miliuim_record + miliuim_settings with miliuim_period (date-range model)
+            # Replace per-day miliuim_record + miliuim_settings with
+            # miliuim_period (date-range model)
             conn.execute("DROP TABLE IF EXISTS miliuim_settings")
             conn.execute("DROP TABLE IF EXISTS miliuim_record")
             conn.execute("""
@@ -359,18 +382,20 @@ class Database:
                 )
             """)
             conn.execute(
-                "CREATE INDEX IF NOT EXISTS idx_miliuim_period_start ON miliuim_period(start_date);"
+                "CREATE INDEX IF NOT EXISTS idx_miliuim_period_start "
+                "ON miliuim_period(start_date);"
             )
             conn.execute("""
-                CREATE TRIGGER IF NOT EXISTS trg_miliuim_period_updated_at AFTER UPDATE ON miliuim_period
+                CREATE TRIGGER IF NOT EXISTS trg_miliuim_period_updated_at
+                AFTER UPDATE ON miliuim_period
                 BEGIN
-                    UPDATE miliuim_period SET updated_at = datetime('now') WHERE id = NEW.id;
+                    UPDATE miliuim_period SET updated_at = datetime('now')
+                        WHERE id = NEW.id;
                 END;
             """)
             cursor.execute("PRAGMA user_version = 6")
 
         if version < 7:
-            conn.execute(
-                "ALTER TABLE time_record ADD COLUMN document_path TEXT;")
+            conn.execute("ALTER TABLE time_record ADD COLUMN document_path TEXT;")
             cursor.execute("PRAGMA user_version = 7")
         return

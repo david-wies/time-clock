@@ -1,10 +1,13 @@
-"""Unit tests for core/hebrew_date.py: to_hebrew_label() always returns a non-empty str."""
+"""Unit tests for core/hebrew_date.py.
 
-import pytest
+to_hebrew_label() always returns a non-empty str.
+"""
+
 from datetime import date
 
-from core.hebrew_date import to_hebrew_label
+import pytest
 
+from core.hebrew_date import to_hebrew_label
 
 # Hebrew Unicode block (Basic Hebrew: U+0590–U+05FF).
 # Labels must contain at least one character in this range.
@@ -19,18 +22,28 @@ def _has_hebrew_chars(text: str) -> bool:
 
 # ─────────────── Return-type guarantees ──────────────────────────────────────
 
-@pytest.mark.parametrize("d", [
-    date(2026, 1, 1),   # Tevet 5786
-    date(2026, 3, 15),  # Adar 5786
-    date(2026, 6, 26),  # 1 Tammuz 5786
-    date(2026, 9, 22),  # Tishrei 5787 (Rosh Hashana)
-    date(2026, 12, 31),  # Tevet 5787
-    date(2025, 9, 22),  # Rosh Hashana 5786
-    date(2024, 3, 7),   # Adar II 5784 (Hebrew leap year)
-], ids=[
-    "tevet-5786", "adar-5786", "tammuz-5786",
-    "tishrei-5787", "tevet-5787", "rosh-hashana-5786", "adar2-5784",
-])
+
+@pytest.mark.parametrize(
+    "d",
+    [
+        date(2026, 1, 1),  # Tevet 5786
+        date(2026, 3, 15),  # Adar 5786
+        date(2026, 6, 26),  # 1 Tammuz 5786
+        date(2026, 9, 22),  # Tishrei 5787 (Rosh Hashana)
+        date(2026, 12, 31),  # Tevet 5787
+        date(2025, 9, 22),  # Rosh Hashana 5786
+        date(2024, 3, 7),  # Adar II 5784 (Hebrew leap year)
+    ],
+    ids=[
+        "tevet-5786",
+        "adar-5786",
+        "tammuz-5786",
+        "tishrei-5787",
+        "tevet-5787",
+        "rosh-hashana-5786",
+        "adar2-5784",
+    ],
+)
 def test_to_hebrew_label_returns_nonempty_str(d):
     label = to_hebrew_label(d)
     assert isinstance(label, str)
@@ -40,11 +53,16 @@ def test_to_hebrew_label_returns_nonempty_str(d):
 
 # ─────────────── Hebrew character content ────────────────────────────────────
 
-@pytest.mark.parametrize("d", [
-    date(2026, 1, 1),
-    date(2026, 6, 26),
-    date(2025, 9, 22),
-], ids=["tevet", "tammuz", "rosh-hashana"])
+
+@pytest.mark.parametrize(
+    "d",
+    [
+        date(2026, 1, 1),
+        date(2026, 6, 26),
+        date(2025, 9, 22),
+    ],
+    ids=["tevet", "tammuz", "rosh-hashana"],
+)
 def test_to_hebrew_label_contains_hebrew_characters(d):
     label = to_hebrew_label(d)
     assert _has_hebrew_chars(label), (
@@ -53,6 +71,7 @@ def test_to_hebrew_label_contains_hebrew_characters(d):
 
 
 # ─────────────── Labels differ across dates ───────────────────────────────────
+
 
 def test_to_hebrew_label_differs_between_dates_same_year():
     # June and January of the same Gregorian year fall in different Hebrew months.
@@ -75,6 +94,7 @@ def test_to_hebrew_label_differs_consecutive_days():
 
 
 # ─────────────── Consistency ─────────────────────────────────────────────────
+
 
 def test_to_hebrew_label_same_date_twice_is_idempotent():
     d = date(2026, 6, 26)

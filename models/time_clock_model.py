@@ -1,12 +1,13 @@
 import calendar
 import logging
 import sqlite3
-from datetime import date, time
-from domain.types import TimeRecord, WorkDayException
-from domain.enums import WorkType
-from core.events import EventBus, Event
-from core.timeutil import iso_to_date, str_to_time, date_to_iso, time_to_str
+from datetime import date
+
+from core.events import Event, EventBus
+from core.timeutil import date_to_iso, iso_to_date, str_to_time, time_to_str
 from db.database import Database
+from domain.enums import WorkType
+from domain.types import TimeRecord, WorkDayException
 
 logger = logging.getLogger(__name__)
 
@@ -32,8 +33,7 @@ class TimeClockModel:
     def get_record_by_id(self, record_id: int) -> TimeRecord | None:
         with self.db.connection() as conn:
             cursor = conn.cursor()
-            cursor.execute(
-                "SELECT * FROM time_record WHERE id = ?;", (record_id,))
+            cursor.execute("SELECT * FROM time_record WHERE id = ?;", (record_id,))
             row = cursor.fetchone()
             return self._row_to_record(row) if row else None
 
@@ -42,12 +42,14 @@ class TimeClockModel:
             cursor = conn.cursor()
             cursor.execute(
                 "SELECT * FROM time_record WHERE date = ? ORDER BY start_time ASC;",
-                (date_to_iso(target_date),)
+                (date_to_iso(target_date),),
             )
             rows = cursor.fetchall()
             return [self._row_to_record(row) for row in rows]
 
-    def get_records_for_period(self, year: int, month: int | None = None) -> list[TimeRecord]:
+    def get_records_for_period(
+        self, year: int, month: int | None = None
+    ) -> list[TimeRecord]:
         """
         Retrieves all time records for the given year and optionally month.
         Ordered by date DESC, start_time ASC.
@@ -59,21 +61,26 @@ class TimeClockModel:
                 start_date = f"{year:04d}-{month:02d}-01"
                 end_date = f"{year:04d}-{month:02d}-{last_day:02d}"
                 cursor.execute(
-                    "SELECT * FROM time_record WHERE date >= ? AND date <= ? ORDER BY date DESC, start_time ASC;",
-                    (start_date, end_date)
+                    "SELECT * FROM time_record WHERE date >= ? AND date <= ? "
+                    "ORDER BY date DESC, start_time ASC;",
+                    (start_date, end_date),
                 )
             else:
                 start_date = f"{year:04d}-01-01"
                 end_date = f"{year:04d}-12-31"
                 cursor.execute(
-                    "SELECT * FROM time_record WHERE date >= ? AND date <= ? ORDER BY date DESC, start_time ASC;",
-                    (start_date, end_date)
+                    "SELECT * FROM time_record WHERE date >= ? AND date <= ? "
+                    "ORDER BY date DESC, start_time ASC;",
+                    (start_date, end_date),
                 )
             rows = cursor.fetchall()
             return [self._row_to_record(row) for row in rows]
 
     def get_records_for_date_range(self, start: date, end: date) -> list[TimeRecord]:
-        """Returns all time records whose date falls in [start, end], ordered by date ASC, start_time ASC."""
+        """Returns all time records whose date falls in [start, end].
+
+        Ordered by date ASC, start_time ASC.
+        """
         with self.db.connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
@@ -84,11 +91,16 @@ class TimeClockModel:
             return [self._row_to_record(r) for r in cursor.fetchall()]
 
     def get_open_records(self) -> list[TimeRecord]:
-        """Finds all records that are currently open (end_time is NULL), across all dates."""
+        """Finds all records that are currently open (end_time is NULL).
+
+        Considers records across all dates.
+        """
         with self.db.connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
-                "SELECT * FROM time_record WHERE end_time IS NULL ORDER BY date DESC, start_time ASC;")
+                "SELECT * FROM time_record WHERE end_time IS NULL "
+                "ORDER BY date DESC, start_time ASC;"
+            )
             rows = cursor.fetchall()
             return [self._row_to_record(row) for row in rows]
 
@@ -97,8 +109,9 @@ class TimeClockModel:
         with self.db.connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
-                "SELECT * FROM time_record WHERE date = ? AND end_time IS NULL ORDER BY start_time ASC;",
-                (d.isoformat(),)
+                "SELECT * FROM time_record WHERE date = ? AND end_time IS NULL "
+                "ORDER BY start_time ASC;",
+                (d.isoformat(),),
             )
             rows = cursor.fetchall()
             return [self._row_to_record(row) for row in rows]
@@ -113,20 +126,22 @@ class TimeClockModel:
                 cursor = conn.cursor()
                 cursor.execute(
                     """
-                    INSERT INTO time_record (date, start_time, end_time, break_minutes, work_type, office, note, document_path)
+                    INSERT INTO time_record (
+                        date, start_time, end_time, break_minutes,
+                        work_type, office, note, document_path
+                    )
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?);
                     """,
                     (
                         date_to_iso(record.date),
                         time_to_str(record.start_time),
-                        time_to_str(
-                            record.end_time) if record.end_time else None,
+                        time_to_str(record.end_time) if record.end_time else None,
                         record.break_minutes,
                         record.work_type.value,
                         record.office,
                         record.note,
                         record.document_path,
-                    )
+                    ),
                 )
                 record_id = cursor.lastrowid or 0
             self.bus.publish(Event.TIME_RECORDS_CHANGED)
@@ -140,30 +155,29 @@ class TimeClockModel:
                 conn.execute(
                     """
                     UPDATE time_record
-                    SET date = ?, start_time = ?, end_time = ?, break_minutes = ?, work_type = ?, office = ?, note = ?,
+                    SET date = ?, start_time = ?, end_time = ?, break_minutes = ?,
+                        work_type = ?, office = ?, note = ?,
                         document_path = ?, updated_at = datetime('now')
                     WHERE id = ?;
                     """,
                     (
                         date_to_iso(record.date),
                         time_to_str(record.start_time),
-                        time_to_str(
-                            record.end_time) if record.end_time else None,
+                        time_to_str(record.end_time) if record.end_time else None,
                         record.break_minutes,
                         record.work_type.value,
                         record.office,
                         record.note,
                         record.document_path,
                         record.id,
-                    )
+                    ),
                 )
             self.bus.publish(Event.TIME_RECORDS_CHANGED)
 
     def delete_record(self, record_id: int) -> None:
         with self.db.connection() as conn:
             with conn:
-                conn.execute(
-                    "DELETE FROM time_record WHERE id = ?;", (record_id,))
+                conn.execute("DELETE FROM time_record WHERE id = ?;", (record_id,))
             self.bus.publish(Event.TIME_RECORDS_CHANGED)
 
     # --- Target Hours & Exceptions Queries ---
@@ -185,7 +199,7 @@ class TimeClockModel:
                         INSERT OR REPLACE INTO work_day_target (day_of_week, hours)
                         VALUES (?, ?);
                         """,
-                        (day_of_week, hours)
+                        (day_of_week, hours),
                     )
             self.bus.publish(Event.SETTINGS_CHANGED)
 
@@ -197,12 +211,15 @@ class TimeClockModel:
                 start_date = f"{year:04d}-01-01"
                 end_date = f"{year:04d}-12-31"
                 cursor.execute(
-                    "SELECT id, date, hours, label FROM work_day_exception WHERE date >= ? AND date <= ? ORDER BY date ASC;",
-                    (start_date, end_date)
+                    "SELECT id, date, hours, label FROM work_day_exception "
+                    "WHERE date >= ? AND date <= ? ORDER BY date ASC;",
+                    (start_date, end_date),
                 )
             else:
                 cursor.execute(
-                    "SELECT id, date, hours, label FROM work_day_exception ORDER BY date ASC;")
+                    "SELECT id, date, hours, label FROM work_day_exception "
+                    "ORDER BY date ASC;"
+                )
             rows = cursor.fetchall()
             exceptions = []
             for row in rows:
@@ -212,7 +229,9 @@ class TimeClockModel:
                     logger.warning(
                         "Skipping malformed work-day exception row "
                         "(falls back to the regular weekly target for that "
-                        "date): id=%r date=%r", row["id"], row["date"]
+                        "date): id=%r date=%r",
+                        row["id"],
+                        row["date"],
                     )
                     continue
                 exceptions.append(
@@ -225,7 +244,9 @@ class TimeClockModel:
                 )
             return exceptions
 
-    def save_date_exception(self, date_str: str, hours: float, label: str | None = None) -> None:
+    def save_date_exception(
+        self, date_str: str, hours: float, label: str | None = None
+    ) -> None:
         with self.db.connection() as conn:
             with conn:
                 conn.execute(
@@ -233,7 +254,7 @@ class TimeClockModel:
                     INSERT OR REPLACE INTO work_day_exception (date, hours, label)
                     VALUES (?, ?, ?);
                     """,
-                    (date_str, hours, label)
+                    (date_str, hours, label),
                 )
             self.bus.publish(Event.SETTINGS_CHANGED)
 
@@ -241,12 +262,14 @@ class TimeClockModel:
         with self.db.connection() as conn:
             with conn:
                 conn.execute(
-                    "DELETE FROM work_day_exception WHERE id = ?;", (exception_id,))
+                    "DELETE FROM work_day_exception WHERE id = ?;", (exception_id,)
+                )
             self.bus.publish(Event.SETTINGS_CHANGED)
 
     def delete_date_exception_by_date(self, date_str: str) -> None:
         with self.db.connection() as conn:
             with conn:
                 conn.execute(
-                    "DELETE FROM work_day_exception WHERE date = ?;", (date_str,))
+                    "DELETE FROM work_day_exception WHERE date = ?;", (date_str,)
+                )
             self.bus.publish(Event.SETTINGS_CHANGED)

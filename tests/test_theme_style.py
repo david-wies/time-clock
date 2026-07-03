@@ -1,4 +1,5 @@
 """Tests for theme.style.resolve_theme_mode (pure, no Tk needed)."""
+
 from theme.style import COLORS, resolve_theme_mode
 
 

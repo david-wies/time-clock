@@ -1,16 +1,18 @@
-import pytest
 from datetime import date, time
-from domain.types import TimeRecord
-from domain.enums import WorkType
+
+import pytest
+
 from core.balance import (
-    get_daily_target,
     calculate_period_balance,
+    get_daily_target,
+    get_month_range,
+    get_week_range,
+    get_year_range,
     group_records_by_date,
     period_balance_from_grouped,
-    get_week_range,
-    get_month_range,
-    get_year_range
 )
+from domain.enums import WorkType
+from domain.types import TimeRecord
 
 
 def test_get_daily_target() -> None:
@@ -43,10 +45,12 @@ def test_calculate_period_balance() -> None:
 
     # Create time records
     records = [
-        TimeRecord(1, date(2026, 6, 22), time(9, 0), time(17, 0),
-                   30, WorkType.REMOTE),  # Worked 7.5h (target 8.0)
-        TimeRecord(2, date(2026, 6, 23), time(9, 0), time(18, 0),
-                   0, WorkType.REMOTE),   # Worked 9.0h (target 8.0)
+        TimeRecord(
+            1, date(2026, 6, 22), time(9, 0), time(17, 0), 30, WorkType.REMOTE
+        ),  # Worked 7.5h (target 8.0)
+        TimeRecord(
+            2, date(2026, 6, 23), time(9, 0), time(18, 0), 0, WorkType.REMOTE
+        ),  # Worked 9.0h (target 8.0)
     ]
 
     # Calculate balance for Mon-Tue (2 days, total target = 16.0h)
@@ -56,7 +60,7 @@ def test_calculate_period_balance() -> None:
         end_date=date(2026, 6, 23),
         targets=targets,
         exceptions=exceptions,
-        today=date(2026, 6, 26)
+        today=date(2026, 6, 26),
     )
 
     # Worked: 7.5 + 9.0 = 16.5h
@@ -72,8 +76,9 @@ def test_calculate_period_balance_overtime_rate() -> None:
 
     # Positive balance (surplus)
     records_surplus = [
-        TimeRecord(1, date(2026, 6, 22), time(8, 0), time(18, 0),
-                   0, WorkType.REMOTE),  # Worked 10h (target 8h)
+        TimeRecord(
+            1, date(2026, 6, 22), time(8, 0), time(18, 0), 0, WorkType.REMOTE
+        ),  # Worked 10h (target 8h)
     ]
     res_surplus = calculate_period_balance(
         records_surplus,
@@ -82,15 +87,16 @@ def test_calculate_period_balance_overtime_rate() -> None:
         targets=targets,
         exceptions=exceptions,
         overtime_rate=1.5,
-        today=date(2026, 6, 26)
+        today=date(2026, 6, 26),
     )
     assert res_surplus.balance == 2.0
     assert res_surplus.weighted_overtime == 3.0  # 2.0 * 1.5
 
     # Negative balance (deficit)
     records_deficit = [
-        TimeRecord(1, date(2026, 6, 22), time(9, 0), time(15, 0),
-                   0, WorkType.REMOTE),  # Worked 6h (target 8h)
+        TimeRecord(
+            1, date(2026, 6, 22), time(9, 0), time(15, 0), 0, WorkType.REMOTE
+        ),  # Worked 6h (target 8h)
     ]
     res_deficit = calculate_period_balance(
         records_deficit,
@@ -99,17 +105,17 @@ def test_calculate_period_balance_overtime_rate() -> None:
         targets=targets,
         exceptions=exceptions,
         overtime_rate=1.5,
-        today=date(2026, 6, 26)
+        today=date(2026, 6, 26),
     )
     assert res_deficit.balance == -2.0
-    assert res_deficit.weighted_overtime == - \
-        2.0  # Deficit is raw, rate not applied
+    assert res_deficit.weighted_overtime == -2.0  # Deficit is raw, rate not applied
 
 
 # ─────────────── group_records_by_date / period_balance_from_grouped ───────
 # These back calculate_period_balance's O(N)-per-call contract: group once,
 # reuse the same records_by_date dict across many sub-range slices (used by
 # core/report.py's monthly-breakdown loop, avoiding an O(13N) rescan).
+
 
 def test_group_records_by_date_groups_by_date_key() -> None:
     records = [
@@ -135,22 +141,28 @@ def test_period_balance_from_grouped_matches_calculate_period_balance() -> None:
     targets = {0: 8.0, 1: 8.0, 2: 8.0, 3: 8.0, 4: 8.0, 5: 0.0, 6: 0.0}
     exceptions: dict = {}
     records = [
-        TimeRecord(1, date(2026, 6, 22), time(9, 0), time(17, 0),
-                   30, WorkType.REMOTE),
-        TimeRecord(2, date(2026, 6, 23), time(9, 0), time(18, 0),
-                   0, WorkType.REMOTE),
+        TimeRecord(1, date(2026, 6, 22), time(9, 0), time(17, 0), 30, WorkType.REMOTE),
+        TimeRecord(2, date(2026, 6, 23), time(9, 0), time(18, 0), 0, WorkType.REMOTE),
     ]
 
     expected = calculate_period_balance(
-        records, start_date=date(2026, 6, 22), end_date=date(2026, 6, 23),
-        targets=targets, exceptions=exceptions, overtime_rate=1.5,
+        records,
+        start_date=date(2026, 6, 22),
+        end_date=date(2026, 6, 23),
+        targets=targets,
+        exceptions=exceptions,
+        overtime_rate=1.5,
         today=date(2026, 6, 26),
     )
 
     grouped = group_records_by_date(records)
     actual = period_balance_from_grouped(
-        grouped, start_date=date(2026, 6, 22), end_date=date(2026, 6, 23),
-        targets=targets, exceptions=exceptions, overtime_rate=1.5,
+        grouped,
+        start_date=date(2026, 6, 22),
+        end_date=date(2026, 6, 23),
+        targets=targets,
+        exceptions=exceptions,
+        overtime_rate=1.5,
         today=date(2026, 6, 26),
     )
 
@@ -170,15 +182,27 @@ def test_period_balance_from_grouped_reused_dict_across_sub_ranges() -> None:
     grouped = group_records_by_date(records)
 
     jan = period_balance_from_grouped(
-        grouped, date(2026, 1, 1), date(2026, 1, 31), targets, exceptions,
+        grouped,
+        date(2026, 1, 1),
+        date(2026, 1, 31),
+        targets,
+        exceptions,
         today=date(2026, 12, 31),
     )
     feb = period_balance_from_grouped(
-        grouped, date(2026, 2, 1), date(2026, 2, 28), targets, exceptions,
+        grouped,
+        date(2026, 2, 1),
+        date(2026, 2, 28),
+        targets,
+        exceptions,
         today=date(2026, 12, 31),
     )
     mar = period_balance_from_grouped(
-        grouped, date(2026, 3, 1), date(2026, 3, 31), targets, exceptions,
+        grouped,
+        date(2026, 3, 1),
+        date(2026, 3, 31),
+        targets,
+        exceptions,
         today=date(2026, 12, 31),
     )
 
@@ -193,6 +217,7 @@ def test_period_balance_from_grouped_reused_dict_across_sub_ranges() -> None:
 # elapsed time from start_time to now_time; (c) open record on a past/future
 # day — contributes 0.0 until closed. Exercised here through the public
 # calculate_period_balance() API, passing today/now_time explicitly.
+
 
 def test_calculate_period_balance_closed_record_uses_start_end_duration() -> None:
     targets = {0: 8.0, 1: 8.0, 2: 8.0, 3: 8.0, 4: 8.0, 5: 0.0, 6: 0.0}
@@ -300,7 +325,7 @@ def test_date_range_helpers() -> None:
     # Week range (Mon-Sun)
     w_start, w_end = get_week_range(d)
     assert w_start == date(2026, 6, 22)  # Monday
-    assert w_end == date(2026, 6, 28)    # Sunday
+    assert w_end == date(2026, 6, 28)  # Sunday
 
     # Month range (1st to last)
     m_start, m_end = get_month_range(d)

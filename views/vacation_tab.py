@@ -2,29 +2,37 @@
 
 from __future__ import annotations
 
+import tkinter as tk
 from datetime import date
+from tkinter import messagebox, ttk
 from typing import Callable
 
-import tkinter as tk
-from tkinter import ttk, messagebox
-
 from controllers.vacation_controller import VacationController
+from core.events import Event, EventBus
+from core.hebrew_date import to_hebrew_label as _safe_hebrew
+from core.timeutil import to_display_date
+from domain.enums import VacationType
+from domain.types import VacationRecord
 from models.vacation_model import VacationModel
 from settings import SettingsManager
-from core.events import EventBus, Event
-from core.timeutil import to_display_date
-from domain.types import VacationRecord
-from domain.enums import VacationType
 from theme.style import COLORS, resolve_theme_mode
-
-from core.hebrew_date import to_hebrew_label as _safe_hebrew
-from views.vacation_record_dialog import VacationRecordDialog
 from views.carry_over_dialog import CarryOverDialog
-
+from views.vacation_record_dialog import VacationRecordDialog
 
 _MONTH_NAMES = [
-    "", "January", "February", "March", "April", "May", "June",
-    "July", "August", "September", "October", "November", "December",
+    "",
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
 ]
 
 _VTYPE_LABELS: dict[VacationType, str] = {
@@ -67,10 +75,8 @@ class VacationTab(ttk.Frame):
         self._build_ui()
         self._refresh()
 
-        self._unsubs.append(bus.subscribe(
-            Event.VACATION_CHANGED, self._on_event))
-        self._unsubs.append(bus.subscribe(
-            Event.SETTINGS_CHANGED, self._on_event))
+        self._unsubs.append(bus.subscribe(Event.VACATION_CHANGED, self._on_event))
+        self._unsubs.append(bus.subscribe(Event.SETTINGS_CHANGED, self._on_event))
 
         self.bind("<Destroy>", self._on_destroy)
         self.pack(fill="both", expand=True)
@@ -92,7 +98,9 @@ class VacationTab(ttk.Frame):
         cur_year = date.today().year
         self._var_year = tk.StringVar(value=str(self._selected_year))
         self._cbo_year = ttk.Combobox(
-            bar, textvariable=self._var_year, width=6,
+            bar,
+            textvariable=self._var_year,
+            width=6,
             values=[str(y) for y in range(cur_year - 10, cur_year + 3)],
             state="readonly",
         )
@@ -102,7 +110,9 @@ class VacationTab(ttk.Frame):
         ttk.Label(bar, text="Month:").pack(side="left")
         self._var_month = tk.StringVar(value="All")
         self._cbo_month = ttk.Combobox(
-            bar, textvariable=self._var_month, width=11,
+            bar,
+            textvariable=self._var_month,
+            width=11,
             values=["All"] + _MONTH_NAMES[1:],
             state="readonly",
         )
@@ -122,8 +132,7 @@ class VacationTab(ttk.Frame):
             side="left", fill="y", pady=5
         )
 
-        self._lbl_breakdown = ttk.Label(
-            self._frm_balance, text="", foreground="gray")
+        self._lbl_breakdown = ttk.Label(self._frm_balance, text="", foreground="gray")
         self._lbl_breakdown.pack(side="left", padx=10, pady=5)
 
         self._build_legend()
@@ -160,24 +169,21 @@ class VacationTab(ttk.Frame):
             selectmode="browse",
         )
 
-        self._tree.column("date", width=110, minwidth=90,
-                          stretch=False, anchor="w")
+        self._tree.column("date", width=110, minwidth=90, stretch=False, anchor="w")
         self._tree.heading("date", text="Date", anchor="center")
 
-        self._tree.column("hebrew_date", width=150,
-                          minwidth=120, stretch=False, anchor="w")
+        self._tree.column(
+            "hebrew_date", width=150, minwidth=120, stretch=False, anchor="w"
+        )
         self._tree.heading("hebrew_date", text="Hebrew Date", anchor="center")
 
-        self._tree.column("type", width=140, minwidth=100,
-                          stretch=False, anchor="w")
+        self._tree.column("type", width=140, minwidth=100, stretch=False, anchor="w")
         self._tree.heading("type", text="Type", anchor="center")
 
-        self._tree.column("hours", width=70, minwidth=50,
-                          stretch=False, anchor="e")
+        self._tree.column("hours", width=70, minwidth=50, stretch=False, anchor="e")
         self._tree.heading("hours", text="Hours", anchor="center")
 
-        self._tree.column("note", width=200, minwidth=80,
-                          stretch=True, anchor="w")
+        self._tree.column("note", width=200, minwidth=80, stretch=True, anchor="w")
         self._tree.heading("note", text="Note", anchor="center")
 
         vsb = ttk.Scrollbar(frame, orient="vertical", command=self._tree.yview)
@@ -191,7 +197,8 @@ class VacationTab(ttk.Frame):
         c = COLORS.get(self._theme_mode, COLORS["light"])
         self._tree.tag_configure("employer", foreground=c["success"])
         self._tree.tag_configure(
-            "planned", foreground=c["accent"],
+            "planned",
+            foreground=c["accent"],
             font=("Helvetica", 9, "italic"),
         )
         self._tree.tag_configure("carry_over", foreground=c["accent"])
@@ -206,9 +213,7 @@ class VacationTab(ttk.Frame):
         inner = ttk.Frame(bar)
         inner.pack(fill="x")
 
-        self._btn_add = ttk.Button(
-            inner, text="+ Add", command=self._do_add, width=12
-        )
+        self._btn_add = ttk.Button(inner, text="+ Add", command=self._do_add, width=12)
         self._btn_add.pack(side="left", padx=(0, 4))
 
         self._btn_edit = ttk.Button(
@@ -217,8 +222,11 @@ class VacationTab(ttk.Frame):
         self._btn_edit.pack(side="left", padx=(0, 4))
 
         self._btn_delete = ttk.Button(
-            inner, text="🗑 Remove", style="Danger.TButton",
-            command=self._do_delete, width=12,
+            inner,
+            text="🗑 Remove",
+            style="Danger.TButton",
+            command=self._do_delete,
+            width=12,
         )
         self._btn_delete.pack(side="left")
 
@@ -243,6 +251,7 @@ class VacationTab(ttk.Frame):
                         fn()
                 except tk.TclError:
                     pass
+
             return _handler
 
         self.root.bind_all("<Control-Shift-N>", _guard(self._do_add), add=True)
@@ -285,8 +294,12 @@ class VacationTab(ttk.Frame):
         else:
             bal_color = c["success"]
 
+        balance_text = (
+            f"Vacation {year}: {_fmt_h(used)} / {_fmt_h(total_pool)} available"
+            f"  |  Remaining: {_fmt_h(remaining)}"
+        )
         self._lbl_balance.config(
-            text=f"Vacation {year}: {_fmt_h(used)} / {_fmt_h(total_pool)} available  |  Remaining: {_fmt_h(remaining)}",
+            text=balance_text,
             foreground=bal_color,
         )
 
@@ -314,17 +327,20 @@ class VacationTab(ttk.Frame):
 
         if records:
             self._tree.insert(
-                "", "end",
+                "",
+                "end",
                 iid="__total__",
-                values=self._make_row_values(
-                    None, f"Total: {_fmt_h(total_hours)}"),
+                values=self._make_row_values(None, f"Total: {_fmt_h(total_hours)}"),
                 tags=("total",),
             )
             c = COLORS.get(self._theme_mode, COLORS["light"])
-            self._tree.tag_configure("total", foreground=c["fg.muted"],
-                                     font=("Helvetica", 9, "bold"))
+            self._tree.tag_configure(
+                "total", foreground=c["fg.muted"], font=("Helvetica", 9, "bold")
+            )
 
-    def _make_row_values(self, rec: VacationRecord | None, override_date: str = "") -> tuple:
+    def _make_row_values(
+        self, rec: VacationRecord | None, override_date: str = ""
+    ) -> tuple:
         if rec is None:
             return (override_date, "", "", "", "")
 
@@ -347,7 +363,8 @@ class VacationTab(ttk.Frame):
             tag = ""
 
         self._tree.insert(
-            "", "end",
+            "",
+            "end",
             iid=f"rec_{rec.id}",
             values=self._make_row_values(rec),
             tags=(tag,) if tag else (),
@@ -403,7 +420,10 @@ class VacationTab(ttk.Frame):
 
     def _do_add(self) -> None:
         VacationRecordDialog(
-            self, controller=self.controller, model=self.model, record=None,
+            self,
+            controller=self.controller,
+            model=self.model,
+            record=None,
         )
 
     def _do_edit(self) -> None:
@@ -411,7 +431,10 @@ class VacationTab(ttk.Frame):
         if rec is None:
             return
         VacationRecordDialog(
-            self, controller=self.controller, model=self.model, record=rec,
+            self,
+            controller=self.controller,
+            model=self.model,
+            record=rec,
         )
 
     def _do_delete(self) -> None:
@@ -427,12 +450,13 @@ class VacationTab(ttk.Frame):
             return
         result = self.controller.delete_record(rec_id)
         if not result.ok:
-            messagebox.showerror("Remove Failed", "\n".join(
-                result.errors), parent=self)
+            messagebox.showerror("Remove Failed", "\n".join(result.errors), parent=self)
 
     def _do_carry_over(self) -> None:
         CarryOverDialog(
-            self, controller=self.controller, model=self.model,
+            self,
+            controller=self.controller,
+            model=self.model,
             to_year=self._selected_year,
         )
 

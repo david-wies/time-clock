@@ -1,9 +1,11 @@
-import pytest
 from datetime import date
+
+import pytest
+
+from core.events import Event, EventBus
+from db.database import Database
 from domain.types import SicknessRecord
 from models.sickness_model import SicknessModel
-from core.events import EventBus, Event
-from db.database import Database
 
 
 def test_sickness_events(db: Database, event_bus: EventBus) -> None:
@@ -61,7 +63,8 @@ def test_get_records_for_year_uses_real_month_end_date(
         conn.set_trace_callback(None)
 
     select_statements = [
-        s for s in captured_statements if s.startswith("SELECT * FROM sickness_record")]
+        s for s in captured_statements if s.startswith("SELECT * FROM sickness_record")
+    ]
     assert len(select_statements) == 1
     expected_end_date = f"{year:04d}-{month:02d}-{expected_last_day:02d}"
     assert expected_end_date in select_statements[0]
@@ -72,12 +75,7 @@ def test_get_records_for_year_uses_real_month_end_date(
 def test_sickness_record_crud(db: Database, event_bus: EventBus) -> None:
     model = SicknessModel(db, event_bus)
 
-    rec = SicknessRecord(
-        id=None,
-        date=date(2026, 2, 15),
-        hours=8.0,
-        note="Flu"
-    )
+    rec = SicknessRecord(id=None, date=date(2026, 2, 15), hours=8.0, note="Flu")
 
     # Insert
     rec_id = model.insert_record(rec)
@@ -131,7 +129,9 @@ def test_sickness_summary(db: Database, event_bus: EventBus) -> None:
     assert summary.remaining_hours == 68.0
 
 
-def test_sickness_summary_accepts_prefetched_records(db: Database, event_bus: EventBus) -> None:
+def test_sickness_summary_accepts_prefetched_records(
+    db: Database, event_bus: EventBus
+) -> None:
     """calculate_sickness_summary(year, records=...) must skip its internal
     get_records_for_year() call and use the caller-supplied list instead --
     this is what lets SicknessTab fetch year records once per refresh and

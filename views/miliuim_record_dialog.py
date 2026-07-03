@@ -3,18 +3,17 @@
 from __future__ import annotations
 
 import tkinter as tk
-from tkinter import ttk
 from datetime import date
+from tkinter import ttk
 
 from controllers.miliuim_controller import MiliuimController
-from models.miliuim_model import MiliuimModel
 from domain.types import MiliuimRecord
+from models.miliuim_model import MiliuimModel
 from views.date_picker import make_date_picker
 from views.document_attachment import make_document_picker
 
 
 class MiliuimRecordDialog(tk.Toplevel):
-
     def __init__(
         self,
         parent,
@@ -48,40 +47,40 @@ class MiliuimRecordDialog(tk.Toplevel):
         # ── Start Date ────────────────────────────────────────────────────────
         start_row = ttk.Frame(outer)
         start_row.pack(fill="x", pady=(0, 6))
-        ttk.Label(start_row, text="Start date:",
-                  width=11, anchor="e").pack(side="left")
-        self._date_widget, self._get_date, self._set_date = make_date_picker(
-            start_row)
+        ttk.Label(start_row, text="Start date:", width=11, anchor="e").pack(side="left")
+        self._date_widget, self._get_date, self._set_date = make_date_picker(start_row)
         self._date_widget.pack(side="left", padx=(4, 0))
 
         # ── End Date ──────────────────────────────────────────────────────────
         end_row = ttk.Frame(outer)
         end_row.pack(fill="x", pady=(0, 6))
-        ttk.Label(end_row, text="End date:", width=11,
-                  anchor="e").pack(side="left")
-        self._end_date_widget, self._get_end_date, self._set_end_date = make_date_picker(
-            end_row)
+        ttk.Label(end_row, text="End date:", width=11, anchor="e").pack(side="left")
+        self._end_date_widget, self._get_end_date, self._set_end_date = (
+            make_date_picker(end_row)
+        )
         self._end_date_widget.pack(side="left", padx=(4, 0))
 
         # ── Note ──────────────────────────────────────────────────────────────
         note_row = ttk.Frame(outer)
         note_row.pack(fill="x", pady=(0, 6))
-        ttk.Label(note_row, text="Note:", width=11,
-                  anchor="e").pack(side="left")
+        ttk.Label(note_row, text="Note:", width=11, anchor="e").pack(side="left")
         vcmd = (self.register(self._validate_note), "%P")
         self._var_note = tk.StringVar()
         ttk.Entry(
-            note_row, textvariable=self._var_note, width=36,
-            validate="key", validatecommand=vcmd,
+            note_row,
+            textvariable=self._var_note,
+            width=36,
+            validate="key",
+            validatecommand=vcmd,
         ).pack(side="left", padx=(4, 0), fill="x", expand=True)
 
         # ── Document ──────────────────────────────────────────────────────────
         doc_row = ttk.Frame(outer)
         doc_row.pack(fill="x", pady=(0, 6))
-        ttk.Label(doc_row, text="Document:", width=11,
-                  anchor="e").pack(side="left")
+        ttk.Label(doc_row, text="Document:", width=11, anchor="e").pack(side="left")
         self._doc_widget, self._get_doc_path, self._set_doc_path = make_document_picker(
-            doc_row)
+            doc_row
+        )
         self._doc_widget.pack(side="left", padx=(4, 0))
 
         # ── Error label ───────────────────────────────────────────────────────
@@ -94,9 +93,9 @@ class MiliuimRecordDialog(tk.Toplevel):
         btn_row = ttk.Frame(outer)
         btn_row.pack(fill="x", pady=(4, 0))
         ttk.Button(btn_row, text="Cancel", command=self.destroy).pack(
-            side="right", padx=(6, 0))
-        ttk.Button(btn_row, text="Save",
-                   command=self._on_save).pack(side="right")
+            side="right", padx=(6, 0)
+        )
+        ttk.Button(btn_row, text="Save", command=self._on_save).pack(side="right")
 
     def _populate(self, record: MiliuimRecord | None) -> None:
         today = date.today()

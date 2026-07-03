@@ -11,6 +11,7 @@ same-day interval. A `<` -> `<=` regression in either comparison, or a
 regression in the overnight-wrap handling, should cause at least one of
 these to fail.
 """
+
 from datetime import time
 
 import pytest
@@ -89,12 +90,25 @@ def test_overnight_shift_back_to_back_with_next_evening_shift_is_not_overlap() -
 @pytest.mark.parametrize(
     ("s1", "e1", "s2", "e2", "expected"),
     [
-        pytest.param(time(9, 0), time(10, 0), time(10, 0), time(11, 0), False,
-                     id="back-to-back-morning"),
-        pytest.param(time(0, 0), time(1, 0), time(1, 0), time(2, 0), False,
-                     id="back-to-back-midnight-start"),
+        pytest.param(
+            time(9, 0),
+            time(10, 0),
+            time(10, 0),
+            time(11, 0),
+            False,
+            id="back-to-back-morning",
+        ),
+        pytest.param(
+            time(0, 0),
+            time(1, 0),
+            time(1, 0),
+            time(2, 0),
+            False,
+            id="back-to-back-midnight-start",
+        ),
     ],
 )
 def test_back_to_back_boundary_parametrized(
-        s1: time, e1: time, s2: time, e2: time, expected: bool) -> None:
+    s1: time, e1: time, s2: time, e2: time, expected: bool
+) -> None:
     assert times_overlap(s1, e1, s2, e2) is expected

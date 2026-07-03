@@ -3,19 +3,18 @@
 from __future__ import annotations
 
 import tkinter as tk
-from tkinter import ttk, messagebox
 from datetime import date
+from tkinter import messagebox, ttk
 
 from controllers.sickness_controller import SicknessController
-from models.sickness_model import SicknessModel
 from domain.enums import WarningCode
 from domain.types import SicknessRecord
+from models.sickness_model import SicknessModel
 from views.date_picker import make_date_picker
 from views.document_attachment import make_document_picker
 
 
 class SickRecordDialog(tk.Toplevel):
-
     def __init__(
         self,
         parent,
@@ -51,11 +50,9 @@ class SickRecordDialog(tk.Toplevel):
         # ── Date ──────────────────────────────────────────────────────────────
         date_row = ttk.Frame(outer)
         date_row.pack(fill="x", pady=(0, 6))
-        ttk.Label(date_row, text="Date:", width=10,
-                  anchor="e").pack(side="left")
+        ttk.Label(date_row, text="Date:", width=10, anchor="e").pack(side="left")
 
-        self._date_widget, self._get_date, self._set_date = make_date_picker(
-            date_row)
+        self._date_widget, self._get_date, self._set_date = make_date_picker(date_row)
         self._date_widget.pack(side="left", padx=(4, 0))
 
         # ── Multi-day checkbox (hidden in edit mode) ───────────────────────────
@@ -71,10 +68,11 @@ class SickRecordDialog(tk.Toplevel):
 
         # ── End date row (revealed when multi-day is checked) ─────────────────
         self._frm_end_date = ttk.Frame(outer)
-        ttk.Label(self._frm_end_date, text="End date:",
-                  width=10, anchor="e").pack(side="left")
-        self._end_date_widget, self._get_end_date, self._set_end_date = make_date_picker(
-            self._frm_end_date
+        ttk.Label(self._frm_end_date, text="End date:", width=10, anchor="e").pack(
+            side="left"
+        )
+        self._end_date_widget, self._get_end_date, self._set_end_date = (
+            make_date_picker(self._frm_end_date)
         )
         self._end_date_widget.pack(side="left", padx=(4, 0))
         # Pack it into the layout immediately so its position is fixed, then hide it.
@@ -85,12 +83,15 @@ class SickRecordDialog(tk.Toplevel):
         self._hours_row = ttk.Frame(outer)
         hours_row = self._hours_row
         hours_row.pack(fill="x", pady=(0, 6))
-        ttk.Label(hours_row, text="Hours:", width=10,
-                  anchor="e").pack(side="left")
+        ttk.Label(hours_row, text="Hours:", width=10, anchor="e").pack(side="left")
         self._var_hours = tk.StringVar(value="8.0")
         self._spn_hours = ttk.Spinbox(
-            hours_row, textvariable=self._var_hours,
-            from_=0.5, to=24.0, increment=0.5, width=8,
+            hours_row,
+            textvariable=self._var_hours,
+            from_=0.5,
+            to=24.0,
+            increment=0.5,
+            width=8,
             format="%.1f",
         )
         self._spn_hours.pack(side="left", padx=(4, 0))
@@ -98,8 +99,7 @@ class SickRecordDialog(tk.Toplevel):
         # ── Note ──────────────────────────────────────────────────────────────
         note_row = ttk.Frame(outer)
         note_row.pack(fill="x", pady=(0, 6))
-        ttk.Label(note_row, text="Note:", width=10,
-                  anchor="e").pack(side="left")
+        ttk.Label(note_row, text="Note:", width=10, anchor="e").pack(side="left")
         vcmd = (self.register(self._validate_note), "%P")
         self._var_note = tk.StringVar()
         ttk.Entry(
@@ -113,10 +113,10 @@ class SickRecordDialog(tk.Toplevel):
         # ── Document ──────────────────────────────────────────────────────────
         doc_row = ttk.Frame(outer)
         doc_row.pack(fill="x", pady=(0, 6))
-        ttk.Label(doc_row, text="Document:", width=10,
-                  anchor="e").pack(side="left")
+        ttk.Label(doc_row, text="Document:", width=10, anchor="e").pack(side="left")
         self._doc_widget, self._get_doc_path, self._set_doc_path = make_document_picker(
-            doc_row)
+            doc_row
+        )
         self._doc_widget.pack(side="left", padx=(4, 0))
 
         # ── Error label ───────────────────────────────────────────────────────
@@ -131,15 +131,13 @@ class SickRecordDialog(tk.Toplevel):
         ttk.Button(btn_row, text="Cancel", command=self.destroy).pack(
             side="right", padx=(6, 0)
         )
-        ttk.Button(btn_row, text="Save",
-                   command=self._on_save).pack(side="right")
+        ttk.Button(btn_row, text="Save", command=self._on_save).pack(side="right")
 
     # ─────────────────────────── Multi-day Toggle ────────────────────────────
 
     def _on_multiday_toggled(self) -> None:
         if self._var_multiday.get():
-            self._frm_end_date.pack(
-                fill="x", pady=(0, 6), before=self._hours_row)
+            self._frm_end_date.pack(fill="x", pady=(0, 6), before=self._hours_row)
         else:
             self._frm_end_date.pack_forget()
 
@@ -198,7 +196,10 @@ class SickRecordDialog(tk.Toplevel):
                 self._lbl_error.config(text="Invalid end date.")
                 return
             result = self._controller.save_range(
-                start_date, end_date, hours, note,
+                start_date,
+                end_date,
+                hours,
+                note,
                 confirm_over_balance=confirm_over_balance,
                 document_path=self._get_doc_path(),
             )
@@ -215,7 +216,8 @@ class SickRecordDialog(tk.Toplevel):
                 self._lbl_error.config(text=str(exc))
                 return
             result = self._controller.save_record(
-                record, confirm_over_balance=confirm_over_balance)
+                record, confirm_over_balance=confirm_over_balance
+            )
 
         if result.ok:
             self.destroy()

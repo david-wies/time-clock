@@ -1,4 +1,5 @@
 """Simple synchronous pub/sub event bus."""
+
 import logging
 from enum import Enum
 from typing import Callable
@@ -23,7 +24,9 @@ class EventBus:
         # free of any tkinter dependency.
         self.on_handler_error = on_handler_error
 
-    def subscribe(self, event: Event, handler: Callable[..., None]) -> Callable[[], None]:
+    def subscribe(
+        self, event: Event, handler: Callable[..., None]
+    ) -> Callable[[], None]:
         self._subscribers.setdefault(event, []).append(handler)
 
         def _unsub() -> None:
@@ -31,6 +34,7 @@ class EventBus:
                 self._subscribers[event].remove(handler)
             except ValueError:
                 pass
+
         return _unsub
 
     def publish(self, event: Event, **payload: object) -> None:

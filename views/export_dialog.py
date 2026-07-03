@@ -22,6 +22,7 @@ from reportlab.platypus import (
     TableStyle,
 )
 
+from core.hebrew_date import to_hebrew_label as _safe_hebrew
 from core.timeutil import duration, to_display_date
 from domain.enums import VacationType, WorkType
 from domain.types import SicknessRecord, TimeRecord, VacationRecord
@@ -29,8 +30,6 @@ from models.sickness_model import SicknessModel
 from models.time_clock_model import TimeClockModel
 from models.vacation_model import VacationModel
 from views.date_picker import make_date_picker
-
-from core.hebrew_date import to_hebrew_label as _safe_hebrew
 
 logger = logging.getLogger(__name__)
 
@@ -52,15 +51,28 @@ _WTYPE_LABELS: dict[WorkType, str] = {
 }
 
 _MONTH_NAMES = [
-    "", "January", "February", "March", "April", "May", "June",
-    "July", "August", "September", "October", "November", "December",
+    "",
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
 ]
 
 _AnyRecord = TimeRecord | VacationRecord | SicknessRecord
 
 
 class ExportDialog(tk.Toplevel):
-    """Dialog for exporting Time, Vacation, or Sickness records to CSV, Excel, or PDF."""
+    """Dialog for exporting Time, Vacation, or Sickness records to CSV, Excel,
+    or PDF.
+    """
 
     def __init__(
         self,
@@ -102,8 +114,7 @@ class ExportDialog(tk.Toplevel):
         # ── Data radio buttons ────────────────────────────────────────────────
         data_frame = ttk.Frame(outer)
         data_frame.pack(fill="x", pady=(0, 8))
-        ttk.Label(data_frame, text="Data:", width=10,
-                  anchor="w").pack(side="left")
+        ttk.Label(data_frame, text="Data:", width=10, anchor="w").pack(side="left")
         for value, label in (
             ("time", "Time Records"),
             ("vacation", "Vacation"),
@@ -117,10 +128,8 @@ class ExportDialog(tk.Toplevel):
         date_frame = ttk.Frame(outer)
         date_frame.pack(fill="x", pady=(0, 8))
 
-        ttk.Label(date_frame, text="From:", width=10,
-                  anchor="w").pack(side="left")
-        self._dp_from, self._get_from, self._set_from = make_date_picker(
-            date_frame)
+        ttk.Label(date_frame, text="From:", width=10, anchor="w").pack(side="left")
+        self._dp_from, self._get_from, self._set_from = make_date_picker(date_frame)
         self._dp_from.pack(side="left", padx=(0, 12))
         self._set_from(self._default_from)
 
@@ -132,8 +141,7 @@ class ExportDialog(tk.Toplevel):
         # ── Format radio buttons ─────────────────────────────────────────────
         fmt_frame = ttk.Frame(outer)
         fmt_frame.pack(fill="x", pady=(0, 8))
-        ttk.Label(fmt_frame, text="Format:", width=10,
-                  anchor="w").pack(side="left")
+        ttk.Label(fmt_frame, text="Format:", width=10, anchor="w").pack(side="left")
 
         ttk.Radiobutton(
             fmt_frame, text="CSV", variable=self._var_fmt, value="csv"
@@ -173,7 +181,8 @@ class ExportDialog(tk.Toplevel):
             to_date = self._get_to()
         except Exception as exc:
             messagebox.showerror(
-                "Invalid Date", f"Could not read date: {exc}", parent=self)
+                "Invalid Date", f"Could not read date: {exc}", parent=self
+            )
             return
 
         if from_date > to_date:
@@ -220,12 +229,14 @@ class ExportDialog(tk.Toplevel):
                     os.remove(tmp_path)
                 except OSError:
                     logger.warning(
-                        "Could not remove partial export temp file %s", tmp_path)
+                        "Could not remove partial export temp file %s", tmp_path
+                    )
             messagebox.showerror("Export Failed", str(exc), parent=self)
             return
 
-        messagebox.showinfo("Export Complete",
-                            f"Records exported to:\n{path}", parent=self)
+        messagebox.showinfo(
+            "Export Complete", f"Records exported to:\n{path}", parent=self
+        )
         self.destroy()
 
     # ─────────────────────────── Data Fetching ───────────────────────────────
@@ -239,11 +250,9 @@ class ExportDialog(tk.Toplevel):
             if tab == "time":
                 all_records.extend(self._model_tc.get_records_for_period(year))
             elif tab == "vacation":
-                all_records.extend(
-                    self._model_vacation.get_records_for_year(year))
+                all_records.extend(self._model_vacation.get_records_for_year(year))
             else:  # sickness
-                all_records.extend(
-                    self._model_sickness.get_records_for_year(year))
+                all_records.extend(self._model_sickness.get_records_for_year(year))
 
         filtered = [r for r in all_records if from_date <= r.date <= to_date]
         filtered.sort(key=lambda r: r.date)
@@ -254,8 +263,17 @@ class ExportDialog(tk.Toplevel):
     def _columns(self, tab: str) -> list[str]:
         """Return ordered column header list for the given data type."""
         if tab == "time":
-            cols = ["Date", "Hebrew Date", "Start", "End",
-                    "Break (min)", "Type", "Office", "Note", "Net Hours"]
+            cols = [
+                "Date",
+                "Hebrew Date",
+                "Start",
+                "End",
+                "Break (min)",
+                "Type",
+                "Office",
+                "Note",
+                "Net Hours",
+            ]
         elif tab == "vacation":
             cols = ["Date", "Hebrew Date", "Hours", "Type", "Note"]
         else:  # sickness
@@ -267,8 +285,7 @@ class ExportDialog(tk.Toplevel):
         hebrew = _safe_hebrew(rec.date)
         if tab == "time":
             if not isinstance(rec, TimeRecord):
-                raise TypeError(
-                    f"Expected TimeRecord, got {type(rec).__name__}")
+                raise TypeError(f"Expected TimeRecord, got {type(rec).__name__}")
             net: str = (
                 f"{duration(rec.start_time, rec.end_time, rec.break_minutes):.2f}"
                 if rec.end_time
@@ -287,8 +304,7 @@ class ExportDialog(tk.Toplevel):
             ]
         elif tab == "vacation":
             if not isinstance(rec, VacationRecord):
-                raise TypeError(
-                    f"Expected VacationRecord, got {type(rec).__name__}")
+                raise TypeError(f"Expected VacationRecord, got {type(rec).__name__}")
             return [
                 to_display_date(rec.date),
                 hebrew,
@@ -298,8 +314,7 @@ class ExportDialog(tk.Toplevel):
             ]
         else:  # sickness
             if not isinstance(rec, SicknessRecord):
-                raise TypeError(
-                    f"Expected SicknessRecord, got {type(rec).__name__}")
+                raise TypeError(f"Expected SicknessRecord, got {type(rec).__name__}")
             return [
                 to_display_date(rec.date),
                 hebrew,
@@ -313,15 +328,15 @@ class ExportDialog(tk.Toplevel):
         for rec in records:
             if tab == "time":
                 if not isinstance(rec, TimeRecord):
-                    raise TypeError(
-                        f"Expected TimeRecord, got {type(rec).__name__}")
+                    raise TypeError(f"Expected TimeRecord, got {type(rec).__name__}")
                 if rec.end_time:
-                    total += duration(rec.start_time,
-                                      rec.end_time, rec.break_minutes)
+                    total += duration(rec.start_time, rec.end_time, rec.break_minutes)
             else:
                 if not isinstance(rec, (VacationRecord, SicknessRecord)):
                     raise TypeError(
-                        f"Expected VacationRecord or SicknessRecord, got {type(rec).__name__}")
+                        "Expected VacationRecord or SicknessRecord, got "
+                        f"{type(rec).__name__}"
+                    )
                 total += rec.hours
         return total
 
@@ -416,15 +431,15 @@ class ExportDialog(tk.Toplevel):
 
             if tab == "time":
                 if not isinstance(rec, TimeRecord):
-                    raise TypeError(
-                        f"Expected TimeRecord, got {type(rec).__name__}")
+                    raise TypeError(f"Expected TimeRecord, got {type(rec).__name__}")
                 if rec.end_time:
-                    total += duration(rec.start_time,
-                                      rec.end_time, rec.break_minutes)
+                    total += duration(rec.start_time, rec.end_time, rec.break_minutes)
             else:
                 if not isinstance(rec, (VacationRecord, SicknessRecord)):
                     raise TypeError(
-                        f"Expected VacationRecord or SicknessRecord, got {type(rec).__name__}")
+                        "Expected VacationRecord or SicknessRecord, got "
+                        f"{type(rec).__name__}"
+                    )
                 total += rec.hours
 
         # ── Total row ────────────────────────────────────────────────────────
@@ -454,8 +469,12 @@ class ExportDialog(tk.Toplevel):
             ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
             # Total row
             ("FONTNAME", (0, total_row_idx), (-1, total_row_idx), "Helvetica-Bold"),
-            ("BACKGROUND", (0, total_row_idx),
-             (-1, total_row_idx), colors.HexColor("#e0e0e0")),
+            (
+                "BACKGROUND",
+                (0, total_row_idx),
+                (-1, total_row_idx),
+                colors.HexColor("#e0e0e0"),
+            ),
         ]
 
         # Alternating row backgrounds for data rows
@@ -468,8 +487,7 @@ class ExportDialog(tk.Toplevel):
         # Month header row styling
         for row_idx in month_header_rows:
             style_cmds += [
-                ("BACKGROUND", (0, row_idx), (-1, row_idx),
-                 colors.HexColor("#4682b4")),
+                ("BACKGROUND", (0, row_idx), (-1, row_idx), colors.HexColor("#4682b4")),
                 ("TEXTCOLOR", (0, row_idx), (-1, row_idx), colors.white),
                 ("FONTNAME", (0, row_idx), (-1, row_idx), "Helvetica-Bold"),
                 ("FONTSIZE", (0, row_idx), (-1, row_idx), 9),
