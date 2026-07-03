@@ -668,23 +668,41 @@ class SettingsDialog(tk.Toplevel):
                 try:
                     h = float(hrs_var.get())
                 except ValueError:
-                    h = 8.0
+                    messagebox.showerror(
+                        "Error",
+                        f"Invalid hours for {_DAY_NAMES[day_idx]}: "
+                        f"{hrs_var.get()!r}. Enter a number, e.g. 8.0.",
+                        parent=self,
+                    )
+                    return
                 targets[day_idx] = max(0.0, h)
             else:
                 targets[day_idx] = 0.0
         presets: list[int] = []
-        for v in self._break_vars:
+        for i, v in enumerate(self._break_vars):
             try:
                 val = int(v.get())
-                if val > 0:
-                    presets.append(val)
             except ValueError:
-                pass
+                messagebox.showerror(
+                    "Error",
+                    f"Invalid break preset #{i + 1}: {v.get()!r}. "
+                    "Enter a whole number of minutes.",
+                    parent=self,
+                )
+                return
+            if val > 0:
+                presets.append(val)
 
         try:
             rate = float(self._var_ot_rate.get())
         except ValueError:
-            rate = 1.0
+            messagebox.showerror(
+                "Error",
+                f"Invalid overtime rate multiplier: {self._var_ot_rate.get()!r}. "
+                "Enter a number, e.g. 1.5.",
+                parent=self,
+            )
+            return
 
         wfd_label = self._var_week_first_day.get()
 
