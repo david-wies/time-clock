@@ -2,7 +2,7 @@ import os
 import sqlite3
 import platform
 from pathlib import Path
-from typing import Optional, Any, Union
+from typing import Optional, Any
 
 
 def get_default_db_path() -> Path:
@@ -75,27 +75,29 @@ class Database:
         else:
             self.db_path = db_path
 
-        self._shared_conn: Optional[SharedConnectionWrapper] = None
-        if self.db_path == ":memory:":
-            raw_conn = sqlite3.connect(self.db_path)
-            raw_conn.row_factory = sqlite3.Row
-            raw_conn.execute("PRAGMA foreign_keys=ON;")
-            self._shared_conn = SharedConnectionWrapper(raw_conn)
+        # A single, persistent connection is opened once here and reused for
+        # the lifetime of the app — for :memory: DBs this is required (a
+        # fresh connection would see an empty DB every time); for file-based
+        # DBs it avoids re-opening + re-configuring a brand new
+        # sqlite3.Connection (re-running the PRAGMAs below) on every single
+        # get_connection() call. The ~40 `conn = self.db.get_connection();
+        # try: ...; finally: conn.close()` call sites across models/*.py are
+        # unaffected: SharedConnectionWrapper.close() is a no-op, so those
+        # call sites safely "close" the shared connection without ever
+        # actually closing it, for both DB kinds.
+        raw_conn = sqlite3.connect(self.db_path)
+        raw_conn.row_factory = sqlite3.Row
+        raw_conn.execute("PRAGMA journal_mode=WAL;")
+        raw_conn.execute("PRAGMA foreign_keys=ON;")
+        raw_conn.execute("PRAGMA synchronous=NORMAL;")
+        self._shared_conn = SharedConnectionWrapper(raw_conn)
 
         self._init_db()
         return
 
-    def get_connection(self) -> Union[sqlite3.Connection, SharedConnectionWrapper]:
-        """Creates and configures a new SQLite connection or returns the shared one."""
-        if self._shared_conn is not None:
-            return self._shared_conn
-
-        conn = sqlite3.connect(self.db_path)
-        conn.row_factory = sqlite3.Row
-        # Enable WAL mode for concurrency, enable foreign keys
-        conn.execute("PRAGMA journal_mode=WAL;")
-        conn.execute("PRAGMA foreign_keys=ON;")
-        return conn
+    def get_connection(self) -> SharedConnectionWrapper:
+        """Returns the single persistent connection shared for the app's lifetime."""
+        return self._shared_conn
 
     def _init_db(self) -> None:
         """Initializes tables and migrations."""
@@ -148,6 +150,15 @@ class Database:
         """)
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_time_record_date ON time_record(date);")
+        # Partial index supporting get_open_records() and the other
+        # `WHERE end_time IS NULL` queries (including the 60s auto-refresh
+        # timer) — CREATE INDEX IF NOT EXISTS runs unconditionally on every
+        # startup (unlike CREATE TABLE, this isn't gated by user_version),
+        # so existing installed DBs pick this up automatically without a
+        # migration bump, exactly like idx_time_record_date above.
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_time_record_open "
+            "ON time_record(end_time) WHERE end_time IS NULL;")
 
         # 4. Vacation settings
         conn.execute("""
