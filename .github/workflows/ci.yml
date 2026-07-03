@@ -82,7 +82,17 @@ jobs:
       # Scoped to this repo's first-party packages (excludes tests/ itself
       # and main.py's entry point) so the report reflects meaningfully
       # testable source, not noise.
+      #
+      # PYSTRAY_BACKEND=dummy: this runner has no X server. On Linux,
+      # pystray's default backend probing tries appindicator/gtk (missing,
+      # raises ImportError, skipped) then falls back to _xorg, which opens
+      # a real Xlib.display.Display() at import time -- not caught as
+      # ImportError, so it crashes test collection the moment anything
+      # imports views.tray (directly, or via main.py). The dummy backend
+      # is pystray's own supported no-GUI mode for exactly this case.
       - name: Run pytest with coverage
+        env:
+          PYSTRAY_BACKEND: dummy
         run: >
           pytest tests/
           --cov=domain --cov=core --cov=controllers --cov=db
