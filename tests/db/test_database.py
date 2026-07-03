@@ -12,6 +12,8 @@ so nothing at those call sites needs to change.
 """
 import sqlite3
 
+import pytest
+
 from db.database import Database, SharedConnectionWrapper
 
 
@@ -202,3 +204,122 @@ def test_time_record_open_index_present_on_migrated_existing_db(tmp_path) -> Non
         "AND name = 'idx_time_record_open';"
     ).fetchall()
     assert len(rows) == 1
+
+
+# ─────────────── Data-preserving migrations (versions 2 and 3) ──────────────
+#
+# Both migrations rebuild a table (CREATE new-named table, INSERT OR IGNORE
+# ... SELECT * FROM old, DROP old, RENAME new -> old). "INSERT OR IGNORE"
+# silently *drops* any row that would violate the new table's CHECK
+# constraints instead of raising — so a regression in either migration could
+# quietly lose or corrupt pre-existing rows without any visible error. These
+# tests build a raw pre-migration database by hand (mirroring the pattern in
+# test_time_record_open_index_present_on_migrated_existing_db above),
+# populate it with real rows, then open it through Database (triggering the
+# migration path) and verify every row survived intact.
+
+def test_vacation_record_v2_migration_preserves_existing_rows(tmp_path) -> None:
+    """version 1 schema has CHECK(hours > 0) on vacation_record; version 2
+    relaxes it to CHECK(hours >= 0) via a full table rebuild. Pre-existing
+    rows (which, under the OLD schema, could only ever have hours > 0) must
+    survive the rebuild with their data intact, and the relaxation itself
+    must actually take effect afterwards (a fresh hours=0 insert must
+    succeed post-migration, proving the rebuilt table really carries the
+    relaxed constraint rather than silently keeping the old one)."""
+    db_path = tmp_path / "time_clock.db"
+
+    raw = sqlite3.connect(str(db_path))
+    raw.execute("PRAGMA foreign_keys=ON;")
+    raw.execute("""
+        CREATE TABLE vacation_record (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            date        TEXT    NOT NULL,
+            hours       REAL    NOT NULL CHECK(hours > 0),
+            vtype       TEXT    NOT NULL CHECK(vtype IN ('annual_leave', 'public_holiday', 'unpaid_leave', 'special_leave', 'carry_over')),
+            note        TEXT,
+            created_at  TEXT    NOT NULL DEFAULT (datetime('now')),
+            updated_at  TEXT    NOT NULL DEFAULT (datetime('now'))
+        );
+    """)
+    # Sanity check on the hand-built fixture: the OLD schema really is
+    # stricter than the relaxed one — an hours=0 row cannot exist under it.
+    with pytest.raises(sqlite3.IntegrityError):
+        raw.execute(
+            "INSERT INTO vacation_record (date, hours, vtype) "
+            "VALUES ('2026-02-01', 0.0, 'public_holiday');"
+        )
+
+    raw.execute(
+        "INSERT INTO vacation_record (date, hours, vtype, note) VALUES "
+        "('2026-01-05', 8.0, 'annual_leave', 'first row'),"
+        "('2026-01-06', 0.5, 'special_leave', 'second row'),"
+        "('2026-01-07', 4.25, 'unpaid_leave', NULL);"
+    )
+    raw.execute("PRAGMA user_version = 1;")
+    raw.commit()
+    raw.close()
+
+    db = Database(db_path=str(db_path))
+    conn = db.get_connection()
+
+    rows = conn.execute(
+        "SELECT date, hours, vtype, note FROM vacation_record ORDER BY date;"
+    ).fetchall()
+    assert len(rows) == 3
+    assert rows[0]["date"] == "2026-01-05"
+    assert rows[0]["hours"] == 8.0
+    assert rows[0]["vtype"] == "annual_leave"
+    assert rows[0]["note"] == "first row"
+    assert rows[1]["hours"] == 0.5
+    assert rows[2]["hours"] == 4.25
+    assert rows[2]["note"] is None
+
+    # The relaxation must actually be live on the rebuilt table now.
+    conn.execute(
+        "INSERT INTO vacation_record (date, hours, vtype) "
+        "VALUES ('2026-02-01', 0.0, 'public_holiday');"
+    )
+    count = conn.execute("SELECT COUNT(*) FROM vacation_record;").fetchone()[0]
+    assert count == 4
+
+    user_version = conn.execute("PRAGMA user_version;").fetchone()[0]
+    assert user_version == 7
+
+
+def test_sickness_settings_v3_migration_converts_days_to_hours_and_preserves_rows(
+        tmp_path) -> None:
+    """version 3 rebuilds sickness_settings from a days_per_year column to
+    hours_per_year (days_per_year * 8.0). A regression here could corrupt
+    the conversion math or drop rows during the rebuild."""
+    db_path = tmp_path / "time_clock.db"
+
+    raw = sqlite3.connect(str(db_path))
+    raw.execute("PRAGMA foreign_keys=ON;")
+    raw.execute("""
+        CREATE TABLE sickness_settings (
+            year             INTEGER PRIMARY KEY,
+            days_per_year    REAL NOT NULL CHECK(days_per_year >= 0)
+        );
+    """)
+    raw.execute(
+        "INSERT INTO sickness_settings (year, days_per_year) VALUES "
+        "(2025, 12.5), (2026, 18.0);"
+    )
+    raw.execute("PRAGMA user_version = 2;")
+    raw.commit()
+    raw.close()
+
+    db = Database(db_path=str(db_path))
+    conn = db.get_connection()
+
+    rows = conn.execute(
+        "SELECT year, hours_per_year FROM sickness_settings ORDER BY year;"
+    ).fetchall()
+    assert len(rows) == 2
+    assert rows[0]["year"] == 2025
+    assert rows[0]["hours_per_year"] == pytest.approx(12.5 * 8.0)
+    assert rows[1]["year"] == 2026
+    assert rows[1]["hours_per_year"] == pytest.approx(18.0 * 8.0)
+
+    user_version = conn.execute("PRAGMA user_version;").fetchone()[0]
+    assert user_version == 7
