@@ -3,6 +3,7 @@
 import pytest
 from datetime import date, time
 
+import core.report as report_module
 from core.balance import calculate_period_balance
 from core.report import (
     _month_range,
@@ -232,6 +233,47 @@ def test_period_summary_quarter_empty_db_rows_zero(period_models):
     for row in data.monthly_rows:
         assert row.worked_hours == 0.0
         assert row.target_hours == 0.0
+
+
+def test_period_summary_quarter_missing_quarter_raises(period_models):
+    """End-to-end: period_summary("quarter", quarter=None) must raise
+    ValueError, not silently misbehave. (Today this is actually caught
+    first by period_range()'s own quarter=None guard, called earlier in
+    period_summary -- see the more targeted test below for the separate
+    guard added at the former `# type: ignore[arg-type]` site.)"""
+    tc, vac, sick, sm = period_models
+    with pytest.raises(ValueError, match="quarter is required"):
+        period_summary(
+            "quarter", 2026, month=None, quarter=None,
+            model_tc=tc, model_vacation=vac,
+            model_sickness=sick, settings=sm,
+        )
+
+
+def test_period_summary_monthly_breakdown_guard_raises_independently_of_period_range(
+    period_models, monkeypatch
+):
+    """Regression guard for the `_quarter_months(quarter)  # type: ignore[arg-type]`
+    removal in period_summary's monthly-breakdown branch. That call site now
+    has its own `if quarter is None: raise ValueError(...)` guard, matching
+    period_range's existing pattern. Bypass period_range's own earlier
+    quarter=None check (via monkeypatch) to prove the *new* guard is
+    independently correct, not just unreachable dead code shadowed by the
+    pre-existing check."""
+    tc, vac, sick, sm = period_models
+
+    monkeypatch.setattr(
+        report_module, "period_range",
+        lambda period_type, year, month, quarter: (
+            date(2026, 7, 1), date(2026, 9, 30)),
+    )
+
+    with pytest.raises(ValueError, match="quarter is required"):
+        period_summary(
+            "quarter", 2026, month=None, quarter=None,
+            model_tc=tc, model_vacation=vac,
+            model_sickness=sick, settings=sm,
+        )
 
 
 def test_period_summary_year_has_twelve_rows(period_models):

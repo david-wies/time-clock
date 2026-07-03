@@ -165,11 +165,13 @@ def period_summary(
     # Monthly breakdown rows (only for quarter / year periods)
     monthly_rows: list[MonthlyRow] = []
     if period_type in ("quarter", "year"):
-        months_in_period: list[int] = (
-            _quarter_months(quarter)  # type: ignore[arg-type]
-            if period_type == "quarter"
-            else list(range(1, 13))
-        )
+        if period_type == "quarter":
+            if quarter is None:
+                raise ValueError(
+                    "quarter is required for period_type='quarter'")
+            months_in_period: list[int] = _quarter_months(quarter)
+        else:
+            months_in_period = list(range(1, 13))
         for m in months_in_period:
             m_start, m_end = _month_range(year, m)
             m_bal = period_balance_from_grouped(
