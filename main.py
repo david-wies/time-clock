@@ -1,7 +1,9 @@
 """Entry point: wires Database → Models → Controllers → Views."""
 
+import logging
 import tkinter as tk
 from datetime import date
+from pathlib import Path
 from tkinter import messagebox
 
 from controllers.miliuim_controller import MiliuimController
@@ -9,7 +11,7 @@ from controllers.sickness_controller import SicknessController
 from controllers.time_clock_controller import TimeClockController
 from controllers.vacation_controller import VacationController
 from core.events import EventBus
-from db.database import Database
+from db.database import Database, get_app_data_dir
 from models.miliuim_model import MiliuimModel
 from models.sickness_model import SicknessModel
 from models.time_clock_model import TimeClockModel
@@ -23,8 +25,39 @@ from views.time_clock_tab import TimeClockTab
 from views.tray import SystemTray
 from views.vacation_tab import VacationTab
 
+_LOG_FORMAT = "%(asctime)s %(levelname)s %(name)s: %(message)s"
+
+
+def _configure_logging(log_dir: Path | None = None) -> None:
+    """Configure the root logger so every ``logging.getLogger(__name__)``
+    call site across the app (controllers, models, views, ``core.events``,
+    ``settings``, etc.) is captured, with zero changes needed at those call
+    sites.
+
+    Without this, unconfigured logging falls back to Python's "handler of
+    last resort", which only prints WARNING-and-above to stderr -- an
+    invisible sink in a packaged, windowed (PyInstaller ``--windowed``)
+    build with no console. Writes to a plain (non-rotating) log file
+    alongside the SQLite DB in the per-OS app-data directory computed by
+    :func:`db.database.get_app_data_dir` -- reusing that path resolution
+    rather than inventing a second one.
+
+    :param log_dir: Overrides the log directory; defaults to
+        ``get_app_data_dir()``. Exposed mainly so tests can redirect
+        logging to a ``tmp_path`` without touching real app-data.
+    """
+    directory = log_dir if log_dir is not None else get_app_data_dir()
+    handler = logging.FileHandler(directory / "time_clock.log", encoding="utf-8")
+    handler.setFormatter(logging.Formatter(_LOG_FORMAT))
+
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.INFO)
+    root_logger.addHandler(handler)
+
 
 def main() -> None:
+    _configure_logging()
+
     db = Database()
     settings = SettingsManager(db)
     bus = EventBus()

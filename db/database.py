@@ -7,8 +7,15 @@ from pathlib import Path
 from typing import Any
 
 
-def get_default_db_path() -> Path:
-    """Returns the default DB path depending on OS."""
+def get_app_data_dir() -> Path:
+    """Returns the per-OS application-data directory, creating it if needed.
+
+    Windows: ``%APPDATA%/Time Clock``. macOS: ``~/Library/Application
+    Support/Time Clock``. Linux/other Unix: the XDG data dir (or
+    ``~/.local/share``) under ``time-clock``. Shared by :func:`get_default_db_path`
+    (the SQLite DB file) and by the app's logging setup (``main.py``), so
+    the DB and log file always live side by side.
+    """
     if platform.system() == "Windows":
         app_data = os.environ.get("APPDATA")
         if app_data:
@@ -25,7 +32,12 @@ def get_default_db_path() -> Path:
             base_dir = Path.home() / ".local" / "share" / "time-clock"
 
     base_dir.mkdir(parents=True, exist_ok=True)
-    return base_dir / "time_clock.db"
+    return base_dir
+
+
+def get_default_db_path() -> Path:
+    """Returns the default DB path depending on OS."""
+    return get_app_data_dir() / "time_clock.db"
 
 
 class SharedConnectionWrapper:
