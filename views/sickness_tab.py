@@ -210,9 +210,9 @@ class SicknessTab(ttk.Frame):
 
     # ─────────────────────────── Balance Bar ────────────────────────────────
 
-    def _refresh_balance(self) -> None:
+    def _refresh_balance(self, records: list[SicknessRecord]) -> None:
         year = self._selected_year
-        summary = self.model.calculate_sickness_summary(year)
+        summary = self.model.calculate_sickness_summary(year, records=records)
         used = summary.used_hours
         allowance = summary.allowance_hours
         remaining = summary.remaining_hours
@@ -250,10 +250,15 @@ class SicknessTab(ttk.Frame):
         note = rec.note or ""
         return (disp, _safe_hebrew(rec.date), hours_str, note)
 
-    def _refresh_tree(self) -> None:
+    def _refresh_tree(self, year_records: list[SicknessRecord]) -> None:
         self._clear_tree()
         month = self._selected_month if self._selected_month > 0 else None
-        records = self.model.get_records_for_year(self._selected_year, month)
+        if month is None:
+            records = year_records
+        else:
+            # Filter the already-fetched full-year list in Python instead
+            # of issuing a second SQL query for the same year's data.
+            records = [r for r in year_records if r.date.month == month]
 
         total_hours = 0.0
         for rec in records:
@@ -279,8 +284,12 @@ class SicknessTab(ttk.Frame):
     # ─────────────────────────── Refresh ────────────────────────────────────
 
     def _refresh(self, **_kw) -> None:
-        self._refresh_balance()
-        self._refresh_tree()
+        # Fetch the full year's records once per refresh cycle and share
+        # them between the balance summary and the tree, instead of each
+        # independently querying get_records_for_year() for the same data.
+        year_records = self.model.get_records_for_year(self._selected_year)
+        self._refresh_balance(year_records)
+        self._refresh_tree(year_records)
         self._update_button_states()
 
     def _on_event(self, **_kw) -> None:

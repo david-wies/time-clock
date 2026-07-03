@@ -93,3 +93,29 @@ def test_sickness_summary(db: Database, event_bus: EventBus) -> None:
     assert summary.allowance_hours == 80.0
     assert summary.used_hours == 12.0
     assert summary.remaining_hours == 68.0
+
+
+def test_sickness_summary_accepts_prefetched_records(db: Database, event_bus: EventBus) -> None:
+    """calculate_sickness_summary(year, records=...) must skip its internal
+    get_records_for_year() call and use the caller-supplied list instead --
+    this is what lets SicknessTab fetch year records once per refresh and
+    reuse them for both the balance summary and the tree, instead of
+    querying the DB twice for the same full-year record set."""
+    sick_model = SicknessModel(db, event_bus)
+    sick_model.save_settings(2026, 80.0)
+
+    # Insert a record directly, then pass a *different* explicit records
+    # list to prove the DB isn't re-queried -- the summary must reflect the
+    # passed-in list, not what's actually in the table.
+    sick_model.insert_record(SicknessRecord(None, date(2026, 6, 22), 8.0, "Flu"))
+
+    explicit_records = [
+        SicknessRecord(None, date(2026, 1, 1), 5.0, "Explicit only"),
+    ]
+    summary = sick_model.calculate_sickness_summary(2026, records=explicit_records)
+    assert summary.used_hours == 5.0
+    assert summary.remaining_hours == 75.0
+
+    # No-arg call remains unchanged: fetches from the DB itself.
+    summary_default = sick_model.calculate_sickness_summary(2026)
+    assert summary_default.used_hours == 8.0

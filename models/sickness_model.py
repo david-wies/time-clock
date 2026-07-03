@@ -173,11 +173,22 @@ class SicknessModel:
 
     # --- Sickness Calculations & Summaries ---
 
-    def calculate_sickness_summary(self, year: int) -> SicknessSummary:
+    def calculate_sickness_summary(
+        self, year: int, records: Optional[list[SicknessRecord]] = None
+    ) -> SicknessSummary:
+        """Computes the year's sickness allowance/used/remaining summary.
+
+        If `records` is omitted, the full-year record set is fetched
+        internally (existing behavior, unchanged for any caller that
+        doesn't already have the records on hand). If the caller already
+        fetched the year's records itself (e.g. SicknessTab building both
+        the balance summary and the record tree from one fetch per
+        refresh), pass them in here to skip the redundant query."""
         allowance = self.get_settings(year)
         if allowance is None:
             allowance = 80.0   # default 10 days × 8 h
-        records = self.get_records_for_year(year)
+        if records is None:
+            records = self.get_records_for_year(year)
         used_hours = sum(r.hours for r in records)
         return SicknessSummary(
             allowance_hours=allowance,
