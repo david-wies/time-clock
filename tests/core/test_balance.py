@@ -187,6 +187,112 @@ def test_period_balance_from_grouped_reused_dict_across_sub_ranges() -> None:
     assert mar.worked_hours == 0.0
 
 
+# ─────────────── get_record_duration via calculate_period_balance ──────────
+# get_record_duration() (private to core/balance.py) has three branches:
+# (a) closed record — plain duration(); (b) open record dated `today` —
+# elapsed time from start_time to now_time; (c) open record on a past/future
+# day — contributes 0.0 until closed. Exercised here through the public
+# calculate_period_balance() API, passing today/now_time explicitly.
+
+def test_calculate_period_balance_closed_record_uses_start_end_duration() -> None:
+    targets = {0: 8.0, 1: 8.0, 2: 8.0, 3: 8.0, 4: 8.0, 5: 0.0, 6: 0.0}
+    records = [
+        TimeRecord(1, date(2026, 6, 22), time(9, 0), time(17, 0), 30, WorkType.REMOTE),
+    ]
+
+    result = calculate_period_balance(
+        records,
+        start_date=date(2026, 6, 22),
+        end_date=date(2026, 6, 22),
+        targets=targets,
+        exceptions={},
+        today=date(2026, 6, 26),
+        now_time=time(23, 0),
+    )
+
+    # 9:00-17:00 minus 30min break = 7.5h, regardless of today/now_time.
+    assert result.worked_hours == 7.5
+    assert result.balance == -0.5
+
+
+def test_calculate_period_balance_open_record_today_uses_elapsed_time() -> None:
+    """An open record (end_time=None) dated `today` must contribute elapsed
+    time computed from start_time to the supplied now_time, not 0.0."""
+    targets = {0: 8.0, 1: 8.0, 2: 8.0, 3: 8.0, 4: 8.0, 5: 0.0, 6: 0.0}
+    records = [
+        TimeRecord(1, date(2026, 6, 22), time(9, 0), None, 0, WorkType.REMOTE),
+    ]
+
+    result = calculate_period_balance(
+        records,
+        start_date=date(2026, 6, 22),
+        end_date=date(2026, 6, 22),
+        targets=targets,
+        exceptions={},
+        today=date(2026, 6, 22),
+        now_time=time(13, 30),
+    )
+
+    # Elapsed from 9:00 to 13:30 = 4.5h.
+    assert result.worked_hours == 4.5
+    assert result.balance == pytest.approx(4.5 - 8.0)
+
+
+def test_calculate_period_balance_open_record_on_past_day_contributes_zero() -> None:
+    """An open record dated a day other than `today` (still clocked in from
+    a prior day, or a data artifact) must contribute 0.0, not attempt an
+    elapsed-time computation against an unrelated `today`."""
+    targets = {0: 8.0, 1: 8.0, 2: 8.0, 3: 8.0, 4: 8.0, 5: 0.0, 6: 0.0}
+    records = [
+        TimeRecord(1, date(2026, 6, 22), time(9, 0), None, 0, WorkType.REMOTE),
+    ]
+
+    result = calculate_period_balance(
+        records,
+        start_date=date(2026, 6, 22),
+        end_date=date(2026, 6, 22),
+        targets=targets,
+        exceptions={},
+        today=date(2026, 6, 23),  # "today" has moved on; record is stale-open
+        now_time=time(13, 30),
+    )
+
+    assert result.worked_hours == 0.0
+    assert result.balance == -8.0
+
+
+def test_calculate_period_balance_open_record_on_future_day_contributes_zero() -> None:
+    """Symmetric case: an open record dated after `today` (shouldn't happen
+    in practice, but get_record_duration's `rec.date == today` branch is a
+    strict equality check either direction) also contributes 0.0."""
+    targets = {0: 8.0, 1: 8.0, 2: 8.0, 3: 8.0, 4: 8.0, 5: 0.0, 6: 0.0}
+    records = [
+        TimeRecord(1, date(2026, 6, 23), time(9, 0), None, 0, WorkType.REMOTE),
+    ]
+
+    result = calculate_period_balance(
+        records,
+        start_date=date(2026, 6, 23),
+        end_date=date(2026, 6, 23),
+        targets=targets,
+        exceptions={},
+        today=date(2026, 6, 22),
+        now_time=time(13, 30),
+    )
+
+    assert result.worked_hours == 0.0
+
+
+def test_get_week_range_crosses_year_boundary() -> None:
+    """The week containing Jan 1, 2027 (a Friday) starts Mon Dec 28, 2026
+    and ends Sun Jan 3, 2027 — get_week_range must cross the Dec 31 -> Jan 1
+    boundary without an off-by-one on either the year or the day count."""
+    w_start, w_end = get_week_range(date(2027, 1, 1))
+    assert w_start == date(2026, 12, 28)
+    assert w_end == date(2027, 1, 3)
+    assert (w_end - w_start).days == 6
+
+
 def test_date_range_helpers() -> None:
     # Friday, June 26, 2026
     d = date(2026, 6, 26)
