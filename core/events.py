@@ -1,8 +1,9 @@
 """Simple synchronous pub/sub event bus."""
-import sys
-import traceback
+import logging
 from enum import Enum
-from typing import Callable
+from typing import Callable, Optional
+
+logger = logging.getLogger(__name__)
 
 
 class Event(Enum):
@@ -15,8 +16,12 @@ class Event(Enum):
 
 
 class EventBus:
-    def __init__(self) -> None:
+    def __init__(self, on_handler_error: Optional[Callable[[str], None]] = None) -> None:
         self._subscribers: dict[Event, list[Callable[..., None]]] = {}
+        # Optional hook the UI layer can set so a handler exception is
+        # surfaced to the user, not just logged. EventBus itself stays
+        # free of any tkinter dependency.
+        self.on_handler_error = on_handler_error
 
     def subscribe(self, event: Event, handler: Callable[..., None]) -> Callable[[], None]:
         self._subscribers.setdefault(event, []).append(handler)
@@ -35,9 +40,10 @@ class EventBus:
             try:
                 handler(**payload)
             except Exception:
-                print(
+                message = (
                     f"EventBus: unhandled exception in handler {handler!r} "
-                    f"for event {event!r}:",
-                    file=sys.stderr,
+                    f"for event {event!r}"
                 )
-                traceback.print_exc(file=sys.stderr)
+                logger.exception(message)
+                if self.on_handler_error is not None:
+                    self.on_handler_error(message)

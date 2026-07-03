@@ -1,3 +1,7 @@
+import logging
+
+import pytest
+
 from core.events import EventBus, Event
 
 
@@ -59,3 +63,65 @@ def test_publish_unknown_event_is_silent() -> None:
     bus = EventBus()
     # Publishing an event with no subscribers must not raise
     bus.publish(Event.VACATION_CHANGED)
+
+
+# ─────────────── Handler-exception handling ──────────────────────────────────
+
+def test_handler_exception_is_logged_not_raised(caplog: pytest.LogCaptureFixture) -> None:
+    bus = EventBus()
+
+    def bad_handler() -> None:
+        raise ValueError("boom")
+
+    bus.subscribe(Event.TIME_RECORDS_CHANGED, bad_handler)
+    with caplog.at_level(logging.ERROR, logger="core.events"):
+        bus.publish(Event.TIME_RECORDS_CHANGED)  # must not propagate
+
+    assert len(caplog.records) == 1
+    record = caplog.records[0]
+    assert "bad_handler" in record.message
+    assert "TIME_RECORDS_CHANGED" in record.message
+    assert record.exc_info is not None
+
+
+def test_handler_exception_does_not_stop_later_handlers(caplog: pytest.LogCaptureFixture) -> None:
+    bus = EventBus()
+    calls: list[str] = []
+
+    def bad_handler() -> None:
+        raise RuntimeError("boom")
+
+    def good_handler() -> None:
+        calls.append("good")
+
+    bus.subscribe(Event.TIME_RECORDS_CHANGED, bad_handler)
+    bus.subscribe(Event.TIME_RECORDS_CHANGED, good_handler)
+    with caplog.at_level(logging.ERROR, logger="core.events"):
+        bus.publish(Event.TIME_RECORDS_CHANGED)
+
+    assert calls == ["good"]
+
+
+def test_handler_exception_invokes_on_handler_error_callback() -> None:
+    received: list[str] = []
+    bus = EventBus(on_handler_error=received.append)
+
+    def bad_handler() -> None:
+        raise ValueError("boom")
+
+    bus.subscribe(Event.TIME_RECORDS_CHANGED, bad_handler)
+    bus.publish(Event.TIME_RECORDS_CHANGED)
+
+    assert len(received) == 1
+    assert "bad_handler" in received[0]
+
+
+def test_no_on_handler_error_callback_is_fine(caplog: pytest.LogCaptureFixture) -> None:
+    bus = EventBus()  # no callback supplied
+
+    def bad_handler() -> None:
+        raise ValueError("boom")
+
+    bus.subscribe(Event.TIME_RECORDS_CHANGED, bad_handler)
+    with caplog.at_level(logging.ERROR, logger="core.events"):
+        bus.publish(Event.TIME_RECORDS_CHANGED)  # must not raise

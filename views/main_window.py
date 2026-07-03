@@ -1,12 +1,16 @@
 """MainWindow: ttk.Notebook tab container with menu bar and status bar."""
 
-from tkinter import Menu, StringVar, ttk
+import logging
+from tkinter import Menu, StringVar, messagebox, ttk
+from typing import Any
 
 from core.events import Event, EventBus
 from views.export_dialog import ExportDialog
 from views.help_viewer import open_help, report_bug, show_about, suggest_feature
 from views.report_dialog import ReportDialog
 from views.settings_dialog import SettingsDialog
+
+logger = logging.getLogger(__name__)
 
 
 class MainWindow(ttk.Frame):
@@ -29,6 +33,12 @@ class MainWindow(ttk.Frame):
 
         root.title("Time Clock")
         root.minsize(800, 600)
+
+        # Surface handler exceptions the EventBus only logs by default, and
+        # catch anything an uncaught Tk widget callback (button, combobox,
+        # tree, ...) raises — otherwise both fail silently in a packaged app.
+        self.bus.on_handler_error = self._on_bus_handler_error
+        root.report_callback_exception = self._on_tk_callback_exception
 
         self._build_menu(root)
         self._build_notebook()
@@ -197,3 +207,27 @@ class MainWindow(ttk.Frame):
 
     def _on_clock_state_changed(self, clocked_in: bool = False, since: str = "", **_: object) -> None:
         self.set_clocked_in(clocked_in, since)
+
+    def _on_bus_handler_error(self, message: str) -> None:
+        """EventBus.on_handler_error hook: a subscriber raised. The bus has
+        already logged the full traceback; let the user know something went
+        wrong instead of leaving the UI silently stale."""
+        messagebox.showerror(
+            "Unexpected Error",
+            "An internal error occurred while updating the app.\n"
+            "The application will keep running, but a screen may be stale — "
+            "details were written to the log.",
+            parent=self.root,
+        )
+
+    def _on_tk_callback_exception(self, exc: type[BaseException], val: BaseException, tb: Any) -> None:
+        """Tk.report_callback_exception override: catches exceptions raised
+        inside any bound widget callback (button, combobox, tree, ...) that
+        Tk would otherwise only print to stderr and silently swallow."""
+        logger.error("Unhandled exception in Tk callback",
+                      exc_info=(exc, val, tb))
+        messagebox.showerror(
+            "Unexpected Error",
+            f"An unexpected error occurred:\n\n{exc.__name__}: {val}",
+            parent=self.root,
+        )
