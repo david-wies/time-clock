@@ -59,6 +59,14 @@ class SystemTray:
         self._model = model
         self._settings = settings
         self._icon: Optional[pystray.Icon] = None
+        # Cached on the Tk main thread only -- pystray evaluates
+        # MenuItem(enabled=...) predicates lazily on its own background
+        # icon-rendering thread on backends that render menus (Windows,
+        # Linux GTK/AppIndicator), so those predicates must never query
+        # self._model (a shared, single-thread-affine sqlite3.Connection)
+        # directly. Refreshed in _on_records_changed(), which does run on
+        # the main thread.
+        self._clocked_in_cache: bool = False
         try:
             self._base_icon: Image.Image = _load_base_icon()
         except (FileNotFoundError, OSError):
@@ -78,6 +86,7 @@ class SystemTray:
 
     def start(self) -> None:
         """Create and start the tray icon in a daemon thread."""
+        self._clocked_in_cache = self._is_clocked_in()
         self._icon = pystray.Icon(
             "time-clock",
             self._current_icon_image(),
@@ -112,12 +121,12 @@ class SystemTray:
             pystray.MenuItem(
                 "Clock In",
                 self._tray_clock_in,
-                enabled=lambda _: not self._is_clocked_in(),
+                enabled=lambda _: not self._clocked_in_cache,
             ),
             pystray.MenuItem(
                 "Clock Out",
                 self._tray_clock_out,
-                enabled=lambda _: self._is_clocked_in(),
+                enabled=lambda _: self._clocked_in_cache,
             ),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("Open", self._tray_open, default=True),
@@ -129,6 +138,7 @@ class SystemTray:
 
     def _on_records_changed(self, **_) -> None:
         """Called from tkinter main thread via synchronous EventBus."""
+        self._clocked_in_cache = self._is_clocked_in()
         if not self._icon:
             return
         self._icon.icon = self._current_icon_image()
