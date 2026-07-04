@@ -1,3 +1,4 @@
+import logging
 import os
 import platform
 import sqlite3
@@ -5,6 +6,8 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 def get_app_data_dir() -> Path:
@@ -419,6 +422,31 @@ class Database:
             # above). Column order matches the live physical layout: the
             # original _create_tables columns followed by document_path,
             # which was appended via ALTER TABLE in the v7 migration.
+            #
+            # A pre-existing row with a corrupt/bad negative break_minutes
+            # value (predating this constraint) would otherwise be silently
+            # and permanently dropped by INSERT OR IGNORE below when the
+            # table is rebuilt — CHECK-constraint violations are skipped
+            # per-row, not raised. Repair those rows first (clamp to 0,
+            # logging what was changed) so no data is lost; INSERT OR IGNORE
+            # remains afterward purely as defense-in-depth.
+            bad_break_rows = conn.execute(
+                "SELECT id, date, break_minutes FROM time_record "
+                "WHERE break_minutes < 0;"
+            ).fetchall()
+            for bad_row in bad_break_rows:
+                logger.warning(
+                    "Repairing time_record row with negative break_minutes "
+                    "before v8 migration: id=%r date=%r break_minutes=%r "
+                    "(clamped to 0)",
+                    bad_row["id"],
+                    bad_row["date"],
+                    bad_row["break_minutes"],
+                )
+            conn.execute(
+                "UPDATE time_record SET break_minutes = 0 "
+                "WHERE break_minutes < 0;"
+            )
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS time_record_v8 (
                     id            INTEGER PRIMARY KEY AUTOINCREMENT,

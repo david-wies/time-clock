@@ -11,6 +11,7 @@ DB kinds, ``.close()`` is now a safe no-op (see ``SharedConnectionWrapper``),
 so nothing at those call sites needs to change.
 """
 
+import logging
 import sqlite3
 
 import pytest
@@ -329,6 +330,70 @@ def test_sickness_settings_v3_migration_converts_days_to_hours_and_preserves_row
     assert rows[0]["hours_per_year"] == pytest.approx(12.5 * 8.0)
     assert rows[1]["year"] == 2026
     assert rows[1]["hours_per_year"] == pytest.approx(18.0 * 8.0)
+
+    user_version = conn.execute("PRAGMA user_version;").fetchone()[0]
+    assert user_version == 8
+
+
+def test_time_record_v8_migration_repairs_negative_break_minutes_and_logs_warning(
+    tmp_path, caplog
+) -> None:
+    """A pre-existing row with a corrupt negative break_minutes value (e.g.
+    from manual DB editing, predating this constraint) must NOT be silently
+    dropped by the v8 rebuild's `INSERT OR IGNORE` — CHECK-constraint
+    violations are skipped per-row rather than raised, so an unrepaired bad
+    row would simply vanish with no trace. The migration must instead clamp
+    the value to 0, log a WARNING identifying the row, and keep the row."""
+    db_path = tmp_path / "time_clock.db"
+
+    raw = sqlite3.connect(str(db_path))
+    raw.execute("PRAGMA foreign_keys=ON;")
+    raw.execute("""
+        CREATE TABLE time_record (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            date          TEXT    NOT NULL,
+            start_time    TEXT    NOT NULL,
+            end_time      TEXT    DEFAULT NULL,
+            break_minutes INTEGER NOT NULL DEFAULT 0,
+            work_type     TEXT    NOT NULL
+                CHECK(work_type IN ('in_site', 'road', 'remote')),
+            office        TEXT,
+            note          TEXT,
+            created_at    TEXT    NOT NULL DEFAULT (datetime('now')),
+            updated_at    TEXT    NOT NULL DEFAULT (datetime('now')),
+            document_path TEXT
+        );
+    """)
+    raw.execute(
+        "INSERT INTO time_record (date, start_time, break_minutes, work_type, note) "
+        "VALUES ('2026-01-05', '09:00', -15, 'in_site', 'corrupted row'),"
+        "('2026-01-06', '10:00', 20, 'remote', 'healthy row');"
+    )
+    raw.execute("PRAGMA user_version = 7;")
+    raw.commit()
+    raw.close()
+
+    with caplog.at_level(logging.WARNING, logger="db.database"):
+        db = Database(db_path=str(db_path))
+    conn = db.get_connection()
+
+    rows = conn.execute(
+        "SELECT date, break_minutes, note FROM time_record ORDER BY date;"
+    ).fetchall()
+    # Both rows survive the rebuild -- the corrupted row is repaired, not
+    # dropped.
+    assert len(rows) == 2
+    assert rows[0]["date"] == "2026-01-05"
+    assert rows[0]["break_minutes"] == 0
+    assert rows[0]["note"] == "corrupted row"
+    assert rows[1]["break_minutes"] == 20
+
+    assert any(
+        record.levelname == "WARNING"
+        and "break_minutes" in record.message.lower()
+        and "2026-01-05" in record.message
+        for record in caplog.records
+    )
 
     user_version = conn.execute("PRAGMA user_version;").fetchone()[0]
     assert user_version == 8
