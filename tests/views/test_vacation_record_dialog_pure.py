@@ -14,6 +14,7 @@ from unittest import mock
 
 import pytest
 
+from domain.enums import VacationType
 from views.vacation_record_dialog import VacationRecordDialog
 
 
@@ -25,6 +26,20 @@ def _make_dialog(model, get_date, hours_text="8.0"):
     dialog._lbl_hours_hint = mock.MagicMock()
     dialog._var_hours = mock.MagicMock()
     dialog._var_hours.get.return_value = hours_text
+    return dialog
+
+
+def _make_dialog_for_save(get_date, raw_date_text="2026-99-99"):
+    """Stand in the widgets ``_on_save`` touches on the date-parsing path."""
+    dialog = VacationRecordDialog.__new__(VacationRecordDialog)
+    dialog._get_date = get_date
+    dialog._date_widget = mock.MagicMock()
+    dialog._date_widget.get.return_value = raw_date_text
+    dialog._lbl_error = mock.MagicMock()
+    dialog._var_hours = mock.MagicMock()
+    dialog._var_hours.get.return_value = "8.0"
+    dialog._var_vtype = mock.MagicMock()
+    dialog._var_vtype.get.return_value = str(VacationType.ANNUAL_LEAVE)
     return dialog
 
 
@@ -109,3 +124,39 @@ def test_update_hours_cap_non_sqlite_error_propagates() -> None:
 
     with pytest.raises(AttributeError):
         dialog._update_hours_cap()
+
+
+def test_on_save_bad_date_is_logged_and_reported_as_field_error(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """``_on_save``'s date-parsing catch was narrowed from a bare
+    ``except Exception`` to ``(ValueError, IndexError)`` with logging, to
+    match the standard already applied to ``_update_hours_cap``. A bad date
+    must still surface as a field error, but it must also be logged instead
+    of vanishing silently."""
+
+    def _bad_get_date() -> date:
+        raise ValueError("no valid date selected")
+
+    dialog = _make_dialog_for_save(_bad_get_date, raw_date_text="2026-99-99")
+
+    with caplog.at_level(logging.WARNING, logger="views.vacation_record_dialog"):
+        dialog._on_save()  # must not raise
+
+    dialog._lbl_error.config.assert_called_with(text="Invalid date.")
+    assert any(record.levelno >= logging.WARNING for record in caplog.records)
+    assert any("2026-99-99" in record.getMessage() for record in caplog.records)
+
+
+def test_on_save_non_narrowed_date_error_propagates() -> None:
+    """A real bug in the date widget (e.g. an ``AttributeError`` from a
+    destroyed widget) must not be silently swallowed by the narrowed
+    ``except (ValueError, IndexError)`` — it should propagate."""
+
+    def _broken_get_date() -> date:
+        raise AttributeError("widget destroyed")
+
+    dialog = _make_dialog_for_save(_broken_get_date)
+
+    with pytest.raises(AttributeError):
+        dialog._on_save()

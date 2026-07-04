@@ -1,3 +1,4 @@
+import logging
 from datetime import date, datetime
 
 import pytest
@@ -243,6 +244,104 @@ def test_daily_target_falls_back_to_weekday(db: Database, event_bus: EventBus) -
     monday = date(2026, 6, 22)  # weekday() == 0
     assert monday.weekday() == 0
     assert model.get_daily_target_for_date(monday) == 9.0
+
+
+def test_get_records_for_year_skips_malformed_row_and_logs_warning(
+    db: Database, event_bus: EventBus, caplog
+) -> None:
+    """A row that violates a VacationRecord invariant at the DB level (e.g.
+    a note longer than the domain's 500-char cap -- something no DB CHECK
+    constraint enforces) must not crash the whole read. It should be logged
+    and skipped, exactly like the malformed-date handling in
+    TimeClockModel.get_date_exceptions()."""
+    model = VacationModel(db, event_bus)
+
+    good = VacationRecord(None, date(2026, 7, 15), 8.0, VacationType.ANNUAL_LEAVE, "ok")
+    model.insert_record(good)
+
+    conn = db.get_connection()
+    try:
+        with conn:
+            conn.execute(
+                "INSERT INTO vacation_record (date, hours, vtype, note) "
+                "VALUES (?, ?, ?, ?);",
+                ("2026-07-16", 4.0, "annual_leave", "x" * 501),
+            )
+    finally:
+        conn.close()
+
+    with caplog.at_level(logging.WARNING, logger="models.vacation_model"):
+        records = model.get_records_for_year(2026)
+
+    assert len(records) == 1
+    assert records[0].note == "ok"
+    assert any(
+        record.levelname == "WARNING" and "malformed" in record.message.lower()
+        for record in caplog.records
+    )
+
+
+def test_get_record_by_id_returns_none_for_malformed_row(
+    db: Database, event_bus: EventBus, caplog
+) -> None:
+    """A single malformed row fetched by ID must return None (not raise),
+    with a warning logged."""
+    model = VacationModel(db, event_bus)
+
+    conn = db.get_connection()
+    try:
+        with conn:
+            cursor = conn.execute(
+                "INSERT INTO vacation_record (date, hours, vtype, note) "
+                "VALUES (?, ?, ?, ?);",
+                ("2026-07-16", 4.0, "annual_leave", "x" * 501),
+            )
+            bad_id = cursor.lastrowid
+    finally:
+        conn.close()
+
+    with caplog.at_level(logging.WARNING, logger="models.vacation_model"):
+        result = model.get_record_by_id(bad_id)
+
+    assert result is None
+    assert any(
+        record.levelname == "WARNING" and "malformed" in record.message.lower()
+        for record in caplog.records
+    )
+
+
+def test_get_carry_over_history_skips_malformed_transferred_at_and_logs_warning(
+    db: Database, event_bus: EventBus, caplog
+) -> None:
+    """An unparseable `transferred_at` value (e.g. from manual DB editing)
+    must not crash get_carry_over_history() -- it should be logged and
+    skipped, matching the defensive row-reconstruction pattern used
+    elsewhere in this model."""
+    model = VacationModel(db, event_bus)
+    model.save_settings(2025, 160.0, 40.0)
+    model.save_settings(2026, 160.0, 40.0)
+    model.add_carry_over(2025, 2026, 15.0)
+
+    conn = db.get_connection()
+    try:
+        with conn:
+            conn.execute(
+                "INSERT INTO carry_over_log "
+                "(from_year, to_year, hours, transferred_at) "
+                "VALUES (2025, 2026, 5.0, 'not-a-timestamp');"
+            )
+    finally:
+        conn.close()
+
+    with caplog.at_level(logging.WARNING, logger="models.vacation_model"):
+        history = model.get_carry_over_history(2026)
+
+    assert len(history) == 1
+    assert history[0].hours == 15.0
+    assert any(
+        record.levelname == "WARNING" and "malformed" in record.message.lower()
+        for record in caplog.records
+    )
 
 
 def test_daily_target_uses_date_exception_over_weekday(

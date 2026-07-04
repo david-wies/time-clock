@@ -1,6 +1,7 @@
 """Entry point: wires Database → Models → Controllers → Views."""
 
 import logging
+import logging.handlers
 import tkinter as tk
 from datetime import date
 from pathlib import Path
@@ -37,17 +38,23 @@ def _configure_logging(log_dir: Path | None = None) -> None:
     Without this, unconfigured logging falls back to Python's "handler of
     last resort", which only prints WARNING-and-above to stderr -- an
     invisible sink in a packaged, windowed (PyInstaller ``--windowed``)
-    build with no console. Writes to a plain (non-rotating) log file
-    alongside the SQLite DB in the per-OS app-data directory computed by
+    build with no console. Writes to a rotating log file alongside the
+    SQLite DB in the per-OS app-data directory computed by
     :func:`db.database.get_app_data_dir` -- reusing that path resolution
-    rather than inventing a second one.
+    rather than inventing a second one. Rotation keeps the log bounded for
+    the lifetime of an always-running system-tray app.
 
     :param log_dir: Overrides the log directory; defaults to
         ``get_app_data_dir()``. Exposed mainly so tests can redirect
         logging to a ``tmp_path`` without touching real app-data.
     """
     directory = log_dir if log_dir is not None else get_app_data_dir()
-    handler = logging.FileHandler(directory / "time_clock.log", encoding="utf-8")
+    handler = logging.handlers.RotatingFileHandler(
+        directory / "time_clock.log",
+        encoding="utf-8",
+        maxBytes=5 * 1024 * 1024,
+        backupCount=3,
+    )
     handler.setFormatter(logging.Formatter(_LOG_FORMAT))
 
     root_logger = logging.getLogger()

@@ -291,7 +291,7 @@ def test_vacation_record_v2_migration_preserves_existing_rows(tmp_path) -> None:
     assert count == 4
 
     user_version = conn.execute("PRAGMA user_version;").fetchone()[0]
-    assert user_version == 7
+    assert user_version == 8
 
 
 def test_sickness_settings_v3_migration_converts_days_to_hours_and_preserves_rows(
@@ -331,4 +331,77 @@ def test_sickness_settings_v3_migration_converts_days_to_hours_and_preserves_row
     assert rows[1]["hours_per_year"] == pytest.approx(18.0 * 8.0)
 
     user_version = conn.execute("PRAGMA user_version;").fetchone()[0]
-    assert user_version == 7
+    assert user_version == 8
+
+
+def test_time_record_v8_migration_preserves_rows_and_adds_break_minutes_check(
+    tmp_path,
+) -> None:
+    """version 8 rebuilds time_record to add CHECK(break_minutes >= 0), the
+    same defense-in-depth constraint vacation_record/sickness_record already
+    have on `hours`. Pre-existing rows must survive the rebuild with their
+    data intact, and the new constraint must actually be live afterwards."""
+    db_path = tmp_path / "time_clock.db"
+
+    raw = sqlite3.connect(str(db_path))
+    raw.execute("PRAGMA foreign_keys=ON;")
+    raw.execute("""
+        CREATE TABLE time_record (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            date          TEXT    NOT NULL,
+            start_time    TEXT    NOT NULL,
+            end_time      TEXT    DEFAULT NULL,
+            break_minutes INTEGER NOT NULL DEFAULT 0,
+            work_type     TEXT    NOT NULL
+                CHECK(work_type IN ('in_site', 'road', 'remote')),
+            office        TEXT,
+            note          TEXT,
+            created_at    TEXT    NOT NULL DEFAULT (datetime('now')),
+            updated_at    TEXT    NOT NULL DEFAULT (datetime('now')),
+            document_path TEXT
+        );
+    """)
+    raw.execute(
+        "INSERT INTO time_record (date, start_time, break_minutes, work_type, note) "
+        "VALUES ('2026-01-05', '09:00', 30, 'in_site', 'first row'),"
+        "('2026-01-06', '10:00', 0, 'remote', 'second row'),"
+        "('2026-01-07', '11:00', 45, 'road', 'third row');"
+    )
+    raw.execute("PRAGMA user_version = 7;")
+    raw.commit()
+    raw.close()
+
+    db = Database(db_path=str(db_path))
+    conn = db.get_connection()
+
+    rows = conn.execute(
+        "SELECT date, start_time, break_minutes, work_type, note "
+        "FROM time_record ORDER BY date;"
+    ).fetchall()
+    assert len(rows) == 3
+    assert rows[0]["date"] == "2026-01-05"
+    assert rows[0]["break_minutes"] == 30
+    assert rows[0]["work_type"] == "in_site"
+    assert rows[0]["note"] == "first row"
+    assert rows[1]["break_minutes"] == 0
+    assert rows[1]["note"] == "second row"
+    assert rows[2]["break_minutes"] == 45
+    assert rows[2]["note"] == "third row"
+
+    # The new constraint must actually be live on the rebuilt table now.
+    with pytest.raises(sqlite3.IntegrityError):
+        conn.execute(
+            "INSERT INTO time_record (date, start_time, break_minutes, work_type) "
+            "VALUES ('2026-02-01', '09:00', -1, 'in_site');"
+        )
+
+    # A fresh valid insert must still succeed post-migration.
+    conn.execute(
+        "INSERT INTO time_record (date, start_time, break_minutes, work_type) "
+        "VALUES ('2026-02-02', '09:00', 0, 'in_site');"
+    )
+    count = conn.execute("SELECT COUNT(*) FROM time_record;").fetchone()[0]
+    assert count == 4
+
+    user_version = conn.execute("PRAGMA user_version;").fetchone()[0]
+    assert user_version == 8

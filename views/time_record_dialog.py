@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import tkinter as tk
 from datetime import date, datetime, time
 from tkinter import ttk
@@ -13,6 +14,8 @@ from domain.types import TimeRecord
 from settings import SettingsManager
 from views.date_picker import make_date_picker
 from views.document_attachment import make_document_picker
+
+logger = logging.getLogger(__name__)
 
 _OVERNIGHT_BG = "#FEF3C7"
 
@@ -310,7 +313,12 @@ class TimeRecordDialog(tk.Toplevel):
 
         try:
             rec_date: date | None = self._get_date()
-        except Exception:
+        except (ValueError, IndexError) as exc:
+            logger.warning(
+                "Could not parse date %r for time record: %s",
+                self._date_widget.get(),
+                exc,
+            )
             field_errors.append("Invalid date.")
             rec_date = None
 

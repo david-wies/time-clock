@@ -5,12 +5,15 @@ are NOT tested here — they remain controller-level and are covered by
 tests/controllers/*.
 """
 
+import sqlite3
 from datetime import date, time
 
 import pytest
 
 from domain.enums import VacationType, WorkType
 from domain.types import (
+    BreakMinutes,
+    Hours,
     MiliuimRecord,
     PeriodBalance,
     Result,
@@ -18,6 +21,59 @@ from domain.types import (
     TimeRecord,
     VacationRecord,
 )
+
+# ─────────────────────────── Hours / BreakMinutes ─────────────────────────────
+
+
+def test_hours_negative_raises() -> None:
+    with pytest.raises(ValueError, match="non-negative"):
+        Hours(-1)
+
+
+def test_break_minutes_negative_raises() -> None:
+    with pytest.raises(ValueError, match="non-negative"):
+        BreakMinutes(-1)
+
+
+def test_hours_behaves_as_plain_float_in_arithmetic() -> None:
+    h = Hours(8.5)
+    assert isinstance(h, float)
+    assert h + 1.5 == 10.0
+    assert h > Hours(8.0)
+    assert h == 8.5
+
+
+def test_break_minutes_behaves_as_plain_int_in_arithmetic() -> None:
+    b = BreakMinutes(30)
+    assert isinstance(b, int)
+    assert int(b) == 30
+    assert b + 15 == 45
+    assert b < BreakMinutes(60)
+
+
+def test_hours_binds_correctly_as_sqlite3_parameter() -> None:
+    conn = sqlite3.connect(":memory:")
+    try:
+        conn.execute("CREATE TABLE t (h REAL)")
+        conn.execute("INSERT INTO t (h) VALUES (?)", (Hours(8.5),))
+        row = conn.execute("SELECT h FROM t").fetchone()
+    finally:
+        conn.close()
+    assert row[0] == 8.5
+    assert type(row[0]) is float
+
+
+def test_break_minutes_binds_correctly_as_sqlite3_parameter() -> None:
+    conn = sqlite3.connect(":memory:")
+    try:
+        conn.execute("CREATE TABLE t (b INTEGER)")
+        conn.execute("INSERT INTO t (b) VALUES (?)", (BreakMinutes(30),))
+        row = conn.execute("SELECT b FROM t").fetchone()
+    finally:
+        conn.close()
+    assert row[0] == 30
+    assert type(row[0]) is int
+
 
 # ─────────────────────────────── TimeRecord ──────────────────────────────────
 

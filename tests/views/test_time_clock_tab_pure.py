@@ -43,3 +43,16 @@ def test_build_exc_dict_skips_malformed_hours_and_logs_warning(caplog) -> None:
 
     assert result == {}
     assert len(caplog.records) == 1
+
+
+def test_build_exc_dict_skips_none_hours_and_logs_warning(caplog) -> None:
+    """WorkDayException.hours=None raises TypeError (not ValueError) from
+    float(None) — _build_exc_dict must catch that too, not just the
+    malformed-string ValueError case above."""
+    raw = [WorkDayException(id=1, date=date(2026, 6, 1), hours=None, label=None)]  # type: ignore[arg-type]
+
+    with caplog.at_level(logging.WARNING, logger="views.time_clock_tab"):
+        result = _build_exc_dict(raw)
+
+    assert result == {}
+    assert len(caplog.records) == 1

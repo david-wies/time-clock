@@ -96,8 +96,6 @@ class SicknessController:
             return Result(ok=False, errors=["End date must be on or after start date."])
         if hours < 0.5 or hours > 24.0:
             return Result(ok=False, errors=["Hours must be between 0.5 and 24."])
-        if note and len(note) > 500:
-            return Result(ok=False, errors=["Note is too long (max 500 characters)."])
 
         existing = self.model.get_records_in_date_range(start_date, end_date)
         if existing:
@@ -122,16 +120,26 @@ class SicknessController:
                 if summary.remaining_hours - hours * count < 0:
                     return Result(ok=False, errors=[WarningCode.OVER_BALANCE.value])
 
-        records = [
-            SicknessRecord(
-                id=None,
-                date=d,
-                hours=Hours(hours),
-                note=note,
-                document_path=document_path,
-            )
-            for d in dates
-        ]
+        # Note-length (and non-negative-hours) validity is a context-free
+        # invariant enforced unconditionally by SicknessRecord.__post_init__
+        # (domain/types.py) — construction raises ValueError instead of
+        # silently accepting an invalid note, so it's caught here and
+        # converted to a Result per this codebase's "controllers return
+        # Result, never raise for expected validation failures" convention.
+        try:
+            records = [
+                SicknessRecord(
+                    id=None,
+                    date=d,
+                    hours=Hours(hours),
+                    note=note,
+                    document_path=document_path,
+                )
+                for d in dates
+            ]
+        except ValueError as e:
+            return Result(ok=False, errors=[str(e)])
+
         try:
             self.model.insert_records_bulk(records)
             return Result(ok=True, errors=[])

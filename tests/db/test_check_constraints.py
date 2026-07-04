@@ -26,6 +26,25 @@ def test_time_record_work_type_check_rejects_invalid_value(db: Database) -> None
         )
 
 
+def test_time_record_break_minutes_check_rejects_negative_value(db: Database) -> None:
+    conn = db.get_connection()
+    with pytest.raises(sqlite3.IntegrityError):
+        conn.execute(
+            "INSERT INTO time_record (date, start_time, break_minutes, work_type) "
+            "VALUES ('2026-01-01', '09:00', -1, 'in_site');"
+        )
+
+
+def test_time_record_break_minutes_check_accepts_zero(db: Database) -> None:
+    conn = db.get_connection()
+    conn.execute(
+        "INSERT INTO time_record (date, start_time, break_minutes, work_type) "
+        "VALUES ('2026-01-01', '09:00', 0, 'in_site');"
+    )
+    count = conn.execute("SELECT COUNT(*) FROM time_record;").fetchone()[0]
+    assert count == 1
+
+
 def test_time_record_work_type_check_accepts_all_valid_values(db: Database) -> None:
     conn = db.get_connection()
     for i, work_type in enumerate(("in_site", "road", "remote")):

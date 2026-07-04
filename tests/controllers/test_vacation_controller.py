@@ -71,6 +71,26 @@ def test_save_public_holiday_with_zero_hours_succeeds(
     assert rec.id is not None
 
 
+def test_save_public_holiday_over_max_hours_fails(
+    controller: VacationController,
+) -> None:
+    """PUBLIC_HOLIDAY relaxes the *lower* bound to 0 but not the *upper*
+    bound — it must still be rejected once hours exceed max_hours. max_hours
+    here comes from VacationModel.get_daily_target_for_date(), which falls
+    back to 8.0 when no per-weekday target has been configured (see
+    models/vacation_model.py:get_daily_target_for_date), so 2026-12-25
+    (a Friday, weekday()==4, with no work-day targets set in this test)
+    caps at 8.0 — 10.0 hours must be rejected."""
+    controller.model.save_settings(2026, 160.0, 40.0)
+    rec = VacationRecord(None, date(2026, 12, 25), 10.0, VacationType.PUBLIC_HOLIDAY)
+
+    res = controller.save_record(rec)
+
+    assert res.ok is False
+    assert rec.id is None
+    assert any("8.0" in e for e in res.errors)
+
+
 def test_save_non_public_holiday_with_zero_hours_fails(
     controller: VacationController,
 ) -> None:

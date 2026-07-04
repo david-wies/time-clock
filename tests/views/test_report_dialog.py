@@ -1,7 +1,11 @@
 """Regression tests for ReportDialog document collection (no Tk mainloop needed)."""
 
+import logging
 from datetime import date, time
 from types import SimpleNamespace
+from unittest import mock
+
+import pytest
 
 from core.events import EventBus
 from db.database import Database
@@ -105,3 +109,45 @@ def test_collect_documents_still_includes_sickness_docs(
     assert len(image_docs) == 1
     assert image_docs[0][0] == "Sickness"
     assert pdf_docs == []
+
+
+def _make_report_data_dialog(year="2026", period="month", month="June", quarter="Q1"):
+    """Builds a ReportDialog with just the form Vars needed by
+    _get_report_data, bypassing Tk __init__/mainloop like _make_dialog above."""
+    dialog = ReportDialog.__new__(ReportDialog)
+    dialog._var_year = mock.MagicMock(get=mock.MagicMock(return_value=year))
+    dialog._var_period = mock.MagicMock(get=mock.MagicMock(return_value=period))
+    dialog._var_month = mock.MagicMock(get=mock.MagicMock(return_value=month))
+    dialog._var_quarter = mock.MagicMock(get=mock.MagicMock(return_value=quarter))
+    dialog._model_tc = mock.MagicMock()
+    dialog._model_vacation = mock.MagicMock()
+    dialog._model_sickness = mock.MagicMock()
+    dialog._model_miliuim = mock.MagicMock()
+    dialog._settings = mock.MagicMock()
+    return dialog
+
+
+def test_get_report_data_period_summary_failure_is_logged_not_swallowed(
+    caplog: pytest.LogCaptureFixture, monkeypatch
+) -> None:
+    """A period_summary() failure must show up in the log (with the period
+    that was being assembled) instead of vanishing into a bare
+    messagebox.showerror with no trace anywhere else."""
+    dialog = _make_report_data_dialog(year="2026", period="month", month="June")
+
+    monkeypatch.setattr(
+        "views.report_dialog.period_summary",
+        mock.MagicMock(side_effect=RuntimeError("db unavailable")),
+    )
+    show_error = mock.MagicMock()
+    monkeypatch.setattr("views.report_dialog.messagebox.showerror", show_error)
+
+    with caplog.at_level(logging.ERROR, logger="views.report_dialog"):
+        result = dialog._get_report_data()
+
+    assert result is None
+    show_error.assert_called_once()
+    assert any(record.levelno >= logging.ERROR for record in caplog.records)
+    logged_text = " ".join(record.getMessage() for record in caplog.records)
+    assert "month" in logged_text
+    assert "2026" in logged_text

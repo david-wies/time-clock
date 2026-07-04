@@ -825,6 +825,22 @@ class SettingsDialog(tk.Toplevel):
 # ─────────────────────────── Exception Add/Edit Dialog ───────────────────────
 
 
+def _parse_exception_hours(raw: str) -> float:
+    """Parses and validates a WorkDayException hours field.
+
+    Mirrors the Spinbox's ``from_=0.0, to=24.0`` bounds, which only
+    constrain the arrow controls, not typed input. Raises ``ValueError``
+    with a user-facing message if ``raw`` is not a number in [0, 24].
+    """
+    try:
+        hours = float(raw)
+    except ValueError:
+        raise ValueError("Hours must be a number.") from None
+    if not (0.0 <= hours <= 24.0):
+        raise ValueError("Hours must be between 0 and 24.")
+    return hours
+
+
 class _ExceptionDialog(tk.Toplevel):
     """Add / Edit a single date exception."""
 
@@ -910,18 +926,18 @@ class _ExceptionDialog(tk.Toplevel):
             self._lbl_error.config(text="Invalid date.")
             return
         try:
-            hours = float(self._var_hours.get())
-        except ValueError:
-            self._lbl_error.config(text="Hours must be a number.")
+            hours = _parse_exception_hours(self._var_hours.get())
+        except ValueError as exc:
+            self._lbl_error.config(text=str(exc))
             return
 
         date_str = date_to_iso(d)
         label: str | None = self._var_label.get().strip() or None
 
         try:
-            if self._exc is not None:
-                self._model_tc.delete_date_exception(self._exc.id)
             self._model_tc.save_date_exception(date_str, hours, label)
+            if self._exc is not None and self._exc.date != d:
+                self._model_tc.delete_date_exception(self._exc.id)
         except Exception as exc:
             messagebox.showerror(
                 "Error", f"Could not save exception: {exc}", parent=self

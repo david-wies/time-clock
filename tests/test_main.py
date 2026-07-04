@@ -4,6 +4,7 @@ packaged, windowed (no console) build.
 """
 
 import logging
+import logging.handlers
 
 import pytest
 
@@ -51,6 +52,26 @@ def test_configure_logging_sets_root_level_to_info(
     _configure_logging(log_dir=tmp_path)
 
     assert logging.getLogger().getEffectiveLevel() == logging.INFO
+
+
+def test_configure_logging_attaches_rotating_file_handler_with_size_limits(
+    tmp_path, _clean_root_logger
+) -> None:
+    """A plain FileHandler would let time_clock.log grow unbounded for the
+    lifetime of an always-running system-tray app; it must be a
+    RotatingFileHandler with sane rotation limits instead.
+    """
+    _configure_logging(log_dir=tmp_path)
+
+    handlers = [
+        handler
+        for handler in logging.getLogger().handlers
+        if isinstance(handler, logging.handlers.RotatingFileHandler)
+    ]
+    assert len(handlers) == 1
+    handler = handlers[0]
+    assert handler.maxBytes == 5 * 1024 * 1024
+    assert handler.backupCount == 3
 
 
 def test_configure_logging_includes_timestamp_level_and_logger_name(

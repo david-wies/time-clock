@@ -7,6 +7,7 @@ from core.timeutil import (
     duration,
     iso_to_date,
     now_hm,
+    period_bounds,
     str_to_time,
     time_to_str,
     to_display_date,
@@ -59,3 +60,26 @@ def test_now_hm_format() -> None:
     assert parts[0].isdigit() and parts[1].isdigit()
     assert 0 <= int(parts[0]) <= 23
     assert 0 <= int(parts[1]) <= 59
+
+
+@pytest.mark.parametrize(
+    "year, month, expected_last_day",
+    [
+        (2024, 2, 29),  # leap-year February
+        (2026, 2, 28),  # non-leap-year February
+        (2026, 4, 30),  # 30-day month
+        (2026, 12, 31),  # year-end month
+    ],
+)
+def test_period_bounds_with_month_uses_real_month_end_date(
+    year: int, month: int, expected_last_day: int
+) -> None:
+    start, end = period_bounds(year, month)
+    assert start == f"{year:04d}-{month:02d}-01"
+    assert end == f"{year:04d}-{month:02d}-{expected_last_day:02d}"
+
+
+def test_period_bounds_without_month_spans_full_year() -> None:
+    start, end = period_bounds(2026)
+    assert start == "2026-01-01"
+    assert end == "2026-12-31"

@@ -157,6 +157,28 @@ def test_save_range_rejects_overlapping_existing_record(
     assert len(records) == 1
 
 
+def test_save_range_rejects_note_too_long(controller: SicknessController) -> None:
+    """Note-length is a context-free invariant enforced unconditionally by
+    SicknessRecord.__post_init__ (domain/types.py). save_range() builds each
+    SicknessRecord itself, so an over-long note raises ValueError during
+    construction — this must be caught and converted to a Result rather than
+    propagating, per this codebase's "controllers return Result, never raise
+    for expected validation failures" convention."""
+    res = controller.save_range(
+        date(2026, 6, 8),
+        date(2026, 6, 10),
+        8.0,
+        "x" * 501,
+    )
+    assert res.ok is False
+    assert "Note is too long" in res.errors[0]
+
+    records = controller.model.get_records_in_date_range(
+        date(2026, 6, 8), date(2026, 6, 10)
+    )
+    assert len(records) == 0
+
+
 def test_save_range_threads_document_path(controller: SicknessController) -> None:
     res = controller.save_range(
         date(2026, 6, 8),

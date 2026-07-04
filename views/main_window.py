@@ -44,8 +44,7 @@ class MainWindow(ttk.Frame):
         self._count_var = StringVar(value="")
         self._clock_var = StringVar(value="Idle")
         self._tab_var = StringVar(value="Time Clock")
-        self._last_error_shown: str | None = None
-        self._last_error_shown_at: float = 0.0
+        self._last_error_shown_at: dict[str, float] = {}
 
         root.title("Time Clock")
         root.minsize(800, 600)
@@ -247,17 +246,29 @@ class MainWindow(ttk.Frame):
         """Show an error dialog, unless the same error (by `key`) was already
         shown within `_ERROR_DEDUPE_WINDOW_SECONDS`. This prevents a "modal
         error storm" when a recurring bus event or callback keeps failing
-        with the same error — repeats are logged instead of popped up."""
+        with the same error — repeats are logged instead of popped up.
+
+        Tracked per-key (not just the single most recent error) so that two
+        distinct recurring errors firing alternately (A, B, A, B, ...) are
+        each deduped correctly instead of bypassing the window every time."""
         now = time.monotonic()
+        last_shown = self._last_error_shown_at.get(key)
         if (
-            key == self._last_error_shown
-            and (now - self._last_error_shown_at) < self._ERROR_DEDUPE_WINDOW_SECONDS
+            last_shown is not None
+            and (now - last_shown) < self._ERROR_DEDUPE_WINDOW_SECONDS
         ):
             logger.info("Suppressing repeat error dialog (already shown): %s", key)
             return
 
-        self._last_error_shown = key
-        self._last_error_shown_at = now
+        # `key` can embed dynamic data (exception messages, e.g. file paths
+        # or record ids), so prune entries outside the dedupe window on each
+        # call to keep this dict from growing unbounded over a long-running
+        # session.
+        cutoff = now - self._ERROR_DEDUPE_WINDOW_SECONDS
+        self._last_error_shown_at = {
+            k: t for k, t in self._last_error_shown_at.items() if t >= cutoff
+        }
+        self._last_error_shown_at[key] = now
         messagebox.showerror(title, message, parent=self.root)
 
     def _on_bus_handler_error(self, message: str) -> None:

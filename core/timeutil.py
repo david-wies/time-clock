@@ -1,3 +1,4 @@
+import calendar
 from datetime import date, datetime, time
 
 
@@ -42,6 +43,19 @@ def time_to_minutes(t: time | str) -> int:
 def to_display_date(d: date) -> str:
     """Converts a date object to the UI display format dd/mm/yyyy."""
     return d.strftime("%d/%m/%Y")
+
+
+def period_bounds(year: int, month: int | None = None) -> tuple[str, str]:
+    """Returns (start_date, end_date) ISO-8601 strings bounding the given
+    year, or a single month of that year if `month` is given.
+
+    The end-of-month bound always comes from `calendar.monthrange`, never a
+    hardcoded "-31" (a bug that previously slipped into three near-identical
+    copies of this computation across the model layer independently)."""
+    if month is not None:
+        last_day = calendar.monthrange(year, month)[1]
+        return f"{year:04d}-{month:02d}-01", f"{year:04d}-{month:02d}-{last_day:02d}"
+    return f"{year:04d}-01-01", f"{year:04d}-12-31"
 
 
 def duration(start: time | str, end: time | str, break_minutes: int) -> float:

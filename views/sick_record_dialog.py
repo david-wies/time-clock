@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import tkinter as tk
 from datetime import date
 from tkinter import messagebox, ttk
@@ -12,6 +13,8 @@ from domain.types import SicknessRecord
 from models.sickness_model import SicknessModel
 from views.date_picker import make_date_picker
 from views.document_attachment import make_document_picker
+
+logger = logging.getLogger(__name__)
 
 
 class SickRecordDialog(tk.Toplevel):
@@ -170,7 +173,12 @@ class SickRecordDialog(tk.Toplevel):
 
         try:
             start_date: date | None = self._get_date()
-        except Exception:
+        except (ValueError, IndexError) as exc:
+            logger.warning(
+                "Could not parse start date %r for sick record: %s",
+                self._date_widget.get(),
+                exc,
+            )
             field_errors.append("Invalid date.")
             start_date = None
 
@@ -192,7 +200,12 @@ class SickRecordDialog(tk.Toplevel):
         if multiday:
             try:
                 end_date = self._get_end_date()
-            except Exception:
+            except (ValueError, IndexError) as exc:
+                logger.warning(
+                    "Could not parse end date %r for sick record: %s",
+                    self._end_date_widget.get(),
+                    exc,
+                )
                 self._lbl_error.config(text="Invalid end date.")
                 return
             result = self._controller.save_range(

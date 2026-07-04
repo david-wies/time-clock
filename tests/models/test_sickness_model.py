@@ -1,3 +1,4 @@
+import logging
 from datetime import date
 
 import pytest
@@ -155,3 +156,65 @@ def test_sickness_summary_accepts_prefetched_records(
     # No-arg call remains unchanged: fetches from the DB itself.
     summary_default = sick_model.calculate_sickness_summary(2026)
     assert summary_default.used_hours == 8.0
+
+
+def test_get_records_for_year_skips_malformed_row_and_logs_warning(
+    db: Database, event_bus: EventBus, caplog
+) -> None:
+    """A row that violates a SicknessRecord invariant at the DB level (e.g.
+    a note longer than the domain's 500-char cap -- something no DB CHECK
+    constraint enforces) must not crash the whole read. It should be logged
+    and skipped, exactly like the malformed-date handling in
+    TimeClockModel.get_date_exceptions()."""
+    model = SicknessModel(db, event_bus)
+
+    good = SicknessRecord(None, date(2026, 2, 15), 8.0, "ok")
+    model.insert_record(good)
+
+    conn = db.get_connection()
+    try:
+        with conn:
+            conn.execute(
+                "INSERT INTO sickness_record (date, hours, note) VALUES (?, ?, ?);",
+                ("2026-02-16", 4.0, "x" * 501),
+            )
+    finally:
+        conn.close()
+
+    with caplog.at_level(logging.WARNING, logger="models.sickness_model"):
+        records = model.get_records_for_year(2026)
+
+    assert len(records) == 1
+    assert records[0].note == "ok"
+    assert any(
+        record.levelname == "WARNING" and "malformed" in record.message.lower()
+        for record in caplog.records
+    )
+
+
+def test_get_record_by_id_returns_none_for_malformed_row(
+    db: Database, event_bus: EventBus, caplog
+) -> None:
+    """A single malformed row fetched by ID must return None (not raise),
+    with a warning logged."""
+    model = SicknessModel(db, event_bus)
+
+    conn = db.get_connection()
+    try:
+        with conn:
+            cursor = conn.execute(
+                "INSERT INTO sickness_record (date, hours, note) VALUES (?, ?, ?);",
+                ("2026-02-16", 4.0, "x" * 501),
+            )
+            bad_id = cursor.lastrowid
+    finally:
+        conn.close()
+
+    with caplog.at_level(logging.WARNING, logger="models.sickness_model"):
+        result = model.get_record_by_id(bad_id)
+
+    assert result is None
+    assert any(
+        record.levelname == "WARNING" and "malformed" in record.message.lower()
+        for record in caplog.records
+    )

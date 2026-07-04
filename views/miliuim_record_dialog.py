@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import tkinter as tk
 from datetime import date
 from tkinter import ttk
@@ -11,6 +12,8 @@ from domain.types import MiliuimRecord
 from models.miliuim_model import MiliuimModel
 from views.date_picker import make_date_picker
 from views.document_attachment import make_document_picker
+
+logger = logging.getLogger(__name__)
 
 
 class MiliuimRecordDialog(tk.Toplevel):
@@ -119,13 +122,23 @@ class MiliuimRecordDialog(tk.Toplevel):
 
         try:
             start_date: date | None = self._get_date()
-        except Exception:
+        except (ValueError, IndexError) as exc:
+            logger.warning(
+                "Could not parse start date %r for miliuim record: %s",
+                self._date_widget.get(),
+                exc,
+            )
             field_errors.append("Invalid start date.")
             start_date = None
 
         try:
             end_date: date | None = self._get_end_date()
-        except Exception:
+        except (ValueError, IndexError) as exc:
+            logger.warning(
+                "Could not parse end date %r for miliuim record: %s",
+                self._end_date_widget.get(),
+                exc,
+            )
             field_errors.append("Invalid end date.")
             end_date = None
 

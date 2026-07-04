@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import shutil
 import tempfile
@@ -35,6 +36,8 @@ from models.sickness_model import SicknessModel
 from models.time_clock_model import TimeClockModel
 from models.vacation_model import VacationModel
 from settings import SettingsManager
+
+logger = logging.getLogger(__name__)
 
 _QUARTER_VALUES = ["Q1", "Q2", "Q3", "Q4"]
 
@@ -280,6 +283,14 @@ class ReportDialog(tk.Toplevel):
                 settings=self._settings,
             )
         except Exception as exc:
+            logger.exception(
+                "Failed to assemble report data for period_type=%s year=%s "
+                "month=%s quarter=%s",
+                period_type,
+                year,
+                month,
+                quarter,
+            )
             messagebox.showerror(
                 "Report Error", f"Failed to assemble report data:\n{exc}", parent=self
             )
@@ -413,6 +424,11 @@ class ReportDialog(tk.Toplevel):
         try:
             self._generate_pdf(data, filepath)
         except Exception as exc:
+            logger.exception(
+                "Failed to generate PDF report for period=%s path=%s",
+                data.period_label,
+                filepath,
+            )
             messagebox.showerror(
                 "Export Failed", f"Could not generate PDF:\n{exc}", parent=self
             )
@@ -620,6 +636,13 @@ class ReportDialog(tk.Toplevel):
                     for page in att_reader.pages:
                         writer.add_page(page)
                 except Exception as exc:
+                    logger.exception(
+                        "Failed to append PDF attachment %s (%s dated %s) to report %s",
+                        doc_path,
+                        _type_label,
+                        _rec_date,
+                        filepath,
+                    )
                     failed_attachments.append(f"{os.path.basename(doc_path)}: {exc}")
             tmp_fd, tmp_path = tempfile.mkstemp(suffix=".pdf")
             try:

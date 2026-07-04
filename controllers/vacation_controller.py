@@ -7,6 +7,12 @@ from models.vacation_model import VacationModel
 
 logger = logging.getLogger(__name__)
 
+_DEBIT_VACATION_TYPES = (
+    VacationType.ANNUAL_LEAVE,
+    VacationType.PUBLIC_HOLIDAY,
+    VacationType.SPECIAL_LEAVE,
+)
+
 
 def validate_vacation_record(
     record: VacationRecord, max_hours: float = 24.0
@@ -68,11 +74,7 @@ class VacationController:
             return Result(ok=False, errors=errors)
 
         # Check balance if this is a debit record (not carry-over or unpaid leave)
-        is_debit = record.vtype in (
-            VacationType.ANNUAL_LEAVE,
-            VacationType.PUBLIC_HOLIDAY,
-            VacationType.SPECIAL_LEAVE,
-        )
+        is_debit = record.vtype in _DEBIT_VACATION_TYPES
 
         if is_debit:
             year = record.date.year
@@ -83,11 +85,7 @@ class VacationController:
             old_hours = 0.0
             if record.id is not None:
                 old_rec = self.model.get_record_by_id(record.id)
-                if old_rec and old_rec.vtype in (
-                    VacationType.ANNUAL_LEAVE,
-                    VacationType.PUBLIC_HOLIDAY,
-                    VacationType.SPECIAL_LEAVE,
-                ):
+                if old_rec and old_rec.vtype in _DEBIT_VACATION_TYPES:
                     old_hours = old_rec.hours
 
             projected_remaining = summary.remaining + old_hours - record.hours

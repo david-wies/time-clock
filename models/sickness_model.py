@@ -1,11 +1,13 @@
-import calendar
+import logging
 import sqlite3
 from datetime import date
 
 from core.events import Event, EventBus
-from core.timeutil import date_to_iso, iso_to_date
+from core.timeutil import date_to_iso, iso_to_date, period_bounds
 from db.database import Database
 from domain.types import SicknessRecord, SicknessSummary
+
+logger = logging.getLogger(__name__)
 
 
 class SicknessModel:
@@ -13,14 +15,35 @@ class SicknessModel:
         self.db = db
         self.bus = bus
 
-    def _row_to_record(self, row: sqlite3.Row) -> SicknessRecord:
-        return SicknessRecord(
-            id=row["id"],
-            date=iso_to_date(row["date"]),
-            hours=row["hours"],
-            note=row["note"],
-            document_path=row["document_path"],
-        )
+    def _row_to_record(self, row: sqlite3.Row) -> SicknessRecord | None:
+        """Builds a SicknessRecord from a DB row, or None (with a logged
+        warning) if the row violates a SicknessRecord invariant -- e.g. an
+        overlong note added directly to the DB. Without this guard, a single
+        malformed row would raise out of every read method and take down
+        the whole query."""
+        try:
+            return SicknessRecord(
+                id=row["id"],
+                date=iso_to_date(row["date"]),
+                hours=row["hours"],
+                note=row["note"],
+                document_path=row["document_path"],
+            )
+        except ValueError:
+            logger.warning(
+                "Skipping malformed sickness_record row: id=%r date=%r",
+                row["id"],
+                row["date"],
+            )
+            return None
+
+    def _rows_to_records(self, rows: list[sqlite3.Row]) -> list[SicknessRecord]:
+        records = []
+        for row in rows:
+            rec = self._row_to_record(row)
+            if rec is not None:
+                records.append(rec)
+        return records
 
     def get_record_by_id(self, record_id: int) -> SicknessRecord | None:
         with self.db.connection() as conn:
@@ -32,27 +55,16 @@ class SicknessModel:
     def get_records_for_year(
         self, year: int, month: int | None = None
     ) -> list[SicknessRecord]:
+        start_date, end_date = period_bounds(year, month)
         with self.db.connection() as conn:
             cursor = conn.cursor()
-            if month is not None:
-                last_day = calendar.monthrange(year, month)[1]
-                start_date = f"{year:04d}-{month:02d}-01"
-                end_date = f"{year:04d}-{month:02d}-{last_day:02d}"
-                cursor.execute(
-                    "SELECT * FROM sickness_record WHERE date >= ? AND date <= ? "
-                    "ORDER BY date DESC;",
-                    (start_date, end_date),
-                )
-            else:
-                start_date = f"{year:04d}-01-01"
-                end_date = f"{year:04d}-12-31"
-                cursor.execute(
-                    "SELECT * FROM sickness_record WHERE date >= ? AND date <= ? "
-                    "ORDER BY date DESC;",
-                    (start_date, end_date),
-                )
+            cursor.execute(
+                "SELECT * FROM sickness_record WHERE date >= ? AND date <= ? "
+                "ORDER BY date DESC;",
+                (start_date, end_date),
+            )
             rows = cursor.fetchall()
-            return [self._row_to_record(row) for row in rows]
+            return self._rows_to_records(rows)
 
     def get_records_in_date_range(self, start: date, end: date) -> list[SicknessRecord]:
         with self.db.connection() as conn:
@@ -62,7 +74,7 @@ class SicknessModel:
                 "ORDER BY date;",
                 (date_to_iso(start), date_to_iso(end)),
             )
-            return [self._row_to_record(row) for row in cursor.fetchall()]
+            return self._rows_to_records(cursor.fetchall())
 
     def insert_record(self, record: SicknessRecord) -> int:
         with self.db.connection() as conn:

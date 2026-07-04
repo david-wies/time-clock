@@ -1,10 +1,15 @@
-import calendar
 import logging
 import sqlite3
 from datetime import date
 
 from core.events import Event, EventBus
-from core.timeutil import date_to_iso, iso_to_date, str_to_time, time_to_str
+from core.timeutil import (
+    date_to_iso,
+    iso_to_date,
+    period_bounds,
+    str_to_time,
+    time_to_str,
+)
 from db.database import Database
 from domain.enums import WorkType
 from domain.types import TimeRecord, WorkDayException
@@ -17,18 +22,39 @@ class TimeClockModel:
         self.db = db
         self.bus = bus
 
-    def _row_to_record(self, row: sqlite3.Row) -> TimeRecord:
-        return TimeRecord(
-            id=row["id"],
-            date=iso_to_date(row["date"]),
-            start_time=str_to_time(row["start_time"]),
-            end_time=str_to_time(row["end_time"]) if row["end_time"] else None,
-            break_minutes=row["break_minutes"],
-            work_type=WorkType(row["work_type"]),
-            office=row["office"],
-            note=row["note"],
-            document_path=row["document_path"],
-        )
+    def _row_to_record(self, row: sqlite3.Row) -> TimeRecord | None:
+        """Builds a TimeRecord from a DB row, or None (with a logged
+        warning) if the row violates a TimeRecord invariant -- e.g. a
+        legacy/manually-edited row whose break_minutes exceeds its shift
+        length. Without this guard, a single malformed row would raise out
+        of every read method and take down the whole query."""
+        try:
+            return TimeRecord(
+                id=row["id"],
+                date=iso_to_date(row["date"]),
+                start_time=str_to_time(row["start_time"]),
+                end_time=str_to_time(row["end_time"]) if row["end_time"] else None,
+                break_minutes=row["break_minutes"],
+                work_type=WorkType(row["work_type"]),
+                office=row["office"],
+                note=row["note"],
+                document_path=row["document_path"],
+            )
+        except ValueError:
+            logger.warning(
+                "Skipping malformed time_record row: id=%r date=%r",
+                row["id"],
+                row["date"],
+            )
+            return None
+
+    def _rows_to_records(self, rows: list[sqlite3.Row]) -> list[TimeRecord]:
+        records = []
+        for row in rows:
+            rec = self._row_to_record(row)
+            if rec is not None:
+                records.append(rec)
+        return records
 
     def get_record_by_id(self, record_id: int) -> TimeRecord | None:
         with self.db.connection() as conn:
@@ -45,7 +71,7 @@ class TimeClockModel:
                 (date_to_iso(target_date),),
             )
             rows = cursor.fetchall()
-            return [self._row_to_record(row) for row in rows]
+            return self._rows_to_records(rows)
 
     def get_records_for_period(
         self, year: int, month: int | None = None
@@ -54,27 +80,16 @@ class TimeClockModel:
         Retrieves all time records for the given year and optionally month.
         Ordered by date DESC, start_time ASC.
         """
+        start_date, end_date = period_bounds(year, month)
         with self.db.connection() as conn:
             cursor = conn.cursor()
-            if month is not None:
-                last_day = calendar.monthrange(year, month)[1]
-                start_date = f"{year:04d}-{month:02d}-01"
-                end_date = f"{year:04d}-{month:02d}-{last_day:02d}"
-                cursor.execute(
-                    "SELECT * FROM time_record WHERE date >= ? AND date <= ? "
-                    "ORDER BY date DESC, start_time ASC;",
-                    (start_date, end_date),
-                )
-            else:
-                start_date = f"{year:04d}-01-01"
-                end_date = f"{year:04d}-12-31"
-                cursor.execute(
-                    "SELECT * FROM time_record WHERE date >= ? AND date <= ? "
-                    "ORDER BY date DESC, start_time ASC;",
-                    (start_date, end_date),
-                )
+            cursor.execute(
+                "SELECT * FROM time_record WHERE date >= ? AND date <= ? "
+                "ORDER BY date DESC, start_time ASC;",
+                (start_date, end_date),
+            )
             rows = cursor.fetchall()
-            return [self._row_to_record(row) for row in rows]
+            return self._rows_to_records(rows)
 
     def get_records_for_date_range(self, start: date, end: date) -> list[TimeRecord]:
         """Returns all time records whose date falls in [start, end].
@@ -88,7 +103,7 @@ class TimeClockModel:
                 "ORDER BY date ASC, start_time ASC;",
                 (date_to_iso(start), date_to_iso(end)),
             )
-            return [self._row_to_record(r) for r in cursor.fetchall()]
+            return self._rows_to_records(cursor.fetchall())
 
     def get_open_records(self) -> list[TimeRecord]:
         """Finds all records that are currently open (end_time is NULL).
@@ -102,7 +117,7 @@ class TimeClockModel:
                 "ORDER BY date DESC, start_time ASC;"
             )
             rows = cursor.fetchall()
-            return [self._row_to_record(row) for row in rows]
+            return self._rows_to_records(rows)
 
     def get_open_records_for_date(self, d: date) -> list[TimeRecord]:
         """Finds open records (end_time IS NULL) for a specific date (§10.4, §10.5)."""
@@ -114,7 +129,7 @@ class TimeClockModel:
                 (d.isoformat(),),
             )
             rows = cursor.fetchall()
-            return [self._row_to_record(row) for row in rows]
+            return self._rows_to_records(rows)
 
     def get_open_records_for_today(self) -> list[TimeRecord]:
         """Finds open records (end_time IS NULL) for today only. Convenience wrapper."""

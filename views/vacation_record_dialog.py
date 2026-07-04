@@ -189,7 +189,12 @@ class VacationRecordDialog(tk.Toplevel):
 
         try:
             rec_date: date | None = self._get_date()
-        except Exception:
+        except (ValueError, IndexError) as exc:
+            logger.warning(
+                "Could not parse date %r for vacation record: %s",
+                self._date_widget.get(),
+                exc,
+            )
             field_errors.append("Invalid date.")
             rec_date = None
 
