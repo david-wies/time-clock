@@ -152,7 +152,8 @@ class TimeClockController:
         )
 
         existing = self.model.get_records_by_date(record.date)
-        errors = validate_time_record(record, existing)
+        existing_for_validation = [r for r in existing if r.end_time is not None]
+        errors = validate_time_record(record, existing_for_validation)
         blocking = [e for e in errors if e != WarningCode.OVERNIGHT_SHIFT.value]
         if blocking:
             return Result(ok=False, errors=blocking)

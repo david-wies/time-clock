@@ -249,8 +249,9 @@ class SettingsDialog(tk.Toplevel):
         )
         lf_break.pack(fill="x", **pad)
 
-        presets: list[int] = list(
-            self._settings.get("break_presets") or [15, 30, 45, 60]
+        stored_presets = self._settings.get("break_presets")
+        presets: list[int] = (
+            list(stored_presets) if stored_presets is not None else [15, 30, 45, 60]
         )
         while len(presets) < 4:
             presets.append(0)

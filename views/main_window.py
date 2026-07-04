@@ -1,6 +1,7 @@
 """MainWindow: ttk.Notebook tab container with menu bar and status bar."""
 
 import logging
+import time
 from tkinter import Menu, StringVar, messagebox, ttk
 from typing import Any
 
@@ -15,6 +16,11 @@ logger = logging.getLogger(__name__)
 
 class MainWindow(ttk.Frame):
     """Root application window with notebook tabs, menu, and status bar."""
+
+    # Minimum seconds between two identical error dialogs. Repeated errors
+    # within this window are logged instead of shown, to avoid a "modal
+    # error storm" when a recurring bus event or callback keeps failing.
+    _ERROR_DEDUPE_WINDOW_SECONDS = 5.0
 
     def __init__(
         self,
@@ -38,6 +44,8 @@ class MainWindow(ttk.Frame):
         self._count_var = StringVar(value="")
         self._clock_var = StringVar(value="Idle")
         self._tab_var = StringVar(value="Time Clock")
+        self._last_error_shown: str | None = None
+        self._last_error_shown_at: float = 0.0
 
         root.title("Time Clock")
         root.minsize(800, 600)
@@ -235,16 +243,33 @@ class MainWindow(ttk.Frame):
     ) -> None:
         self.set_clocked_in(clocked_in, since)
 
+    def _show_error_deduped(self, key: str, title: str, message: str) -> None:
+        """Show an error dialog, unless the same error (by `key`) was already
+        shown within `_ERROR_DEDUPE_WINDOW_SECONDS`. This prevents a "modal
+        error storm" when a recurring bus event or callback keeps failing
+        with the same error — repeats are logged instead of popped up."""
+        now = time.monotonic()
+        if (
+            key == self._last_error_shown
+            and (now - self._last_error_shown_at) < self._ERROR_DEDUPE_WINDOW_SECONDS
+        ):
+            logger.info("Suppressing repeat error dialog (already shown): %s", key)
+            return
+
+        self._last_error_shown = key
+        self._last_error_shown_at = now
+        messagebox.showerror(title, message, parent=self.root)
+
     def _on_bus_handler_error(self, message: str) -> None:
         """EventBus.on_handler_error hook: a subscriber raised. The bus has
         already logged the full traceback; let the user know something went
         wrong instead of leaving the UI silently stale."""
-        messagebox.showerror(
+        self._show_error_deduped(
+            f"bus:{message}",
             "Unexpected Error",
             "An internal error occurred while updating the app.\n"
             "The application will keep running, but a screen may be stale — "
             "details were written to the log.",
-            parent=self.root,
         )
 
     def _on_tk_callback_exception(
@@ -254,8 +279,8 @@ class MainWindow(ttk.Frame):
         inside any bound widget callback (button, combobox, tree, ...) that
         Tk would otherwise only print to stderr and silently swallow."""
         logger.error("Unhandled exception in Tk callback", exc_info=(exc, val, tb))
-        messagebox.showerror(
+        self._show_error_deduped(
+            f"tk:{exc.__name__}: {val}",
             "Unexpected Error",
             f"An unexpected error occurred:\n\n{exc.__name__}: {val}",
-            parent=self.root,
         )

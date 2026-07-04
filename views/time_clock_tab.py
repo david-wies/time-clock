@@ -78,7 +78,7 @@ def _build_exc_dict(raw: list[WorkDayException]) -> dict[date, float]:
     for exc in raw:
         try:
             result[exc.date] = float(exc.hours)
-        except ValueError:
+        except (ValueError, TypeError):
             logger.warning(
                 "Skipping malformed work-day exception (falls back to the "
                 "regular weekly target for that date): %r",
@@ -702,6 +702,11 @@ class TimeClockTab(ttk.Frame):
         # Re-anchor week start in case week_first_day setting changed.
         mid = self._selected_week_start + timedelta(days=3)
         self._selected_week_start = self._week_start_for(mid)
+        # Recompute theme mode and reapply tag/header styling in case the
+        # theme setting changed while this tab was open — otherwise colors
+        # stay stale until the tab is rebuilt/app restarted.
+        self._theme_mode = resolve_theme_mode(self.settings.get("theme"))
+        self._apply_tag_styles()
         self._refresh()
         if self.model.get_open_records() and self._after_id is None:
             self._start_auto_refresh()

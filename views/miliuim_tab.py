@@ -62,6 +62,9 @@ class MiliuimTab(ttk.Frame):
         self._refresh()
 
         self._unsubs.append(bus.subscribe(Event.MILIUIM_CHANGED, self._on_event))
+        self._unsubs.append(
+            bus.subscribe(Event.SETTINGS_CHANGED, self._on_settings_changed)
+        )
 
         self.bind("<Destroy>", self._on_destroy)
         self.pack(fill="both", expand=True)
@@ -263,6 +266,10 @@ class MiliuimTab(ttk.Frame):
         self._update_button_states()
 
     def _on_event(self, **_kw) -> None:
+        self._refresh()
+
+    def _on_settings_changed(self, **_kw) -> None:
+        self._theme_mode = resolve_theme_mode(self.settings.get("theme"))
         self._refresh()
 
     def _update_button_states(self) -> None:

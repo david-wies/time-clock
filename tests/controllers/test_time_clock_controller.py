@@ -127,21 +127,47 @@ def test_clock_in_out_flow(controller: TimeClockController) -> None:
     assert res_in_again.ok is False
     assert res_in_again.errors[0] == "OPEN_RECORD_EXISTS"
 
-    # 2b. force=True bypasses the OPEN_RECORD_EXISTS guard.
-    # With fixed_clock at 09:00 an existing open record at 09:00 causes overlap
-    # validation to fire — but the error is NOT "OPEN_RECORD_EXISTS", which
-    # confirms force=True successfully bypassed that specific check.
+    # 2b. force=True bypasses the OPEN_RECORD_EXISTS guard. The other open
+    # record for today must be excluded from overlap validation (it has no
+    # end_time, so it isn't a real conflict) — otherwise force=True could
+    # never succeed while a prior open record exists.
     res_force = controller.clock_in(force=True)
-    assert res_force.ok is False
-    assert "OPEN_RECORD_EXISTS" not in res_force.errors
-    assert "overlaps" in res_force.errors[0]
+    assert res_force.ok is True
 
-    # 3. Clock Out (Success)
-    res_out = controller.clock_out()
+    # Two open records now exist for today.
+    open_recs = controller.model.get_open_records()
+    assert len(open_recs) == 2
+
+    # 3. Clock Out (Success) — ambiguous with two open records, so target
+    # the second one explicitly.
+    res_out = controller.clock_out(record_id=open_recs[1].id)
     assert res_out.ok is True
 
-    # Verify no open records
-    assert len(controller.model.get_open_records()) == 0
+    # Verify one open record remains (the original clock-in).
+    assert len(controller.model.get_open_records()) == 1
+
+
+def test_clock_in_force_true_succeeds_with_existing_open_record(
+    controller: TimeClockController,
+) -> None:
+    """Regression test: an open (not-yet-clocked-out) record for today must
+    not be treated as an overlap conflict when clock_in(force=True) creates
+    a second open record. Before the fix, clock_in() validated the new
+    record against the raw list of existing records (including other open
+    ones), and an open record always overlaps any new open record per
+    times_overlap()'s semantics (missing end treated as end-of-day) — so
+    force=True could never actually succeed while an open record existed,
+    even though it correctly bypassed the OPEN_RECORD_EXISTS guard."""
+    res_in = controller.clock_in()
+    assert res_in.ok is True
+
+    open_recs = controller.model.get_open_records()
+    assert len(open_recs) == 1
+
+    res_force = controller.clock_in(force=True)
+
+    assert res_force.ok is True
+    assert len(controller.model.get_open_records()) == 2
 
 
 def test_save_overnight_record(controller: TimeClockController) -> None:
