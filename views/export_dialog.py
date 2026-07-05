@@ -433,7 +433,8 @@ class ExportDialog(tk.Toplevel):
                 total += rec.hours
 
         # ── Total row ────────────────────────────────────────────────────────
-        total_str = f"Total: {total:.2f}h" if tab == ExportTab.TIME else f"Total: {total:.1f}h"
+        decimals = 2 if tab == ExportTab.TIME else 1
+        total_str = f"Total: {total:.{decimals}f}h"
         total_row: list = [""] * len(columns)
         total_row[0] = total_str
         total_row_idx = len(table_data)

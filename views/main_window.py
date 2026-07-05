@@ -201,23 +201,35 @@ class MainWindow(ttk.Frame):
         sep.pack(fill="x")
 
         self.status_label = ttk.Label(
-            status_bar, textvariable=self.status_var, style="StatusBar.TLabel", padding=(4, 2)
+            status_bar,
+            textvariable=self.status_var,
+            style="StatusBar.TLabel",
+            padding=(4, 2),
         )
         self.status_label.pack(side="left", fill="x", expand=True)
 
         ttk.Separator(status_bar, orient="vertical").pack(side="left", fill="y", padx=4)
         ttk.Label(
-            status_bar, textvariable=self._count_var, style="StatusBar.TLabel", padding=(4, 2)
+            status_bar,
+            textvariable=self._count_var,
+            style="StatusBar.TLabel",
+            padding=(4, 2),
         ).pack(side="left")
 
         ttk.Separator(status_bar, orient="vertical").pack(side="left", fill="y", padx=4)
         ttk.Label(
-            status_bar, textvariable=self._clock_var, style="StatusBar.TLabel", padding=(4, 2)
+            status_bar,
+            textvariable=self._clock_var,
+            style="StatusBar.TLabel",
+            padding=(4, 2),
         ).pack(side="left")
 
         ttk.Separator(status_bar, orient="vertical").pack(side="left", fill="y", padx=4)
         ttk.Label(
-            status_bar, textvariable=self._tab_var, style="StatusBar.TLabel", padding=(4, 2)
+            status_bar,
+            textvariable=self._tab_var,
+            style="StatusBar.TLabel",
+            padding=(4, 2),
         ).pack(side="left")
 
     def _set_status(self, msg: str) -> None:

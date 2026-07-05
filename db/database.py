@@ -1,4 +1,4 @@
-"""SQLite database wrapper managing a single persistent connection and schema migrations."""
+"""SQLite database wrapper: single persistent connection, schema migrations."""
 
 import logging
 import os

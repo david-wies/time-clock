@@ -1,4 +1,4 @@
-"""Domain dataclasses and invariant helpers for time, vacation, sickness, and miliuim records."""
+"""Domain dataclasses and invariant helpers for all record types."""
 
 __all__ = [
     "Hours",
@@ -212,7 +212,7 @@ class SicknessRecord:
 
 @dataclass(slots=True)
 class Result:
-    """The outcome of a controller operation, carrying success and any validation errors."""
+    """Outcome of a controller operation: success flag plus any validation errors."""
 
     ok: bool
     errors: list[str]
@@ -251,7 +251,7 @@ class SicknessSummary:
 
 @dataclass(slots=True)
 class WorkDayException:
-    """An override of a calendar day's expected work hours, such as a holiday or short day."""
+    """Override of a calendar day's expected work hours (holiday, short day, etc.)."""
 
     id: int
     date: date

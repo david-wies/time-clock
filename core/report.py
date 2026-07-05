@@ -29,7 +29,7 @@ class MonthlyRow:
 
 @dataclass(slots=True)
 class ReportData:
-    """Full assembled report figures (time, vacation, sickness, miliuim) for a period."""
+    """Full assembled report figures (time/vacation/sickness/miliuim) for a period."""
 
     period_label: str  # e.g. "June 2026", "Q2 2026", "2026"
     period_type: PeriodType

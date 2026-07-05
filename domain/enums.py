@@ -21,7 +21,7 @@ class WorkType(StrEnum):
 
 
 class VacationType(StrEnum):
-    """The category of a vacation day entry, such as annual leave or a public holiday."""
+    """The category of a vacation day entry (annual leave, public holiday, etc.)."""
 
     ANNUAL_LEAVE = "annual_leave"
     PUBLIC_HOLIDAY = "public_holiday"
