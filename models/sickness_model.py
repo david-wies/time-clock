@@ -1,3 +1,5 @@
+"""Model for sickness records: DB row/dataclass mapping and CRUD."""
+
 import logging
 import sqlite3
 from datetime import date
@@ -11,6 +13,8 @@ logger = logging.getLogger(__name__)
 
 
 class SicknessModel:
+    """Manages sickness records and per-year sickness allowance settings."""
+
     def __init__(self, db: Database, bus: EventBus) -> None:
         self.db = db
         self.bus = bus
@@ -46,6 +50,7 @@ class SicknessModel:
         return records
 
     def get_record_by_id(self, record_id: int) -> SicknessRecord | None:
+        """Returns the sickness record with the given id, or None if not found."""
         with self.db.connection() as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT * FROM sickness_record WHERE id = ?;", (record_id,))
@@ -55,6 +60,8 @@ class SicknessModel:
     def get_records_for_year(
         self, year: int, month: int | None = None
     ) -> list[SicknessRecord]:
+        """Returns all sickness records for the given year, optionally filtered to
+        a month, ordered by date DESC."""
         start_date, end_date = period_bounds(year, month)
         with self.db.connection() as conn:
             cursor = conn.cursor()
@@ -67,6 +74,8 @@ class SicknessModel:
             return self._rows_to_records(rows)
 
     def get_records_in_date_range(self, start: date, end: date) -> list[SicknessRecord]:
+        """Returns all sickness records whose date falls in [start, end], ordered
+        by date ASC."""
         with self.db.connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
@@ -77,6 +86,7 @@ class SicknessModel:
             return self._rows_to_records(cursor.fetchall())
 
     def insert_record(self, record: SicknessRecord) -> int:
+        """Inserts a new sickness record and returns its id."""
         with self.db.connection() as conn:
             with conn:
                 cursor = conn.cursor()
@@ -97,6 +107,7 @@ class SicknessModel:
             return record_id
 
     def insert_records_bulk(self, records: list[SicknessRecord]) -> None:
+        """Inserts multiple sickness records in a single transaction."""
         if not records:
             return
         with self.db.connection() as conn:
@@ -115,6 +126,7 @@ class SicknessModel:
             self.bus.publish(Event.SICKNESS_CHANGED)
 
     def update_record(self, record: SicknessRecord) -> None:
+        """Updates an existing sickness record identified by its id."""
         if record.id is None:
             raise ValueError("Cannot update a record without an ID.")
         with self.db.connection() as conn:
@@ -137,6 +149,7 @@ class SicknessModel:
             self.bus.publish(Event.SICKNESS_CHANGED)
 
     def delete_record(self, record_id: int) -> None:
+        """Deletes the sickness record with the given id."""
         with self.db.connection() as conn:
             with conn:
                 conn.execute("DELETE FROM sickness_record WHERE id = ?;", (record_id,))
@@ -155,6 +168,7 @@ class SicknessModel:
             return row["hours_per_year"] if row else None
 
     def save_settings(self, year: int, hours_per_year: float) -> None:
+        """Upserts the sickness hours_per_year allowance for the given year."""
         with self.db.connection() as conn:
             with conn:
                 conn.execute(

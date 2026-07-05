@@ -1,3 +1,5 @@
+"""Sickness controller: validates input and mediates model ↔ view."""
+
 import logging
 from datetime import date, timedelta
 
@@ -31,6 +33,8 @@ def validate_sick_record(record: SicknessRecord) -> list[str]:
 
 
 class SicknessController:
+    """Validates and mediates sickness record CRUD between view and model."""
+
     def __init__(self, model: SicknessModel) -> None:
         self.model = model
 
@@ -75,6 +79,7 @@ class SicknessController:
         return guard.result
 
     def delete_record(self, record_id: int) -> Result:
+        """Delete the sick record with the given id."""
         guard = DatabaseErrorGuard(
             logger, "Database error while deleting sick record id=%s", record_id
         )

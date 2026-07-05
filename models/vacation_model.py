@@ -1,3 +1,5 @@
+"""Model for vacation records: DB row/dataclass mapping and CRUD."""
+
 import logging
 import sqlite3
 from datetime import date, datetime
@@ -18,6 +20,8 @@ logger = logging.getLogger(__name__)
 
 
 class VacationModel:
+    """Manages vacation records, allowance settings, and carry-over calculations."""
+
     def __init__(self, db: Database, bus: EventBus) -> None:
         self.db = db
         self.bus = bus
@@ -53,6 +57,7 @@ class VacationModel:
         return records
 
     def get_record_by_id(self, record_id: int) -> VacationRecord | None:
+        """Returns the vacation record with the given id, or None if not found."""
         with self.db.connection() as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT * FROM vacation_record WHERE id = ?;", (record_id,))
@@ -62,6 +67,8 @@ class VacationModel:
     def get_records_for_year(
         self, year: int, month: int | None = None
     ) -> list[VacationRecord]:
+        """Returns all vacation records for the given year, optionally filtered
+        to a month, ordered by date DESC."""
         start_date, end_date = period_bounds(year, month)
         with self.db.connection() as conn:
             cursor = conn.cursor()
@@ -74,6 +81,7 @@ class VacationModel:
             return self._rows_to_records(rows)
 
     def insert_record(self, record: VacationRecord) -> int:
+        """Inserts a new vacation record and returns its id."""
         with self.db.connection() as conn:
             with conn:
                 cursor = conn.cursor()
@@ -94,6 +102,7 @@ class VacationModel:
             return record_id
 
     def update_record(self, record: VacationRecord) -> None:
+        """Updates an existing vacation record identified by its id."""
         if record.id is None:
             raise ValueError("Cannot update a record without an ID.")
         with self.db.connection() as conn:
@@ -116,6 +125,7 @@ class VacationModel:
             self.bus.publish(Event.VACATION_CHANGED)
 
     def delete_record(self, record_id: int) -> None:
+        """Deletes the vacation record with the given id."""
         with self.db.connection() as conn:
             with conn:
                 conn.execute("DELETE FROM vacation_record WHERE id = ?;", (record_id,))
@@ -124,6 +134,8 @@ class VacationModel:
     # --- Vacation Settings Queries ---
 
     def get_settings(self, year: int) -> dict[str, Any] | None:
+        """Returns hours_per_year and max_carry_over for the given year, or
+        None if not configured."""
         with self.db.connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
@@ -142,6 +154,7 @@ class VacationModel:
     def save_settings(
         self, year: int, hours_per_year: float, max_carry_over: float
     ) -> None:
+        """Upserts the vacation hours_per_year and max_carry_over for the given year."""
         with self.db.connection() as conn:
             with conn:
                 conn.execute(

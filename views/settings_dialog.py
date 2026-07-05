@@ -19,6 +19,7 @@ from models.vacation_model import VacationModel
 from settings import SettingsManager
 from theme.style import ThemeMode
 from views.date_picker import make_date_picker
+from views.dialog_common import setup_modal_window
 
 _DAY_NAMES = [
     "Monday",
@@ -77,6 +78,8 @@ _OVERTIME_PERIODS = [str(p) for p in OvertimePeriod]
 
 
 class SettingsDialog(tk.Toplevel):
+    """Modal dialog exposing all application preferences across tabbed sections."""
+
     def __init__(
         self,
         parent,
@@ -93,12 +96,36 @@ class SettingsDialog(tk.Toplevel):
         self._model_sickness = model_sickness
         self._bus = bus
 
-        self.title("Settings")
-        self.minsize(600, 560)
-        self.resizable(True, True)
-        self.transient(parent)
-        self.grab_set()
-        self.bind("<Escape>", lambda e: self.destroy())
+        # Declared here (bare annotations, no values) so pylint's
+        # attribute-defined-outside-init check sees them as belonging to
+        # __init__ — the real assignments happen in the _build_tab_* helpers
+        # invoked (transitively) from _build_ui below, before __init__ returns.
+        self._day_vars: dict[int, tuple[tk.BooleanVar, tk.StringVar]]
+        self._lb_offices: tk.Listbox
+        self._break_vars: list[tk.StringVar]
+        self._var_work_type: tk.StringVar
+        self._var_ot_rate: tk.StringVar
+        self._var_ot_period: tk.StringVar
+        self._var_country: tk.StringVar
+        self._var_hol_year: tk.StringVar
+        self._btn_import_hol: ttk.Button
+        self._lbl_hol_status: ttk.Label
+        self._exc_year_var: tk.StringVar
+        self._exc_tree: ttk.Treeview
+        self._vac_year_var: tk.StringVar
+        self._var_vac_hours: tk.StringVar
+        self._var_vac_carry: tk.StringVar
+        self._lbl_vac_status: ttk.Label
+        self._sick_year_var: tk.StringVar
+        self._var_sick_days: tk.StringVar
+        self._lbl_sick_status: ttk.Label
+        self._var_theme: tk.StringVar
+        self._week_first_day_options: dict[str, Weekday]
+        self._var_week_first_day: tk.StringVar
+
+        setup_modal_window(
+            self, parent, "Settings", minsize=(600, 560), resizable=(True, True)
+        )
 
         self._build_ui()
 
@@ -397,7 +424,9 @@ class SettingsDialog(tk.Toplevel):
 
         try:
             hol_dict = holidays.country_holidays(country, years=year)
-        except Exception as exc:
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            # `holidays` can raise a variety of errors for bad country codes
+            # or internal data issues; surfaced to the user via messagebox.
             messagebox.showerror(
                 "Error", f"Could not load holidays for {country!r}: {exc}", parent=self
             )
@@ -427,7 +456,9 @@ class SettingsDialog(tk.Toplevel):
                         )
                     )
                     added += 1
-                except Exception as exc:
+                except Exception as exc:  # pylint: disable=broad-exception-caught
+                    # Model insert can fail for varied reasons (validation,
+                    # DB constraints); collected per-item and reported below.
                     insert_errors.append(f"{rec_date}: {exc}")
 
         self._settings.set("last_country_holiday", country)
@@ -543,7 +574,8 @@ class SettingsDialog(tk.Toplevel):
         if messagebox.askyesno("Remove", "Remove this date exception?", parent=self):
             try:
                 self._model_tc.delete_date_exception(int(sel[0]))
-            except Exception as exc:
+            except Exception as exc:  # pylint: disable=broad-exception-caught
+                # Model errors are unpredictable; reported to the user below.
                 messagebox.showerror(
                     "Error", f"Could not remove exception: {exc}", parent=self
                 )
@@ -638,7 +670,8 @@ class SettingsDialog(tk.Toplevel):
             return
         try:
             self._model_vacation.save_settings(year, hours, carry)
-        except Exception as exc:
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            # Model errors are unpredictable; reported to the user below.
             messagebox.showerror(
                 "Error", f"Could not save vacation settings: {exc}", parent=self
             )
@@ -711,7 +744,8 @@ class SettingsDialog(tk.Toplevel):
             return
         try:
             self._model_sickness.save_settings(year, days)
-        except Exception as exc:
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            # Model errors are unpredictable; reported to the user below.
             messagebox.showerror(
                 "Error", f"Could not save sickness settings: {exc}", parent=self
             )
@@ -743,18 +777,18 @@ class SettingsDialog(tk.Toplevel):
         row = ttk.Frame(lf_cal)
         row.pack(anchor="w")
         ttk.Label(row, text="Week starts on:").pack(side="left", padx=(0, 8))
-        # _WEEK_FIRST_DAY_OPTIONS maps display label → Weekday
-        self._WEEK_FIRST_DAY_OPTIONS = {"Monday": Weekday.MON, "Sunday": Weekday.SUN}
+        # _week_first_day_options maps display label → Weekday
+        self._week_first_day_options = {"Monday": Weekday.MON, "Sunday": Weekday.SUN}
         current_wfd = Weekday(int(self._settings.get("week_first_day", 0)))
         current_label = next(
-            (k for k, v in self._WEEK_FIRST_DAY_OPTIONS.items() if v == current_wfd),
+            (k for k, v in self._week_first_day_options.items() if v == current_wfd),
             "Monday",
         )
         self._var_week_first_day = tk.StringVar(value=current_label)
         ttk.Combobox(
             row,
             textvariable=self._var_week_first_day,
-            values=list(self._WEEK_FIRST_DAY_OPTIONS.keys()),
+            values=list(self._week_first_day_options.keys()),
             width=10,
             state="readonly",
         ).pack(side="left")
@@ -818,9 +852,10 @@ class SettingsDialog(tk.Toplevel):
             self._settings.set("theme", self._var_theme.get())
             self._settings.set(
                 "week_first_day",
-                int(self._WEEK_FIRST_DAY_OPTIONS.get(wfd_label, Weekday.MON)),
+                int(self._week_first_day_options.get(wfd_label, Weekday.MON)),
             )
-        except Exception as exc:
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            # Settings/model errors are unpredictable; reported to the user below.
             messagebox.showerror(
                 "Error", f"Could not save settings: {exc}", parent=self
             )
@@ -844,7 +879,7 @@ def _parse_exception_hours(raw: str) -> float:
         hours = float(raw)
     except ValueError:
         raise ValueError("Hours must be a number.") from None
-    if not (0.0 <= hours <= 24.0):
+    if not 0.0 <= hours <= 24.0:
         raise ValueError("Hours must be between 0 and 24.")
     return hours
 
@@ -864,12 +899,12 @@ class _ExceptionDialog(tk.Toplevel):
         self._exc = exc
         self._on_saved = on_saved
 
-        self.title("Edit Date Exception" if exc else "Add Date Exception")
-        self.resizable(False, False)
-        self.minsize(340, 220)
-        self.transient(parent)
-        self.grab_set()
-        self.bind("<Escape>", lambda e: self.destroy())
+        setup_modal_window(
+            self,
+            parent,
+            "Edit Date Exception" if exc else "Add Date Exception",
+            minsize=(340, 220),
+        )
 
         self._build_ui()
         if exc:
@@ -930,7 +965,8 @@ class _ExceptionDialog(tk.Toplevel):
         self._lbl_error.config(text="")
         try:
             d = self._get_date()
-        except Exception:
+        except Exception:  # pylint: disable=broad-exception-caught
+            # Date picker parsing can fail in varied ways; reported inline.
             self._lbl_error.config(text="Invalid date.")
             return
         try:
@@ -946,7 +982,8 @@ class _ExceptionDialog(tk.Toplevel):
             self._model_tc.save_date_exception(date_str, hours, label)
             if self._exc is not None and self._exc.date != d:
                 self._model_tc.delete_date_exception(self._exc.id)
-        except Exception as exc:
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            # Model errors are unpredictable; reported to the user below.
             messagebox.showerror(
                 "Error", f"Could not save exception: {exc}", parent=self
             )

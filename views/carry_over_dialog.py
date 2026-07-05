@@ -7,6 +7,7 @@ from tkinter import ttk
 
 from controllers.vacation_controller import VacationController
 from models.vacation_model import VacationModel
+from views.dialog_common import setup_modal_window
 
 
 class CarryOverDialog(tk.Toplevel):
@@ -26,12 +27,7 @@ class CarryOverDialog(tk.Toplevel):
         self._to_year = to_year
         self._from_year = to_year - 1
 
-        self.title(f"Add Carry-Over to {to_year}")
-        self.resizable(False, False)
-        self.minsize(360, 200)
-        self.transient(parent)
-        self.grab_set()
-        self.bind("<Escape>", lambda e: self.destroy())
+        setup_modal_window(self, parent, f"Add Carry-Over to {to_year}", minsize=(360, 200))
 
         self._allowance = self._model.calculate_carry_over_allowance(to_year)
         self._build_ui()

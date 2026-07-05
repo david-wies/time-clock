@@ -13,6 +13,7 @@ from domain.enums import WorkType
 from domain.types import TimeRecord
 from settings import SettingsManager
 from views.date_picker import make_date_picker
+from views.dialog_common import setup_modal_window
 from views.document_attachment import make_document_picker
 
 logger = logging.getLogger(__name__)
@@ -58,6 +59,8 @@ def _preset_label(minutes: int) -> str:
 
 
 class TimeRecordDialog(tk.Toplevel):
+    """Modal Toplevel dialog for adding or editing a time clock record."""
+
     def __init__(
         self,
         parent,
@@ -72,12 +75,12 @@ class TimeRecordDialog(tk.Toplevel):
         self._record = record
 
         editing = record is not None
-        self.title("Edit Time Record" if editing else "Add Time Record")
-        self.resizable(False, False)
-        self.minsize(420, 380)
-        self.transient(parent)
-        self.grab_set()
-        self.bind("<Escape>", lambda e: self.destroy())
+        setup_modal_window(
+            self,
+            parent,
+            "Edit Time Record" if editing else "Add Time Record",
+            minsize=(420, 380),
+        )
 
         self._build_ui()
         self._populate(record)

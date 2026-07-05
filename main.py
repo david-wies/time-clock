@@ -63,6 +63,7 @@ def _configure_logging(log_dir: Path | None = None) -> None:
 
 
 def main() -> None:
+    """Wire Database → Models → Controllers → Views and start the app."""
     _configure_logging()
 
     db = Database()
@@ -83,7 +84,7 @@ def main() -> None:
     root.title("Time Clock")
 
     mode: ThemeMode = resolve_theme_mode(settings.get("theme"))
-    apply_theme(root, mode)
+    apply_theme(mode)
 
     window = MainWindow(
         root,
@@ -95,7 +96,7 @@ def main() -> None:
         model_miliuim=miliuim_model,
     )
 
-    tab = TimeClockTab(
+    TimeClockTab(
         window.time_clock_frame,
         controller=time_ctrl,
         model=time_model,
@@ -131,7 +132,7 @@ def main() -> None:
         root=root,
     )
 
-    _boot_checks(root, time_model, time_ctrl, tab)
+    _boot_checks(time_model, time_ctrl)
 
     tray = SystemTray(root, time_ctrl, time_model, settings, bus)
     tray.start()
@@ -139,9 +140,7 @@ def main() -> None:
     root.mainloop()
 
 
-def _boot_checks(
-    root: tk.Tk, model: TimeClockModel, ctrl: TimeClockController, tab: TimeClockTab
-) -> None:
+def _boot_checks(model: TimeClockModel, ctrl: TimeClockController) -> None:
     """Warn about open records from a previous day on startup."""
     open_records = model.get_open_records()
     today = date.today()
@@ -159,6 +158,8 @@ def _boot_checks(
         )
         if choice:
             for r in stale:
+                if r.id is None:
+                    continue
                 result = ctrl.delete_record(r.id)
                 if not result.ok:
                     messagebox.showwarning(

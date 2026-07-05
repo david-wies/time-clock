@@ -1,3 +1,5 @@
+"""Model for Miliuim (reserve-duty) records: DB row/dataclass mapping and CRUD."""
+
 import calendar
 import logging
 import sqlite3
@@ -12,6 +14,8 @@ logger = logging.getLogger(__name__)
 
 
 class MiliuimModel:
+    """Manages Miliuim (reserve-duty) period records and their summaries."""
+
     def __init__(self, db: Database, bus: EventBus) -> None:
         self.db = db
         self.bus = bus
@@ -47,6 +51,7 @@ class MiliuimModel:
         return records
 
     def get_record_by_id(self, record_id: int) -> MiliuimRecord | None:
+        """Returns the Miliuim record with the given id, or None if not found."""
         with self.db.connection() as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT * FROM miliuim_period WHERE id = ?;", (record_id,))
@@ -56,6 +61,8 @@ class MiliuimModel:
     def get_records_for_year(
         self, year: int, month: int | None = None
     ) -> list[MiliuimRecord]:
+        """Returns all Miliuim periods overlapping the given year, optionally
+        filtered to a month, ordered by start_date DESC."""
         period_start, period_end = period_bounds(year, month)
         with self.db.connection() as conn:
             cursor = conn.cursor()
@@ -67,6 +74,8 @@ class MiliuimModel:
             return self._rows_to_records(cursor.fetchall())
 
     def get_records_in_date_range(self, start: date, end: date) -> list[MiliuimRecord]:
+        """Returns all Miliuim periods overlapping [start, end], ordered by
+        start_date ASC."""
         with self.db.connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
@@ -108,6 +117,7 @@ class MiliuimModel:
             ]
 
     def insert_record(self, record: MiliuimRecord) -> int:
+        """Inserts a new Miliuim period record and returns its id."""
         with self.db.connection() as conn:
             with conn:
                 cursor = conn.cursor()
@@ -127,6 +137,7 @@ class MiliuimModel:
             return record_id
 
     def update_record(self, record: MiliuimRecord) -> None:
+        """Updates an existing Miliuim period record identified by its id."""
         if record.id is None:
             raise ValueError("Cannot update a record without an ID.")
         with self.db.connection() as conn:
@@ -145,6 +156,7 @@ class MiliuimModel:
             self.bus.publish(Event.MILIUIM_CHANGED)
 
     def delete_record(self, record_id: int) -> None:
+        """Deletes the Miliuim period record with the given id."""
         with self.db.connection() as conn:
             with conn:
                 conn.execute("DELETE FROM miliuim_period WHERE id = ?;", (record_id,))

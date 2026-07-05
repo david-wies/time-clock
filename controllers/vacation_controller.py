@@ -1,3 +1,5 @@
+"""Vacation controller: validates input and mediates model ↔ view."""
+
 import logging
 
 from controllers.time_clock_controller import DatabaseErrorGuard
@@ -41,6 +43,8 @@ def validate_vacation_record(
 
 
 class VacationController:
+    """Validates and mediates vacation record CRUD between view and model."""
+
     def __init__(self, model: VacationModel) -> None:
         self.model = model
 
@@ -138,6 +142,7 @@ class VacationController:
         return guard.result
 
     def delete_record(self, record_id: int) -> Result:
+        """Delete the vacation record with the given id."""
         guard = DatabaseErrorGuard(
             logger, "Database error while deleting vacation record id=%s", record_id
         )

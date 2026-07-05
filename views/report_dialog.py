@@ -37,6 +37,7 @@ from models.sickness_model import SicknessModel
 from models.time_clock_model import TimeClockModel
 from models.vacation_model import VacationModel
 from settings import SettingsManager
+from views.dialog_common import setup_modal_window
 
 logger = logging.getLogger(__name__)
 
@@ -71,12 +72,23 @@ class ReportDialog(tk.Toplevel):
         self._settings = settings
         self._model_miliuim = model_miliuim
 
-        self.title("Generate Report")
-        self.minsize(480, 400)
-        self.resizable(True, True)
-        self.transient(parent)
-        self.grab_set()
-        self.bind("<Escape>", lambda e: self.destroy())
+        # Widgets/vars assigned in _build_ui() and its helpers; declared here
+        # (bare annotations, no value) so their real first assignment isn't
+        # flagged as attribute-defined-outside-init.
+        self._var_period: tk.StringVar
+        self._var_year: tk.StringVar
+        self._spn_year: ttk.Spinbox
+        self._lbl_month: ttk.Label
+        self._var_month: tk.StringVar
+        self._cbo_month: ttk.Combobox
+        self._lbl_quarter: ttk.Label
+        self._var_quarter: tk.StringVar
+        self._cbo_quarter: ttk.Combobox
+        self._txt_preview: tk.Text
+
+        setup_modal_window(
+            self, parent, "Generate Report", minsize=(480, 400), resizable=(True, True)
+        )
 
         self._build_ui()
         self._on_period_changed()  # set initial visibility
@@ -209,13 +221,13 @@ class ReportDialog(tk.Toplevel):
             row=4, column=0, sticky="ew", pady=(0, 8)
         )
 
-        bar = ttk.Frame(parent)
-        bar.grid(row=5, column=0, sticky="ew")
+        button_bar = ttk.Frame(parent)
+        button_bar.grid(row=5, column=0, sticky="ew")
 
-        ttk.Button(bar, text="Export PDF", command=self._do_export_pdf).pack(
+        ttk.Button(button_bar, text="Export PDF", command=self._do_export_pdf).pack(
             side="right", padx=(6, 0)
         )
-        ttk.Button(bar, text="Cancel", command=self.destroy).pack(side="right")
+        ttk.Button(button_bar, text="Cancel", command=self.destroy).pack(side="right")
 
     # ─────────────────────────── Period Toggle ───────────────────────────────
 
@@ -283,7 +295,9 @@ class ReportDialog(tk.Toplevel):
                 model_miliuim=self._model_miliuim,
                 settings=self._settings,
             )
-        except Exception as exc:
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            # period_summary() delegates to multiple model/report layers that can
+            # raise a variety of exception types; report to the user and log.
             logger.exception(
                 "Failed to assemble report data for period_type=%s year=%s "
                 "month=%s quarter=%s",
@@ -424,7 +438,9 @@ class ReportDialog(tk.Toplevel):
 
         try:
             self._generate_pdf(data, filepath)
-        except Exception as exc:
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            # reportlab/pypdf and file I/O can raise many different exception
+            # types; report to the user and log rather than crash the dialog.
             logger.exception(
                 "Failed to generate PDF report for period=%s path=%s",
                 data.period_label,
@@ -636,7 +652,9 @@ class ReportDialog(tk.Toplevel):
                     att_reader = PdfReader(doc_path)
                     for page in att_reader.pages:
                         writer.add_page(page)
-                except Exception as exc:
+                except Exception as exc:  # pylint: disable=broad-exception-caught
+                    # A single corrupt/unreadable attachment shouldn't abort the
+                    # whole report; log it and surface a warning after export.
                     logger.exception(
                         "Failed to append PDF attachment %s (%s dated %s) to report %s",
                         doc_path,
@@ -654,8 +672,14 @@ class ReportDialog(tk.Toplevel):
             except Exception:
                 try:
                     os.unlink(tmp_path)
-                except Exception:
-                    pass
+                except Exception:  # pylint: disable=broad-exception-caught
+                    # Best-effort cleanup of the temp file; log rather than
+                    # silently swallow so a leaked temp file is traceable, and
+                    # don't let a cleanup failure mask the original error below.
+                    logger.exception(
+                        "Failed to clean up temp file %s after PDF write failure",
+                        tmp_path,
+                    )
                 raise
             if failed_attachments:
                 messagebox.showwarning(

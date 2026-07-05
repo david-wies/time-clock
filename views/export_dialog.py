@@ -23,6 +23,7 @@ from reportlab.platypus import (
 )
 
 from core.hebrew_date import to_hebrew_label as _safe_hebrew
+from core.timeutil import MONTH_NAMES as _MONTH_NAMES
 from core.timeutil import duration, to_display_date
 from domain.enums import VacationType, WorkType
 from domain.types import SicknessRecord, TimeRecord, VacationRecord
@@ -30,6 +31,7 @@ from models.sickness_model import SicknessModel
 from models.time_clock_model import TimeClockModel
 from models.vacation_model import VacationModel
 from views.date_picker import make_date_picker
+from views.dialog_common import setup_modal_window
 from views.enums import ExportFormat, ExportTab
 
 logger = logging.getLogger(__name__)
@@ -50,22 +52,6 @@ _WTYPE_LABELS: dict[WorkType, str] = {
     WorkType.ROAD: "Road",
     WorkType.REMOTE: "Remote",
 }
-
-_MONTH_NAMES = [
-    "",
-    "January",
-    "February",
-    "March",
-    "April",
-    "May",
-    "June",
-    "July",
-    "August",
-    "September",
-    "October",
-    "November",
-    "December",
-]
 
 _AnyRecord = TimeRecord | VacationRecord | SicknessRecord
 
@@ -88,12 +74,7 @@ class ExportDialog(tk.Toplevel):
         self._model_vacation = model_vacation
         self._model_sickness = model_sickness
 
-        self.title("Export Records")
-        self.resizable(False, False)
-        self.minsize(400, 320)
-        self.transient(parent)
-        self.grab_set()
-        self.bind("<Escape>", lambda e: self.destroy())
+        setup_modal_window(self, parent, "Export Records", minsize=(400, 320))
 
         today = date.today()
         self._default_from = date(today.year, 1, 1)
@@ -183,7 +164,9 @@ class ExportDialog(tk.Toplevel):
         try:
             from_date = self._get_from()
             to_date = self._get_to()
-        except Exception as exc:
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            # date-entry widgets (tkcalendar/manual parsing) can raise
+            # ValueError, tkinter errors, etc.; surfaced to the user below.
             messagebox.showerror(
                 "Invalid Date", f"Could not read date: {exc}", parent=self
             )
@@ -226,7 +209,10 @@ class ExportDialog(tk.Toplevel):
             else:
                 raise ValueError(f"Unknown format: {fmt!r}")
             os.replace(tmp_path, path)
-        except Exception as exc:
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            # export libraries (pandas/reportlab) and file I/O can raise many
+            # different error types (disk full, permission denied, malformed
+            # data); logged and surfaced to the user below.
             logger.exception("Export failed for format=%s path=%s", fmt, path)
             if os.path.exists(tmp_path):
                 try:
@@ -306,7 +292,7 @@ class ExportDialog(tk.Toplevel):
                 rec.note or "",
                 net,
             ]
-        elif tab == ExportTab.VACATION:
+        if tab == ExportTab.VACATION:
             if not isinstance(rec, VacationRecord):
                 raise TypeError(f"Expected VacationRecord, got {type(rec).__name__}")
             return [
@@ -316,15 +302,15 @@ class ExportDialog(tk.Toplevel):
                 _VTYPE_LABELS.get(rec.vtype, str(rec.vtype)),
                 rec.note or "",
             ]
-        else:  # sickness
-            if not isinstance(rec, SicknessRecord):
-                raise TypeError(f"Expected SicknessRecord, got {type(rec).__name__}")
-            return [
-                to_display_date(rec.date),
-                hebrew,
-                rec.hours,
-                rec.note or "",
-            ]
+        # sickness
+        if not isinstance(rec, SicknessRecord):
+            raise TypeError(f"Expected SicknessRecord, got {type(rec).__name__}")
+        return [
+            to_display_date(rec.date),
+            hebrew,
+            rec.hours,
+            rec.note or "",
+        ]
 
     def _compute_total(self, records: list[_AnyRecord], tab: ExportTab) -> float:
         """Return total net hours (time) or total hours (vacation/sickness)."""

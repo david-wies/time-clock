@@ -1,3 +1,5 @@
+"""Worked-hours/target-hours balance calculations over date ranges."""
+
 from datetime import date, datetime, time, timedelta
 
 from core.timeutil import duration

@@ -1,3 +1,5 @@
+"""Miliuim controller: validates input and mediates model ↔ view."""
+
 import logging
 
 from controllers.time_clock_controller import DatabaseErrorGuard
@@ -24,6 +26,7 @@ class MiliuimController:
         self.model = model
 
     def save_record(self, record: MiliuimRecord) -> Result:
+        """Validates and saves (inserts or updates) a MiliuimRecord."""
         errors: list[str] = miliuim_record_invariant_errors(record)
         if errors:
             return Result(ok=False, errors=errors)
@@ -66,6 +69,7 @@ class MiliuimController:
         return guard.result
 
     def delete_record(self, record_id: int) -> Result:
+        """Delete the Miliuim record with the given id."""
         guard = DatabaseErrorGuard(
             logger, "Database error while deleting Miliuim record id=%s", record_id
         )

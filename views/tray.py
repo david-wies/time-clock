@@ -3,9 +3,9 @@
 import logging
 import threading
 import tkinter as tk
-import tkinter.messagebox
 from datetime import date
 from pathlib import Path
+from tkinter import messagebox
 
 import pystray
 from PIL import Image, ImageDraw
@@ -27,7 +27,7 @@ def _load_base_icon() -> Image.Image:
     return (
         Image.open(_PNG_PATH)
         .convert("RGBA")
-        .resize((_ICON_SIZE, _ICON_SIZE), Image.LANCZOS)
+        .resize((_ICON_SIZE, _ICON_SIZE), Image.Resampling.LANCZOS)
     )
 
 
@@ -146,16 +146,16 @@ class SystemTray:
 
     # ─────────────────── Tray callbacks (pystray thread) ───────────────────
 
-    def _tray_clock_in(self, icon, item) -> None:
+    def _tray_clock_in(self, _icon, _item) -> None:
         self._root.after(0, self._do_clock_in)
 
-    def _tray_clock_out(self, icon, item) -> None:
+    def _tray_clock_out(self, _icon, _item) -> None:
         self._root.after(0, self._do_clock_out)
 
-    def _tray_open(self, icon, item) -> None:
+    def _tray_open(self, _icon, _item) -> None:
         self._root.after(0, self._do_open)
 
-    def _tray_quit(self, icon, item) -> None:
+    def _tray_quit(self, _icon, _item) -> None:
         self._root.after(0, self._do_quit)
 
     # ─────────────────── Main-thread actions ───────────────────────────────
@@ -166,7 +166,7 @@ class SystemTray:
             errors = result.errors
             self._root.after(
                 0,
-                lambda: tk.messagebox.showerror("Clock In Failed", "\n".join(errors)),
+                lambda: messagebox.showerror("Clock In Failed", "\n".join(errors)),
             )
 
     def _do_clock_out(self) -> None:
@@ -175,7 +175,7 @@ class SystemTray:
             if result.errors == [WarningCode.MULTIPLE_OPEN_RECORDS.value]:
                 self._root.after(
                     0,
-                    lambda: tk.messagebox.showinfo(
+                    lambda: messagebox.showinfo(
                         "Multiple Open Records",
                         "Multiple open records exist for today.\n"
                         "Open the main window to choose which one to clock out.",
@@ -185,7 +185,7 @@ class SystemTray:
             errors = result.errors
             self._root.after(
                 0,
-                lambda: tk.messagebox.showerror("Clock Out Failed", "\n".join(errors)),
+                lambda: messagebox.showerror("Clock Out Failed", "\n".join(errors)),
             )
 
     def _do_open(self) -> None:

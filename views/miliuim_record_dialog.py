@@ -11,12 +11,15 @@ from controllers.miliuim_controller import MiliuimController
 from domain.types import MiliuimRecord
 from models.miliuim_model import MiliuimModel
 from views.date_picker import make_date_picker
+from views.dialog_common import setup_modal_window
 from views.document_attachment import make_document_picker
 
 logger = logging.getLogger(__name__)
 
 
 class MiliuimRecordDialog(tk.Toplevel):
+    """Modal Toplevel dialog for adding or editing a miliuim record."""
+
     def __init__(
         self,
         parent,
@@ -31,12 +34,12 @@ class MiliuimRecordDialog(tk.Toplevel):
         self._record = record
 
         editing = record is not None
-        self.title("Edit Miliuim Period" if editing else "Add Miliuim Period")
-        self.resizable(False, False)
-        self.minsize(420, 280)
-        self.transient(parent)
-        self.grab_set()
-        self.bind("<Escape>", lambda e: self.destroy())
+        setup_modal_window(
+            self,
+            parent,
+            "Edit Miliuim Period" if editing else "Add Miliuim Period",
+            minsize=(420, 280),
+        )
 
         self._build_ui()
         self._populate(record)

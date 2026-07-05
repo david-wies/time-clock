@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from datetime import date
 
 from core.balance import group_records_by_date, period_balance_from_grouped
+from core.timeutil import MONTH_NAMES
 from domain.enums import PeriodType
 from models.miliuim_model import MiliuimModel
 from models.sickness_model import SicknessModel
@@ -14,25 +15,11 @@ from models.time_clock_model import TimeClockModel
 from models.vacation_model import VacationModel
 from settings import SettingsManager
 
-MONTH_NAMES = [
-    "",
-    "January",
-    "February",
-    "March",
-    "April",
-    "May",
-    "June",
-    "July",
-    "August",
-    "September",
-    "October",
-    "November",
-    "December",
-]
-
 
 @dataclass(slots=True)
 class MonthlyRow:
+    """One month's worked/target/balance figures within a quarter or year report."""
+
     month: int  # 1-12
     year: int
     worked_hours: float
@@ -42,6 +29,8 @@ class MonthlyRow:
 
 @dataclass(slots=True)
 class ReportData:
+    """Full assembled report figures (time, vacation, sickness, miliuim) for a period."""
+
     period_label: str  # e.g. "June 2026", "Q2 2026", "2026"
     period_type: PeriodType
     year: int
@@ -97,6 +86,7 @@ def period_range(
     month: int | None,
     quarter: int | None,
 ) -> tuple[date, date]:
+    """Returns (start_date, end_date) for the given period_type/year/month/quarter."""
     if period_type == PeriodType.MONTH:
         if month is None:
             raise ValueError("month is required for period_type='month'")

@@ -1,3 +1,5 @@
+"""Model for time clock records: DB row/dataclass mapping and CRUD."""
+
 import logging
 import sqlite3
 from datetime import date
@@ -18,6 +20,8 @@ logger = logging.getLogger(__name__)
 
 
 class TimeClockModel:
+    """Manages time clock records and work-day target/exception settings."""
+
     def __init__(self, db: Database, bus: EventBus) -> None:
         self.db = db
         self.bus = bus
@@ -57,6 +61,7 @@ class TimeClockModel:
         return records
 
     def get_record_by_id(self, record_id: int) -> TimeRecord | None:
+        """Returns the time record with the given id, or None if not found."""
         with self.db.connection() as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT * FROM time_record WHERE id = ?;", (record_id,))
@@ -64,6 +69,7 @@ class TimeClockModel:
             return self._row_to_record(row) if row else None
 
     def get_records_by_date(self, target_date: date) -> list[TimeRecord]:
+        """Returns all time records for the given date, ordered by start_time ASC."""
         with self.db.connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
@@ -136,6 +142,7 @@ class TimeClockModel:
         return self.get_open_records_for_date(date.today())
 
     def insert_record(self, record: TimeRecord) -> int:
+        """Inserts a new time record and returns its id."""
         with self.db.connection() as conn:
             with conn:
                 cursor = conn.cursor()
@@ -163,6 +170,7 @@ class TimeClockModel:
             return record_id
 
     def update_record(self, record: TimeRecord) -> None:
+        """Updates an existing time record identified by its id."""
         if record.id is None:
             raise ValueError("Cannot update a record without an ID.")
         with self.db.connection() as conn:
@@ -190,6 +198,7 @@ class TimeClockModel:
             self.bus.publish(Event.TIME_RECORDS_CHANGED)
 
     def delete_record(self, record_id: int) -> None:
+        """Deletes the time record with the given id."""
         with self.db.connection() as conn:
             with conn:
                 conn.execute("DELETE FROM time_record WHERE id = ?;", (record_id,))
@@ -206,6 +215,7 @@ class TimeClockModel:
             return {row["day_of_week"]: row["hours"] for row in rows}
 
     def save_work_day_targets(self, targets: dict[int, float]) -> None:
+        """Upserts the hours target for each day_of_week given in `targets`."""
         with self.db.connection() as conn:
             with conn:
                 for day_of_week, hours in targets.items():
@@ -262,6 +272,7 @@ class TimeClockModel:
     def save_date_exception(
         self, date_str: str, hours: float, label: str | None = None
     ) -> None:
+        """Upserts a work-day exception (target hours override) for a specific date."""
         with self.db.connection() as conn:
             with conn:
                 conn.execute(
@@ -274,6 +285,7 @@ class TimeClockModel:
             self.bus.publish(Event.SETTINGS_CHANGED)
 
     def delete_date_exception(self, exception_id: int) -> None:
+        """Deletes the work-day exception with the given id."""
         with self.db.connection() as conn:
             with conn:
                 conn.execute(
@@ -282,6 +294,7 @@ class TimeClockModel:
             self.bus.publish(Event.SETTINGS_CHANGED)
 
     def delete_date_exception_by_date(self, date_str: str) -> None:
+        """Deletes the work-day exception for the given ISO date string."""
         with self.db.connection() as conn:
             with conn:
                 conn.execute(

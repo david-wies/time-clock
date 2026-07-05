@@ -12,12 +12,15 @@ from domain.enums import WarningCode
 from domain.types import SicknessRecord
 from models.sickness_model import SicknessModel
 from views.date_picker import make_date_picker
+from views.dialog_common import setup_modal_window
 from views.document_attachment import make_document_picker
 
 logger = logging.getLogger(__name__)
 
 
 class SickRecordDialog(tk.Toplevel):
+    """Modal Toplevel dialog for adding or editing a sickness record."""
+
     def __init__(
         self,
         parent,
@@ -32,12 +35,12 @@ class SickRecordDialog(tk.Toplevel):
         self._record = record
 
         editing = record is not None
-        self.title("Edit Sick Record" if editing else "Add Sick Record")
-        self.resizable(False, False)
-        self.minsize(400, 300)
-        self.transient(parent)
-        self.grab_set()
-        self.bind("<Escape>", lambda e: self.destroy())
+        setup_modal_window(
+            self,
+            parent,
+            "Edit Sick Record" if editing else "Add Sick Record",
+            minsize=(400, 300),
+        )
 
         self._build_ui(editing)
         self._populate(record)

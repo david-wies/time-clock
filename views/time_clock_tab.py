@@ -17,6 +17,7 @@ from core.balance import (
 )
 from core.events import Event, EventBus
 from core.hebrew_date import to_hebrew_label as _safe_hebrew
+from core.timeutil import MONTH_NAMES as _MONTH_NAMES
 from core.timeutil import time_to_str, to_display_date
 from domain.enums import WarningCode, Weekday, WorkType
 from domain.types import TimeRecord, WorkDayException
@@ -24,26 +25,11 @@ from models.time_clock_model import TimeClockModel
 from settings import SettingsManager
 from theme.style import COLORS, ThemeMode, resolve_theme_mode
 from views.enums import ViewMode
+from views.record_tab_common import RecordTabMixin
 from views.time_record_dialog import TimeRecordDialog
 
 logger = logging.getLogger(__name__)
 
-
-_MONTH_NAMES = [
-    "",
-    "January",
-    "February",
-    "March",
-    "April",
-    "May",
-    "June",
-    "July",
-    "August",
-    "September",
-    "October",
-    "November",
-    "December",
-]
 
 _DAY_NAMES = [
     "Monday",
@@ -88,7 +74,7 @@ def _build_exc_dict(raw: list[WorkDayException]) -> dict[date, float]:
     return result
 
 
-class TimeClockTab(ttk.Frame):
+class TimeClockTab(RecordTabMixin, ttk.Frame):
     """Time Clock tab: view, clock-in/out, and manage time records."""
 
     def __init__(
@@ -107,6 +93,25 @@ class TimeClockTab(ttk.Frame):
         self.bus = bus
         self.root = root
         self._theme_mode: ThemeMode = resolve_theme_mode(self.settings.get("theme"))
+
+        # Bare annotations (no value) for widgets assigned later inside the
+        # various _build_*() helpers called from _build_ui() — pylint's
+        # attribute-defined-outside-init check only looks at __init__'s own
+        # body, so these declare the attributes here while the real
+        # assignments stay in the _build_*() methods.
+        self._lbl_today: ttk.Label
+        self._lbl_target: ttk.Label
+        self._lbl_remaining: ttk.Label
+        self._btn_week: ttk.Button
+        self._btn_month: ttk.Button
+        self._frm_week: ttk.Frame
+        self._lbl_week_range: ttk.Label
+        self._frm_month: ttk.Frame
+        self._cbo_year: ttk.Combobox
+        self._cbo_month: ttk.Combobox
+        self._btn_clock_in: ttk.Button
+        self._btn_clock_out: ttk.Button
+        self._btn_add: ttk.Button
 
         today = date.today()
         try:
@@ -163,29 +168,29 @@ class TimeClockTab(ttk.Frame):
         self._bind_shortcuts()
 
     def _build_header_bar(self) -> None:
-        bar = ttk.Frame(self, style="Card.TFrame")
-        bar.pack(fill="x", padx=4, pady=(4, 0))
+        header_bar = ttk.Frame(self, style="Card.TFrame")
+        header_bar.pack(fill="x", padx=4, pady=(4, 0))
 
-        self._lbl_today = ttk.Label(bar, text="", style="DayHeader.TLabel")
+        self._lbl_today = ttk.Label(header_bar, text="", style="DayHeader.TLabel")
         self._lbl_today.pack(side="left", padx=(10, 6), pady=5)
 
-        ttk.Separator(bar, orient="vertical").pack(side="left", fill="y", pady=5)
+        ttk.Separator(header_bar, orient="vertical").pack(side="left", fill="y", pady=5)
 
-        self._lbl_target = ttk.Label(bar, text="")
+        self._lbl_target = ttk.Label(header_bar, text="")
         self._lbl_target.pack(side="left", padx=(8, 6), pady=5)
 
-        ttk.Separator(bar, orient="vertical").pack(side="left", fill="y", pady=5)
+        ttk.Separator(header_bar, orient="vertical").pack(side="left", fill="y", pady=5)
 
-        self._lbl_remaining = ttk.Label(bar, text="")
+        self._lbl_remaining = ttk.Label(header_bar, text="")
         self._lbl_remaining.pack(side="left", padx=(8, 10), pady=5)
 
     def _build_toolbar(self) -> None:
-        bar = ttk.Frame(self)
-        bar.pack(fill="x", padx=4, pady=(4, 0))
+        toolbar = ttk.Frame(self)
+        toolbar.pack(fill="x", padx=4, pady=(4, 0))
 
         # View-mode toggle
         self._btn_week = ttk.Button(
-            bar,
+            toolbar,
             text="Week",
             width=7,
             command=lambda: self._set_view_mode(ViewMode.WEEK),
@@ -193,19 +198,19 @@ class TimeClockTab(ttk.Frame):
         self._btn_week.pack(side="left", padx=(0, 2))
 
         self._btn_month = ttk.Button(
-            bar,
+            toolbar,
             text="Month",
             width=7,
             command=lambda: self._set_view_mode(ViewMode.MONTH),
         )
         self._btn_month.pack(side="left", padx=(0, 8))
 
-        ttk.Separator(bar, orient="vertical").pack(
+        ttk.Separator(toolbar, orient="vertical").pack(
             side="left", fill="y", padx=(0, 8), pady=3
         )
 
         # Week-mode controls (shown/hidden by _refresh_toolbar)
-        self._frm_week = ttk.Frame(bar)
+        self._frm_week = ttk.Frame(toolbar)
         ttk.Button(self._frm_week, text="◀", width=3, command=self._prev_week).pack(
             side="left", padx=(0, 4)
         )
@@ -216,7 +221,7 @@ class TimeClockTab(ttk.Frame):
         )
 
         # Month-mode controls (shown/hidden by _refresh_toolbar)
-        self._frm_month = ttk.Frame(bar)
+        self._frm_month = ttk.Frame(toolbar)
         ttk.Label(self._frm_month, text="Year:").pack(side="left")
         self._var_year = tk.StringVar(value=str(self._selected_year))
         cur_year = date.today().year
@@ -292,12 +297,12 @@ class TimeClockTab(ttk.Frame):
         self._tree.bind("<<TreeviewSelect>>", self._on_tree_select)
 
     def _build_action_bar(self) -> None:
-        bar = ttk.Frame(self)
-        bar.pack(fill="x", padx=4, pady=(0, 6))
+        action_bar = ttk.Frame(self)
+        action_bar.pack(fill="x", padx=4, pady=(0, 6))
 
-        ttk.Separator(bar, orient="horizontal").pack(fill="x", pady=(0, 6))
+        ttk.Separator(action_bar, orient="horizontal").pack(fill="x", pady=(0, 6))
 
-        inner = ttk.Frame(bar)
+        inner = ttk.Frame(action_bar)
         inner.pack(fill="x")
 
         self._btn_clock_in = ttk.Button(
@@ -738,8 +743,16 @@ class TimeClockTab(ttk.Frame):
         if self._after_id is not None:
             try:
                 self.root.after_cancel(self._after_id)
-            except Exception:
-                pass
+            except Exception:  # pylint: disable=broad-exception-caught
+                # Tk's after_cancel() can raise arbitrary errors (e.g.
+                # TclError if the widget/root is already being torn down);
+                # this is a best-effort cleanup during teardown, so any
+                # exception here must not propagate and crash the mainloop.
+                logger.debug(
+                    "Ignoring error cancelling auto-refresh timer %r",
+                    self._after_id,
+                    exc_info=True,
+                )
             self._after_id = None
 
     # ─────────────────────────── Button State ───────────────────────────────
@@ -748,39 +761,11 @@ class TimeClockTab(ttk.Frame):
         has_open = bool(self.model.get_open_records())
         self._btn_clock_in.config(state="normal" if not has_open else "disabled")
         self._btn_clock_out.config(state="normal" if has_open else "disabled")
-        state = "normal" if self._get_selected_record_id() is not None else "disabled"
-        self._btn_edit.config(state=state)
-        self._btn_delete.config(state=state)
-
-    def _get_selected_record_id(self) -> int | None:
-        sel = self._tree.selection()
-        if not sel:
-            return None
-        iid = sel[0]
-        if iid.startswith("rec_"):
-            try:
-                return int(iid[4:])
-            except ValueError:
-                return None
-        return None
+        self._update_edit_delete_states()
 
     def _get_selected_record(self) -> TimeRecord | None:
         rec_id = self._get_selected_record_id()
         return self.model.get_record_by_id(rec_id) if rec_id is not None else None
-
-    # ─────────────────────────── Tree Callbacks ─────────────────────────────
-
-    # type: ignore[type-arg]
-    def _on_double_click(self, event: tk.Event) -> None:
-        iid = self._tree.identify_row(event.y)
-        if iid and iid.startswith("rec_"):
-            self._tree.selection_set(iid)
-            self._do_edit()
-
-    def _on_tree_select(self, _event: object = None) -> None:
-        state = "normal" if self._get_selected_record_id() is not None else "disabled"
-        self._btn_edit.config(state=state)
-        self._btn_delete.config(state=state)
 
     # ─────────────────────────── Actions ────────────────────────────────────
 
@@ -912,9 +897,4 @@ class TimeClockTab(ttk.Frame):
 
     def _on_destroy(self, _event: object = None) -> None:
         self._cancel_auto_refresh()
-        for unsub in self._unsubs:
-            try:
-                unsub()
-            except Exception:
-                pass
-        self._unsubs.clear()
+        self._clear_unsubs()

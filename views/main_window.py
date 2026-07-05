@@ -195,38 +195,40 @@ class MainWindow(ttk.Frame):
         self.notebook.bind("<<NotebookTabChanged>>", self._on_tab_changed)
 
     def _build_statusbar(self) -> None:
-        bar = ttk.Frame(self)
-        bar.pack(side="bottom", fill="x", padx=4, pady=(0, 4))
-        sep = ttk.Separator(bar, orient="horizontal")
+        status_bar = ttk.Frame(self)
+        status_bar.pack(side="bottom", fill="x", padx=4, pady=(0, 4))
+        sep = ttk.Separator(status_bar, orient="horizontal")
         sep.pack(fill="x")
 
         self.status_label = ttk.Label(
-            bar, textvariable=self.status_var, style="StatusBar.TLabel", padding=(4, 2)
+            status_bar, textvariable=self.status_var, style="StatusBar.TLabel", padding=(4, 2)
         )
         self.status_label.pack(side="left", fill="x", expand=True)
 
-        ttk.Separator(bar, orient="vertical").pack(side="left", fill="y", padx=4)
+        ttk.Separator(status_bar, orient="vertical").pack(side="left", fill="y", padx=4)
         ttk.Label(
-            bar, textvariable=self._count_var, style="StatusBar.TLabel", padding=(4, 2)
+            status_bar, textvariable=self._count_var, style="StatusBar.TLabel", padding=(4, 2)
         ).pack(side="left")
 
-        ttk.Separator(bar, orient="vertical").pack(side="left", fill="y", padx=4)
+        ttk.Separator(status_bar, orient="vertical").pack(side="left", fill="y", padx=4)
         ttk.Label(
-            bar, textvariable=self._clock_var, style="StatusBar.TLabel", padding=(4, 2)
+            status_bar, textvariable=self._clock_var, style="StatusBar.TLabel", padding=(4, 2)
         ).pack(side="left")
 
-        ttk.Separator(bar, orient="vertical").pack(side="left", fill="y", padx=4)
+        ttk.Separator(status_bar, orient="vertical").pack(side="left", fill="y", padx=4)
         ttk.Label(
-            bar, textvariable=self._tab_var, style="StatusBar.TLabel", padding=(4, 2)
+            status_bar, textvariable=self._tab_var, style="StatusBar.TLabel", padding=(4, 2)
         ).pack(side="left")
 
     def _set_status(self, msg: str) -> None:
         self.status_var.set(msg)
 
     def set_record_count(self, n: int) -> None:
+        """Updates the status bar's record-count label."""
         self._count_var.set(f"{n} records")
 
     def set_clocked_in(self, is_in: bool, since: str = "") -> None:
+        """Updates the status bar's clocked-in/idle indicator."""
         if is_in:
             self._clock_var.set(f"Clocked in{' since ' + since if since else ''}")
         else:

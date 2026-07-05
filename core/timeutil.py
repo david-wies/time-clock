@@ -1,5 +1,23 @@
+"""Time/date helpers shared across models, controllers, and views."""
+
 import calendar
 from datetime import date, datetime, time
+
+MONTH_NAMES = [
+    "",
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
+]
 
 
 def now_hm() -> str:

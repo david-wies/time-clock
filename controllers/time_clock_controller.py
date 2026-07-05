@@ -1,3 +1,5 @@
+"""Time-clock controller: validates input and mediates model ↔ view."""
+
 import logging
 import sqlite3
 from contextlib import AbstractContextManager
@@ -114,6 +116,8 @@ def validate_time_record(
 
 
 class TimeClockController:
+    """Validates and mediates time-clock record CRUD between view and model."""
+
     def __init__(
         self,
         model: TimeClockModel,
@@ -269,6 +273,7 @@ class TimeClockController:
         return guard.result
 
     def delete_record(self, record_id: int) -> Result:
+        """Delete the time record with the given id."""
         guard = DatabaseErrorGuard(
             logger, "Database error while deleting time record id=%s", record_id
         )

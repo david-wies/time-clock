@@ -1,3 +1,5 @@
+"""SQLite database wrapper managing a single persistent connection and schema migrations."""
+
 import logging
 import os
 import platform
@@ -68,8 +70,7 @@ class SharedConnectionWrapper:
         return getattr(self._conn, name)
 
     def close(self) -> None:
-        # No-op to preserve in-memory DB lifetime
-        pass
+        """No-op to preserve in-memory DB lifetime."""
 
     def __enter__(self) -> "SharedConnectionWrapper":
         self._conn.__enter__()
@@ -80,6 +81,8 @@ class SharedConnectionWrapper:
 
 
 class Database:
+    """Owns a single persistent sqlite3 connection and applies schema migrations."""
+
     def __init__(self, db_path: str | None = None) -> None:
         """
         Initializes the database. If db_path is None, the default OS-specific
@@ -119,7 +122,6 @@ class Database:
         self._shared_conn = SharedConnectionWrapper(raw_conn)
 
         self._init_db()
-        return
 
     def get_connection(self) -> SharedConnectionWrapper:
         """Returns the single persistent connection shared for the app's lifetime."""
@@ -146,7 +148,6 @@ class Database:
                 self._apply_migrations(conn)
         finally:
             conn.close()
-        return
 
     def _create_tables(self, conn: SharedConnectionWrapper) -> None:
         """Creates tables if they do not exist."""
@@ -299,7 +300,6 @@ class Database:
                     WHERE id = NEW.id;
             END;
         """)
-        return
 
     def _apply_migrations(self, conn: SharedConnectionWrapper) -> None:
         """Applies schema migrations using user_version."""
@@ -495,4 +495,3 @@ class Database:
                 END;
             """)
             cursor.execute("PRAGMA user_version = 8")
-        return

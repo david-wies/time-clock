@@ -1,3 +1,5 @@
+"""JSON-serialized key/value settings persisted to the app_config DB table."""
+
 import copy
 import json
 import logging
@@ -10,6 +12,8 @@ logger = logging.getLogger(__name__)
 
 
 class SettingsManager:
+    """Reads and writes app settings, JSON-serialized in the app_config DB table."""
+
     # Default settings dict
     DEFAULTS = {
         "theme": "system",

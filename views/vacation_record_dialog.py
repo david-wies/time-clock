@@ -13,6 +13,7 @@ from domain.enums import VacationType, WarningCode
 from domain.types import VacationRecord
 from models.vacation_model import VacationModel
 from views.date_picker import make_date_picker
+from views.dialog_common import setup_modal_window
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +31,8 @@ _VTYPE_OPTIONS: list[tuple[VacationType, str]] = [
 
 
 class VacationRecordDialog(tk.Toplevel):
+    """Modal Toplevel dialog for adding or editing a vacation record."""
+
     def __init__(
         self,
         parent,
@@ -44,12 +47,12 @@ class VacationRecordDialog(tk.Toplevel):
         self._record = record
 
         editing = record is not None
-        self.title("Edit Vacation Record" if editing else "Add Vacation Record")
-        self.resizable(False, False)
-        self.minsize(400, 320)
-        self.transient(parent)
-        self.grab_set()
-        self.bind("<Escape>", lambda e: self.destroy())
+        setup_modal_window(
+            self,
+            parent,
+            "Edit Vacation Record" if editing else "Add Vacation Record",
+            minsize=(400, 320),
+        )
 
         self._build_ui()
         self._populate(record)

@@ -15,26 +15,16 @@ from domain.types import SicknessRecord
 from models.sickness_model import SicknessModel
 from settings import SettingsManager
 from theme.style import COLORS, ThemeMode, resolve_theme_mode
+from views.record_tab_common import RecordTabMixin
 from views.sick_record_dialog import SickRecordDialog
-
-_MONTH_NAMES = [
-    "",
-    "January",
-    "February",
-    "March",
-    "April",
-    "May",
-    "June",
-    "July",
-    "August",
-    "September",
-    "October",
-    "November",
-    "December",
-]
+from views.tab_widgets import (
+    build_action_bar,
+    build_add_edit_remove_buttons,
+    build_year_month_filter_bar,
+)
 
 
-class SicknessTab(ttk.Frame):
+class SicknessTab(RecordTabMixin, ttk.Frame):
     """Sickness tab: balance display, record list, add/edit/delete."""
 
     def __init__(
@@ -58,6 +48,14 @@ class SicknessTab(ttk.Frame):
         self._selected_year: int = today.year
         self._selected_month: int = 0  # 0 = All months
         self._unsubs: list[Callable] = []
+
+        self._cbo_year: ttk.Combobox
+        self._cbo_month: ttk.Combobox
+        self._frm_balance: ttk.Frame
+        self._lbl_balance: ttk.Label
+        self._lbl_hours: ttk.Label
+        self._btn_add: ttk.Button
+
         self._build_ui()
         self._refresh()
 
@@ -77,33 +75,11 @@ class SicknessTab(ttk.Frame):
         self._bind_shortcuts()
 
     def _build_filter_bar(self) -> None:
-        bar = ttk.Frame(self)
-        bar.pack(fill="x", padx=4, pady=(4, 0))
-
-        ttk.Label(bar, text="Year:").pack(side="left")
-        cur_year = date.today().year
-        self._var_year = tk.StringVar(value=str(self._selected_year))
-        self._cbo_year = ttk.Combobox(
-            bar,
-            textvariable=self._var_year,
-            width=6,
-            values=[str(y) for y in range(cur_year - 10, cur_year + 3)],
-            state="readonly",
+        self._var_year, self._var_month, self._cbo_year, self._cbo_month = (
+            build_year_month_filter_bar(
+                self, self._selected_year, self._on_period_changed
+            )
         )
-        self._cbo_year.pack(side="left", padx=(2, 10))
-        self._cbo_year.bind("<<ComboboxSelected>>", self._on_period_changed)
-
-        ttk.Label(bar, text="Month:").pack(side="left")
-        self._var_month = tk.StringVar(value="All")
-        self._cbo_month = ttk.Combobox(
-            bar,
-            textvariable=self._var_month,
-            width=11,
-            values=["All"] + _MONTH_NAMES[1:],
-            state="readonly",
-        )
-        self._cbo_month.pack(side="left", padx=(2, 0))
-        self._cbo_month.bind("<<ComboboxSelected>>", self._on_period_changed)
 
     def _build_balance_bar(self) -> None:
         self._frm_balance = ttk.Frame(self, style="Card.TFrame")
@@ -157,30 +133,10 @@ class SicknessTab(ttk.Frame):
         self._tree.bind("<<TreeviewSelect>>", self._on_tree_select)
 
     def _build_action_bar(self) -> None:
-        bar = ttk.Frame(self)
-        bar.pack(fill="x", padx=4, pady=(0, 6))
-
-        ttk.Separator(bar, orient="horizontal").pack(fill="x", pady=(0, 6))
-
-        inner = ttk.Frame(bar)
-        inner.pack(fill="x")
-
-        self._btn_add = ttk.Button(inner, text="+ Add", command=self._do_add, width=12)
-        self._btn_add.pack(side="left", padx=(0, 4))
-
-        self._btn_edit = ttk.Button(
-            inner, text="✏ Edit", command=self._do_edit, width=12
+        inner = build_action_bar(self)
+        self._btn_add, self._btn_edit, self._btn_delete = build_add_edit_remove_buttons(
+            inner, self._do_add, self._do_edit, self._do_delete
         )
-        self._btn_edit.pack(side="left", padx=(0, 4))
-
-        self._btn_delete = ttk.Button(
-            inner,
-            text="🗑 Remove",
-            style="Danger.TButton",
-            command=self._do_delete,
-            width=12,
-        )
-        self._btn_delete.pack(side="left")
 
     def _bind_shortcuts(self) -> None:
         def _guard(fn: Callable) -> Callable:
@@ -201,21 +157,6 @@ class SicknessTab(ttk.Frame):
         self.root.bind_all("<Control-e>", _guard(self._do_edit), add=True)
         self.root.bind_all("<Delete>", _guard(self._do_delete), add=True)
         self.root.bind_all("<F5>", _guard(self._refresh), add=True)
-
-    # ─────────────────────────── Period Filter ──────────────────────────────
-
-    def _on_period_changed(self, _event=None) -> None:
-        try:
-            self._selected_year = int(self._var_year.get())
-        except ValueError:
-            pass
-        month_name = self._var_month.get()
-        if month_name == "All":
-            self._selected_month = 0
-        elif month_name in _MONTH_NAMES:
-            idx = _MONTH_NAMES.index(month_name)
-            self._selected_month = idx if idx > 0 else 0
-        self._refresh()
 
     # ─────────────────────────── Balance Bar ────────────────────────────────
 
@@ -310,39 +251,9 @@ class SicknessTab(ttk.Frame):
 
     # ─────────────────────────── Button State ───────────────────────────────
 
-    def _update_button_states(self) -> None:
-        state = "normal" if self._get_selected_record_id() is not None else "disabled"
-        self._btn_edit.config(state=state)
-        self._btn_delete.config(state=state)
-
-    def _get_selected_record_id(self) -> int | None:
-        sel = self._tree.selection()
-        if not sel:
-            return None
-        iid = sel[0]
-        if iid.startswith("rec_"):
-            try:
-                return int(iid[4:])
-            except ValueError:
-                return None
-        return None
-
     def _get_selected_record(self) -> SicknessRecord | None:
         rec_id = self._get_selected_record_id()
         return self.model.get_record_by_id(rec_id) if rec_id is not None else None
-
-    # ─────────────────────────── Tree Callbacks ─────────────────────────────
-
-    def _on_double_click(self, event: tk.Event) -> None:
-        iid = self._tree.identify_row(event.y)
-        if iid and iid.startswith("rec_"):
-            self._tree.selection_set(iid)
-            self._do_edit()
-
-    def _on_tree_select(self, _event=None) -> None:
-        state = "normal" if self._get_selected_record_id() is not None else "disabled"
-        self._btn_edit.config(state=state)
-        self._btn_delete.config(state=state)
 
     # ─────────────────────────── Actions ────────────────────────────────────
 
@@ -379,13 +290,3 @@ class SicknessTab(ttk.Frame):
         result = self.controller.delete_record(rec_id)
         if not result.ok:
             messagebox.showerror("Remove Failed", "\n".join(result.errors), parent=self)
-
-    # ─────────────────────────── Lifecycle ──────────────────────────────────
-
-    def _on_destroy(self, _event=None) -> None:
-        for unsub in self._unsubs:
-            try:
-                unsub()
-            except Exception:
-                pass
-        self._unsubs.clear()

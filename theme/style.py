@@ -9,6 +9,8 @@ __all__ = ["ThemeMode", "COLORS", "resolve_theme_mode", "apply_theme"]
 
 
 class ThemeMode(StrEnum):
+    """Selectable ttk theme mode: light, dark, or system-following."""
+
     LIGHT = "light"
     DARK = "dark"
     SYSTEM = "system"
@@ -61,18 +63,18 @@ def resolve_theme_mode(mode: str | ThemeMode | None) -> ThemeMode:
     return candidate if candidate in COLORS else ThemeMode.LIGHT
 
 
-def apply_theme(root, mode: ThemeMode = ThemeMode.LIGHT) -> ThemeMode:
-    """Applies theme to root window. Returns the effective mode."""
+def apply_theme(mode: ThemeMode = ThemeMode.LIGHT) -> ThemeMode:
+    """Applies theme to the default root window. Returns the effective mode."""
     if mode == ThemeMode.SYSTEM:
         mode = ThemeMode.LIGHT
 
     sv_ttk.set_theme(mode)
 
-    _configure_named_styles(root, mode)
+    _configure_named_styles(mode)
     return mode
 
 
-def _configure_named_styles(root, mode: ThemeMode) -> None:
+def _configure_named_styles(mode: ThemeMode) -> None:
     """Registers custom ttk styles using semantic color tokens."""
     c = COLORS.get(mode, COLORS[ThemeMode.LIGHT])
     style = ttk.Style()

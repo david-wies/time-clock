@@ -1,3 +1,5 @@
+"""Domain dataclasses and invariant helpers for time, vacation, sickness, and miliuim records."""
+
 __all__ = [
     "Hours",
     "BreakMinutes",
@@ -86,6 +88,8 @@ def time_record_invariant_errors(record: "TimeRecord") -> list[str]:
 
 @dataclass(slots=True)
 class TimeRecord:
+    """A single clock-in/out record for one calendar day."""
+
     id: int | None
     date: date
     start_time: time
@@ -107,6 +111,7 @@ class TimeRecord:
 
     @property
     def is_open(self) -> bool:
+        """Whether this record has no end time yet (still clocked in)."""
         return self.end_time is None
 
 
@@ -135,6 +140,8 @@ def vacation_record_invariant_errors(record: "VacationRecord") -> list[str]:
 
 @dataclass(slots=True)
 class VacationRecord:
+    """A single vacation day entry with its type, hours, and note."""
+
     id: int | None
     date: date
     hours: Hours
@@ -188,6 +195,8 @@ def sickness_record_invariant_errors(record: "SicknessRecord") -> list[str]:
 
 @dataclass(slots=True)
 class SicknessRecord:
+    """A single sick-leave entry for one calendar day."""
+
     id: int | None
     date: date
     hours: Hours
@@ -203,12 +212,16 @@ class SicknessRecord:
 
 @dataclass(slots=True)
 class Result:
+    """The outcome of a controller operation, carrying success and any validation errors."""
+
     ok: bool
     errors: list[str]
 
 
 @dataclass(slots=True)
 class VacationSummary:
+    """A year's vacation balance: allowance, carry-over, usage, and remaining hours."""
+
     allowance: float
     carry_over: float
     total_pool: float
@@ -218,6 +231,8 @@ class VacationSummary:
 
 @dataclass(slots=True)
 class CarryOverAllowance:
+    """The surplus vacation hours eligible to carry over into the next year."""
+
     prev_surplus: float
     max_carry_over: float
     already_transferred: float
@@ -227,6 +242,8 @@ class CarryOverAllowance:
 
 @dataclass(slots=True)
 class SicknessSummary:
+    """A year's sick-leave balance: allowance, usage, and remaining hours."""
+
     allowance_hours: float
     used_hours: float
     remaining_hours: float
@@ -234,6 +251,8 @@ class SicknessSummary:
 
 @dataclass(slots=True)
 class WorkDayException:
+    """An override of a calendar day's expected work hours, such as a holiday or short day."""
+
     id: int
     date: date
     hours: float
@@ -242,6 +261,8 @@ class WorkDayException:
 
 @dataclass(slots=True)
 class CarryOverLogEntry:
+    """A historical record of a vacation carry-over transfer between two years."""
+
     id: int
     from_year: int
     to_year: int
@@ -269,6 +290,8 @@ def miliuim_record_invariant_errors(record: "MiliuimRecord") -> list[str]:
 
 @dataclass(slots=True)
 class MiliuimRecord:
+    """A single reserve-duty (miliuim) period spanning a start and end date."""
+
     id: int | None
     start_date: date
     end_date: date
@@ -283,12 +306,16 @@ class MiliuimRecord:
 
 @dataclass(slots=True)
 class MiliuimSummary:
+    """A year's aggregate reserve-duty (miliuim) totals: period count and total days."""
+
     period_count: int
     total_days: int
 
 
 @dataclass(slots=True)
 class PeriodBalance:
+    """A period's worked-vs-target hour balance, including weighted overtime."""
+
     worked_hours: float
     target_hours: float
     balance: float
