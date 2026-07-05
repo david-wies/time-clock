@@ -66,8 +66,11 @@ def test_shared_connection_close_is_a_no_op_for_file_db(tmp_path) -> None:
 
 
 def test_pragmas_configured_once_at_construction_for_file_db(tmp_path) -> None:
-    """journal_mode=WAL, foreign_keys=ON, and the previously-missing
-    synchronous=NORMAL must all be set on the persistent connection."""
+    """journal_mode=WAL, foreign_keys=ON, and synchronous=FULL must all be
+    set on the persistent connection. FULL (not NORMAL) is required for
+    file-backed DBs: with WAL mode, synchronous=NORMAL can lose a committed
+    transaction on OS crash or power loss, which is unacceptable for this
+    app's time-tracking/payroll-adjacent data."""
     db_path = tmp_path / "time_clock.db"
     db = Database(db_path=str(db_path))
     conn = db.get_connection()
@@ -79,8 +82,8 @@ def test_pragmas_configured_once_at_construction_for_file_db(tmp_path) -> None:
     assert foreign_keys == 1
 
     synchronous = conn.execute("PRAGMA synchronous;").fetchone()[0]
-    # NORMAL == 1 in SQLite's PRAGMA synchronous encoding.
-    assert synchronous == 1
+    # FULL == 2 in SQLite's PRAGMA synchronous encoding.
+    assert synchronous == 2
 
 
 def test_pragmas_configured_for_memory_db() -> None:

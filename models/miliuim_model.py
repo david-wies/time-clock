@@ -76,6 +76,37 @@ class MiliuimModel:
             )
             return self._rows_to_records(cursor.fetchall())
 
+    def get_date_ranges_in_range(
+        self, start: date, end: date
+    ) -> list[tuple[int, date, date]]:
+        """Returns (id, start_date, end_date) for every miliuim_period row
+        overlapping [start, end], via a raw SQL read that never constructs a
+        MiliuimRecord.
+
+        Unlike get_records_in_date_range(), this cannot silently drop a row:
+        MiliuimController.save_record()'s overlap check needs every
+        overlapping period to be visible, including a pre-existing row that
+        would fail MiliuimRecord's invariants (e.g. an overlong note from
+        before the 500-char limit existed, or a restored backup) and that
+        get_records_in_date_range() -> _row_to_record() would otherwise
+        catch and skip.
+        """
+        with self.db.connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT id, start_date, end_date FROM miliuim_period"
+                " WHERE start_date <= ? AND end_date >= ? ORDER BY start_date;",
+                (date_to_iso(end), date_to_iso(start)),
+            )
+            return [
+                (
+                    row["id"],
+                    iso_to_date(row["start_date"]),
+                    iso_to_date(row["end_date"]),
+                )
+                for row in cursor.fetchall()
+            ]
+
     def insert_record(self, record: MiliuimRecord) -> int:
         with self.db.connection() as conn:
             with conn:
@@ -135,7 +166,21 @@ class MiliuimModel:
             return 0
         return (clipped_end - clipped_start).days + 1
 
-    def calculate_summary(self, year: int) -> MiliuimSummary:
-        records = self.get_records_for_year(year)
+    def calculate_summary(
+        self, year: int, records: list[MiliuimRecord] | None = None
+    ) -> MiliuimSummary:
+        """Computes the year's Miliuim period-count/total-days summary.
+
+        If `records` is omitted, the full-year record set is fetched
+        internally (existing behavior, unchanged for any caller that
+        doesn't already have the records on hand). If the caller already
+        fetched the year's records itself (e.g. MiliuimTab building both
+        the balance summary and the record tree from one fetch per
+        refresh), pass them in here to skip the redundant query. Mirrors
+        VacationModel.calculate_vacation_summary() and
+        SicknessModel.calculate_sickness_summary().
+        """
+        if records is None:
+            records = self.get_records_for_year(year)
         total_days = sum(self.clip_days(r, year) for r in records)
         return MiliuimSummary(period_count=len(records), total_days=total_days)

@@ -1,6 +1,6 @@
 import logging
-import sqlite3
 
+from controllers.time_clock_controller import DatabaseErrorGuard
 from domain.types import MiliuimRecord, Result, miliuim_record_invariant_errors
 from models.miliuim_model import MiliuimModel
 
@@ -28,37 +28,49 @@ class MiliuimController:
         if errors:
             return Result(ok=False, errors=errors)
 
-        existing = self.model.get_records_in_date_range(
-            record.start_date, record.end_date
+        # The overlap-check read and the insert/update are both wrapped by
+        # the same guard below: a sqlite3.Error raised by either one (e.g.
+        # a locked DB during the read) must turn into a Result, never
+        # propagate past this method.
+        guard = DatabaseErrorGuard(
+            logger, "Database error while saving Miliuim record %r", record
         )
-        for other in existing:
-            if other.id == record.id:
-                continue
-            errors.append(
-                "Period overlaps with an existing Miliuim period "
-                f"({other.start_date.isoformat()} – {other.end_date.isoformat()})."
+        with guard:
+            # Uses a lightweight raw-SQL read (id, start_date, end_date only)
+            # instead of get_records_in_date_range(), which goes through
+            # MiliuimRecord construction and silently drops any row that
+            # fails validation (see MiliuimModel._row_to_record()). A
+            # dropped row here would make a genuinely overlapping period
+            # invisible to this check and let it be saved anyway.
+            existing_ranges = self.model.get_date_ranges_in_range(
+                record.start_date, record.end_date
             )
-            break
-        if errors:
-            return Result(ok=False, errors=errors)
+            for other_id, other_start, other_end in existing_ranges:
+                if other_id == record.id:
+                    continue
+                return Result(
+                    ok=False,
+                    errors=[
+                        "Period overlaps with an existing Miliuim period "
+                        f"({other_start.isoformat()} – {other_end.isoformat()})."
+                    ],
+                )
 
-        try:
             if record.id is None:
                 record_id = self.model.insert_record(record)
                 record.id = record_id
             else:
                 self.model.update_record(record)
             return Result(ok=True, errors=[])
-        except sqlite3.Error as e:
-            logger.exception("Database error while saving Miliuim record %r", record)
-            return Result(ok=False, errors=[f"Database error: {e}"])
+        assert guard.result is not None
+        return guard.result
 
     def delete_record(self, record_id: int) -> Result:
-        try:
+        guard = DatabaseErrorGuard(
+            logger, "Database error while deleting Miliuim record id=%s", record_id
+        )
+        with guard:
             self.model.delete_record(record_id)
             return Result(ok=True, errors=[])
-        except sqlite3.Error as e:
-            logger.exception(
-                "Database error while deleting Miliuim record id=%s", record_id
-            )
-            return Result(ok=False, errors=[f"Database error: {e}"])
+        assert guard.result is not None
+        return guard.result

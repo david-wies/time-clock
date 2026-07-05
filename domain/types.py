@@ -23,6 +23,14 @@ from domain.enums import VacationType, WorkType
 _MAX_NOTE_LENGTH = 500
 
 
+def _check_note_length(note: str | None, errors: list[str]) -> None:
+    """Append the shared note-length error to `errors` if `note` exceeds
+    `_MAX_NOTE_LENGTH`. Factored out of the four `*_invariant_errors`
+    functions, which all enforce this identical universal invariant."""
+    if note and len(note) > _MAX_NOTE_LENGTH:
+        errors.append(f"Note is too long (max {_MAX_NOTE_LENGTH} characters).")
+
+
 class Hours(float):
     """A non-negative quantity of hours. Behaves as a plain ``float`` (arithmetic,
     formatting, sqlite3 binding) but rejects negative values at construction."""
@@ -71,8 +79,7 @@ def time_record_invariant_errors(record: "TimeRecord") -> list[str]:
     if record.work_type == WorkType.IN_SITE and office_missing:
         errors.append("Please select or enter an office.")
 
-    if record.note and len(record.note) > _MAX_NOTE_LENGTH:
-        errors.append(f"Note is too long (max {_MAX_NOTE_LENGTH} characters).")
+    _check_note_length(record.note, errors)
 
     return errors
 
@@ -121,8 +128,7 @@ def vacation_record_invariant_errors(record: "VacationRecord") -> list[str]:
     if record.hours < 0:
         errors.append("Hours must be non-negative.")
 
-    if record.note and len(record.note) > _MAX_NOTE_LENGTH:
-        errors.append(f"Note is too long (max {_MAX_NOTE_LENGTH} characters).")
+    _check_note_length(record.note, errors)
 
     return errors
 
@@ -175,8 +181,7 @@ def sickness_record_invariant_errors(record: "SicknessRecord") -> list[str]:
     if record.hours < 0:
         errors.append("Hours must be non-negative.")
 
-    if record.note and len(record.note) > _MAX_NOTE_LENGTH:
-        errors.append(f"Note is too long (max {_MAX_NOTE_LENGTH} characters).")
+    _check_note_length(record.note, errors)
 
     return errors
 
@@ -257,8 +262,7 @@ def miliuim_record_invariant_errors(record: "MiliuimRecord") -> list[str]:
     if record.end_date < record.start_date:
         errors.append("End date must be on or after start date.")
 
-    if record.note and len(record.note) > _MAX_NOTE_LENGTH:
-        errors.append(f"Note is too long (max {_MAX_NOTE_LENGTH} characters).")
+    _check_note_length(record.note, errors)
 
     return errors
 

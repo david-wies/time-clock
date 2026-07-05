@@ -1,7 +1,7 @@
 import logging
-import sqlite3
 from datetime import date, timedelta
 
+from controllers.time_clock_controller import DatabaseErrorGuard
 from domain.enums import WarningCode
 from domain.types import Hours, Result, SicknessRecord, sickness_record_invariant_errors
 from models.sickness_model import SicknessModel
@@ -61,26 +61,28 @@ class SicknessController:
         if projected_remaining < 0 and not confirm_over_balance:
             return Result(ok=False, errors=[WarningCode.OVER_BALANCE.value])
 
-        try:
+        guard = DatabaseErrorGuard(
+            logger, "Database error while saving sick record %r", record
+        )
+        with guard:
             if record.id is None:
                 record_id = self.model.insert_record(record)
                 record.id = record_id
             else:
                 self.model.update_record(record)
             return Result(ok=True, errors=[])
-        except sqlite3.Error as e:
-            logger.exception("Database error while saving sick record %r", record)
-            return Result(ok=False, errors=[f"Database error: {e}"])
+        assert guard.result is not None
+        return guard.result
 
     def delete_record(self, record_id: int) -> Result:
-        try:
+        guard = DatabaseErrorGuard(
+            logger, "Database error while deleting sick record id=%s", record_id
+        )
+        with guard:
             self.model.delete_record(record_id)
             return Result(ok=True, errors=[])
-        except sqlite3.Error as e:
-            logger.exception(
-                "Database error while deleting sick record id=%s", record_id
-            )
-            return Result(ok=False, errors=[f"Database error: {e}"])
+        assert guard.result is not None
+        return guard.result
 
     def save_range(
         self,
@@ -140,13 +142,14 @@ class SicknessController:
         except ValueError as e:
             return Result(ok=False, errors=[str(e)])
 
-        try:
+        guard = DatabaseErrorGuard(
+            logger,
+            "Database error while saving sick record range %s..%s",
+            start_date,
+            end_date,
+        )
+        with guard:
             self.model.insert_records_bulk(records)
             return Result(ok=True, errors=[])
-        except sqlite3.Error as e:
-            logger.exception(
-                "Database error while saving sick record range %s..%s",
-                start_date,
-                end_date,
-            )
-            return Result(ok=False, errors=[f"Database error: {e}"])
+        assert guard.result is not None
+        return guard.result

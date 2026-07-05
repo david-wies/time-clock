@@ -111,10 +111,10 @@ class SystemTray:
         return bool(self._model.get_open_records_for_date(date.today()))
 
     def _current_icon_image(self) -> Image.Image:
-        return _make_icon(self._is_clocked_in(), self._base_icon)
+        return _make_icon(self._clocked_in_cache, self._base_icon)
 
     def _current_title(self) -> str:
-        return "Time Clock — Clocked In" if self._is_clocked_in() else "Time Clock"
+        return "Time Clock — Clocked In" if self._clocked_in_cache else "Time Clock"
 
     def _build_menu(self) -> pystray.Menu:
         return pystray.Menu(

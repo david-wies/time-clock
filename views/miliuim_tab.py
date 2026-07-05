@@ -10,7 +10,7 @@ from typing import Callable
 from controllers.miliuim_controller import MiliuimController
 from core.events import Event, EventBus
 from core.hebrew_date import to_hebrew_label as _safe_hebrew
-from core.timeutil import to_display_date
+from core.timeutil import date_to_iso, period_bounds, to_display_date
 from domain.types import MiliuimRecord
 from models.miliuim_model import MiliuimModel
 from settings import SettingsManager
@@ -210,9 +210,9 @@ class MiliuimTab(ttk.Frame):
             self._selected_month = idx if idx > 0 else 0
         self._refresh()
 
-    def _refresh_summary(self) -> None:
+    def _refresh_summary(self, records: list[MiliuimRecord]) -> None:
         year = self._selected_year
-        summary = self.model.calculate_summary(year)
+        summary = self.model.calculate_summary(year, records=records)
         c = COLORS.get(self._theme_mode, COLORS["light"])
         text = (
             f"Miliuim {year}: {summary.period_count} period(s)"
@@ -235,10 +235,23 @@ class MiliuimTab(ttk.Frame):
             rec.note or "",
         )
 
-    def _refresh_tree(self) -> None:
+    def _refresh_tree(self, year_records: list[MiliuimRecord]) -> None:
         self._clear_tree()
         month = self._selected_month if self._selected_month > 0 else None
-        records = self.model.get_records_for_year(self._selected_year, month)
+        if month is None:
+            records = year_records
+        else:
+            # Filter the already-fetched full-year list in Python instead of
+            # issuing a second SQL query for the same year's data. Mirrors
+            # the overlap test get_records_for_year() runs in SQL: a period
+            # is included if it overlaps the selected month at all.
+            period_start, period_end = period_bounds(self._selected_year, month)
+            records = [
+                r
+                for r in year_records
+                if date_to_iso(r.start_date) <= period_end
+                and date_to_iso(r.end_date) >= period_start
+            ]
 
         total_days = 0
         for rec in records:
@@ -261,8 +274,12 @@ class MiliuimTab(ttk.Frame):
             )
 
     def _refresh(self, **_kw) -> None:
-        self._refresh_summary()
-        self._refresh_tree()
+        # Fetch the full year's records once per refresh cycle and share
+        # them between the summary and the tree, instead of each
+        # independently querying get_records_for_year() for the same data.
+        year_records = self.model.get_records_for_year(self._selected_year)
+        self._refresh_summary(year_records)
+        self._refresh_tree(year_records)
         self._update_button_states()
 
     def _on_event(self, **_kw) -> None:

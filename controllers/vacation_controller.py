@@ -1,6 +1,6 @@
 import logging
-import sqlite3
 
+from controllers.time_clock_controller import DatabaseErrorGuard
 from domain.enums import VacationType, WarningCode
 from domain.types import Result, VacationRecord, vacation_record_invariant_errors
 from models.vacation_model import VacationModel
@@ -93,16 +93,18 @@ class VacationController:
             if projected_remaining < 0 and not confirm_over_balance:
                 return Result(ok=False, errors=[WarningCode.OVER_BALANCE.value])
 
-        try:
+        guard = DatabaseErrorGuard(
+            logger, "Database error while saving vacation record %r", record
+        )
+        with guard:
             if record.id is None:
                 record_id = self.model.insert_record(record)
                 record.id = record_id
             else:
                 self.model.update_record(record)
             return Result(ok=True, errors=[])
-        except sqlite3.Error as e:
-            logger.exception("Database error while saving vacation record %r", record)
-            return Result(ok=False, errors=[f"Database error: {e}"])
+        assert guard.result is not None
+        return guard.result
 
     def add_carry_over(self, from_year: int, to_year: int, hours: float) -> Result:
         """Validates and records a carry-over allocation."""
@@ -123,23 +125,24 @@ class VacationController:
                 ],
             )
 
-        try:
+        guard = DatabaseErrorGuard(
+            logger,
+            "Database error while adding carry-over from_year=%s to_year=%s",
+            from_year,
+            to_year,
+        )
+        with guard:
             self.model.add_carry_over(from_year, to_year, hours)
             return Result(ok=True, errors=[])
-        except sqlite3.Error as e:
-            logger.exception(
-                "Database error while adding carry-over from_year=%s to_year=%s",
-                from_year,
-                to_year,
-            )
-            return Result(ok=False, errors=[f"Database error: {e}"])
+        assert guard.result is not None
+        return guard.result
 
     def delete_record(self, record_id: int) -> Result:
-        try:
+        guard = DatabaseErrorGuard(
+            logger, "Database error while deleting vacation record id=%s", record_id
+        )
+        with guard:
             self.model.delete_record(record_id)
             return Result(ok=True, errors=[])
-        except sqlite3.Error as e:
-            logger.exception(
-                "Database error while deleting vacation record id=%s", record_id
-            )
-            return Result(ok=False, errors=[f"Database error: {e}"])
+        assert guard.result is not None
+        return guard.result

@@ -104,7 +104,18 @@ class Database:
         raw_conn.row_factory = sqlite3.Row
         raw_conn.execute("PRAGMA journal_mode=WAL;")
         raw_conn.execute("PRAGMA foreign_keys=ON;")
-        raw_conn.execute("PRAGMA synchronous=NORMAL;")
+        # synchronous=FULL (not NORMAL) for real, file-backed databases: this
+        # app stores time-tracking/payroll-adjacent data, and with WAL mode
+        # SQLite documents that synchronous=NORMAL can lose (roll back) a
+        # committed transaction on OS crash or power loss. FULL preserves
+        # the pre-single-connection durability guarantee while still
+        # keeping the legitimate WAL concurrency improvement. For
+        # ':memory:' databases durability across a crash is moot (the data
+        # doesn't survive the process anyway), so NORMAL remains fine there.
+        if self.db_path == ":memory:":
+            raw_conn.execute("PRAGMA synchronous=NORMAL;")
+        else:
+            raw_conn.execute("PRAGMA synchronous=FULL;")
         self._shared_conn = SharedConnectionWrapper(raw_conn)
 
         self._init_db()

@@ -1,6 +1,8 @@
 import logging
 import sqlite3
+from contextlib import AbstractContextManager
 from datetime import datetime, time
+from types import TracebackType
 from typing import Callable
 
 from domain.enums import WarningCode, WorkType
@@ -9,6 +11,49 @@ from models.time_clock_model import TimeClockModel
 from settings import SettingsManager
 
 logger = logging.getLogger(__name__)
+
+
+class DatabaseErrorGuard(AbstractContextManager[None]):
+    """Shared implementation of this codebase's "controllers return Result,
+    never raise for expected validation failures" rule, specifically for
+    sqlite3 errors raised by model calls.
+
+    Every controller `save_record()`/`delete_record()`/etc. method used to
+    hand-copy the same `except sqlite3.Error as e: logger.exception(...);
+    return Result(ok=False, errors=[f"Database error: {e}"])` block around
+    its DB calls. This context manager centralizes that policy so there is
+    one place to change it. Any exception type other than sqlite3.Error is
+    left to propagate unchanged, matching the original per-site behavior.
+
+    The `with` block is expected to `return` on its success path, so code
+    after the `with` statement is reached only when an error was caught —
+    at which point `.result` is guaranteed to be set:
+
+        guard = DatabaseErrorGuard(logger, "Database error while X %r", record)
+        with guard:
+            self.model.insert_record(record)
+            return Result(ok=True, errors=[])
+        assert guard.result is not None
+        return guard.result
+    """
+
+    def __init__(self, log: logging.Logger, message: str, *args: object) -> None:
+        self._log = log
+        self._message = message
+        self._args = args
+        self.result: Result | None = None
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> bool:
+        if exc_type is not None and issubclass(exc_type, sqlite3.Error):
+            self._log.exception(self._message, *self._args)
+            self.result = Result(ok=False, errors=[f"Database error: {exc}"])
+            return True
+        return False
 
 
 def times_overlap(s1: time, e1: time | None, s2: time, e2: time | None) -> bool:
@@ -98,7 +143,10 @@ class TimeClockController:
         if blocking:
             return Result(ok=False, errors=blocking)
 
-        try:
+        guard = DatabaseErrorGuard(
+            logger, "Database error while saving time record %r", record
+        )
+        with guard:
             if record.id is None:
                 record_id = self.model.insert_record(record)
                 record.id = record_id
@@ -108,9 +156,8 @@ class TimeClockController:
             self.settings.set("last_used_work_type", record.work_type.value)
             # may contain OVERNIGHT_SHIFT_WARNING
             return Result(ok=True, errors=errors)
-        except sqlite3.Error as e:
-            logger.exception("Database error while saving time record %r", record)
-            return Result(ok=False, errors=[f"Database error: {e}"])
+        assert guard.result is not None
+        return guard.result
 
     def clock_in(
         self, work_type: WorkType | None = None, force: bool = False
@@ -140,16 +187,19 @@ class TimeClockController:
             office = offices[0] if offices else "Main Office"
 
         now = self._clock()
-        record = TimeRecord(
-            id=None,
-            date=now.date(),
-            start_time=now.time().replace(second=0, microsecond=0),
-            end_time=None,
-            break_minutes=BreakMinutes(0),
-            work_type=work_type,
-            office=office,
-            note="",
-        )
+        try:
+            record = TimeRecord(
+                id=None,
+                date=now.date(),
+                start_time=now.time().replace(second=0, microsecond=0),
+                end_time=None,
+                break_minutes=BreakMinutes(0),
+                work_type=work_type,
+                office=office,
+                note="",
+            )
+        except ValueError as e:
+            return Result(ok=False, errors=[str(e)])
 
         existing = self.model.get_records_by_date(record.date)
         existing_for_validation = [r for r in existing if r.end_time is not None]
@@ -158,12 +208,12 @@ class TimeClockController:
         if blocking:
             return Result(ok=False, errors=blocking)
 
-        try:
+        guard = DatabaseErrorGuard(logger, "Database error while clocking in")
+        with guard:
             self.model.insert_record(record)
             return Result(ok=True, errors=[])
-        except sqlite3.Error as e:
-            logger.exception("Database error while clocking in")
-            return Result(ok=False, errors=[f"Database error: {e}"])
+        assert guard.result is not None
+        return guard.result
 
     def clock_out(self, record_id: int | None = None) -> Result:
         """
@@ -209,21 +259,21 @@ class TimeClockController:
         if blocking:
             return Result(ok=False, errors=blocking)
 
-        try:
+        guard = DatabaseErrorGuard(
+            logger, "Database error while clocking out record id=%s", target_record.id
+        )
+        with guard:
             self.model.update_record(target_record)
             return Result(ok=True, errors=errors)
-        except sqlite3.Error as e:
-            logger.exception(
-                "Database error while clocking out record id=%s", target_record.id
-            )
-            return Result(ok=False, errors=[f"Database error: {e}"])
+        assert guard.result is not None
+        return guard.result
 
     def delete_record(self, record_id: int) -> Result:
-        try:
+        guard = DatabaseErrorGuard(
+            logger, "Database error while deleting time record id=%s", record_id
+        )
+        with guard:
             self.model.delete_record(record_id)
             return Result(ok=True, errors=[])
-        except sqlite3.Error as e:
-            logger.exception(
-                "Database error while deleting time record id=%s", record_id
-            )
-            return Result(ok=False, errors=[f"Database error: {e}"])
+        assert guard.result is not None
+        return guard.result
