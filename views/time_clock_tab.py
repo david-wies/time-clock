@@ -18,11 +18,12 @@ from core.balance import (
 from core.events import Event, EventBus
 from core.hebrew_date import to_hebrew_label as _safe_hebrew
 from core.timeutil import time_to_str, to_display_date
-from domain.enums import WarningCode, WorkType
+from domain.enums import WarningCode, Weekday, WorkType
 from domain.types import TimeRecord, WorkDayException
 from models.time_clock_model import TimeClockModel
 from settings import SettingsManager
-from theme.style import COLORS, resolve_theme_mode
+from theme.style import COLORS, ThemeMode, resolve_theme_mode
+from views.enums import ViewMode
 from views.time_record_dialog import TimeRecordDialog
 
 logger = logging.getLogger(__name__)
@@ -105,10 +106,15 @@ class TimeClockTab(ttk.Frame):
         self.settings = settings
         self.bus = bus
         self.root = root
-        self._theme_mode: str = resolve_theme_mode(self.settings.get("theme"))
+        self._theme_mode: ThemeMode = resolve_theme_mode(self.settings.get("theme"))
 
         today = date.today()
-        self._view_mode: str = self.settings.get("view_mode") or "month"
+        try:
+            self._view_mode: ViewMode = ViewMode(
+                self.settings.get("view_mode") or ViewMode.MONTH
+            )
+        except ValueError:
+            self._view_mode = ViewMode.MONTH
         self._selected_year: int = today.year
         self._selected_month: int = today.month
         self._selected_week_start: date = self._week_start_for(today)
@@ -130,15 +136,13 @@ class TimeClockTab(ttk.Frame):
 
     # ──────────────────────── Week helpers ──────────────────────────────────
 
-    def _week_first_day(self) -> int:
-        """Returns the configured first day of the week as a Python weekday
-        (0=Mon, 6=Sun).
-        """
+    def _week_first_day(self) -> Weekday:
+        """Returns the configured first day of the week."""
         raw = self.settings.get("week_first_day", 0)
         try:
-            return int(raw)
+            return Weekday(int(raw))
         except (TypeError, ValueError):
-            return 0
+            return Weekday.MON
 
     def _week_start_for(self, d: date) -> date:
         """Returns the start of the week containing d.
@@ -181,12 +185,18 @@ class TimeClockTab(ttk.Frame):
 
         # View-mode toggle
         self._btn_week = ttk.Button(
-            bar, text="Week", width=7, command=lambda: self._set_view_mode("week")
+            bar,
+            text="Week",
+            width=7,
+            command=lambda: self._set_view_mode(ViewMode.WEEK),
         )
         self._btn_week.pack(side="left", padx=(0, 2))
 
         self._btn_month = ttk.Button(
-            bar, text="Month", width=7, command=lambda: self._set_view_mode("month")
+            bar,
+            text="Month",
+            width=7,
+            command=lambda: self._set_view_mode(ViewMode.MONTH),
         )
         self._btn_month.pack(side="left", padx=(0, 8))
 
@@ -352,7 +362,7 @@ class TimeClockTab(ttk.Frame):
         self.root.bind_all("<F5>", _guard(self._refresh), add=True)
 
     def _apply_tag_styles(self) -> None:
-        c = COLORS.get(self._theme_mode, COLORS["light"])
+        c = COLORS.get(self._theme_mode, COLORS[ThemeMode.LIGHT])
         self._tree.tag_configure(
             "header", foreground=c["fg.muted"], font=("Helvetica", 9, "bold")
         )
@@ -368,7 +378,7 @@ class TimeClockTab(ttk.Frame):
 
     # ─────────────────────────── Toolbar / View Mode ────────────────────────
 
-    def _set_view_mode(self, mode: str) -> None:
+    def _set_view_mode(self, mode: ViewMode) -> None:
         if self._view_mode == mode:
             return
         self._view_mode = mode
@@ -377,7 +387,7 @@ class TimeClockTab(ttk.Frame):
         self._refresh_tree()
 
     def _refresh_toolbar(self) -> None:
-        is_week = self._view_mode == "week"
+        is_week = self._view_mode == ViewMode.WEEK
         if is_week:
             self._frm_month.pack_forget()
             self._frm_week.pack(side="left")
@@ -457,7 +467,7 @@ class TimeClockTab(ttk.Frame):
         self._lbl_today.config(text=f"Today: {to_display_date(today)}")
         self._lbl_target.config(text=f"Target: {_fmt_h(target_h)}")
 
-        c = COLORS.get(self._theme_mode, COLORS["light"])
+        c = COLORS.get(self._theme_mode, COLORS[ThemeMode.LIGHT])
         if target_h == 0:
             self._lbl_remaining.config(text="Day off", foreground=c["fg.muted"])
         elif remaining > 0:
@@ -489,7 +499,7 @@ class TimeClockTab(ttk.Frame):
             targets = self.model.get_work_day_targets()
         if exc_cache is None:
             exc_cache = {}
-        if self._view_mode == "week":
+        if self._view_mode == ViewMode.WEEK:
             self._populate_week(targets, exc_cache)
         else:
             self._populate_month(targets, exc_cache)

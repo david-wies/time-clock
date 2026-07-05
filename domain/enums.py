@@ -1,6 +1,13 @@
 from enum import IntEnum, StrEnum
 
-__all__ = ["WorkType", "VacationType", "Weekday", "WarningCode", "PeriodType"]
+__all__ = [
+    "WorkType",
+    "VacationType",
+    "Weekday",
+    "WarningCode",
+    "PeriodType",
+    "OvertimePeriod",
+]
 
 
 class WorkType(StrEnum):
@@ -37,4 +44,10 @@ class WarningCode(StrEnum):
 class PeriodType(StrEnum):
     MONTH = "month"
     QUARTER = "quarter"
+    YEAR = "year"
+
+
+class OvertimePeriod(StrEnum):
+    WEEK = "week"
+    MONTH = "month"
     YEAR = "year"

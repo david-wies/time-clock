@@ -14,7 +14,7 @@ from core.timeutil import to_display_date
 from domain.types import SicknessRecord
 from models.sickness_model import SicknessModel
 from settings import SettingsManager
-from theme.style import COLORS, resolve_theme_mode
+from theme.style import COLORS, ThemeMode, resolve_theme_mode
 from views.sick_record_dialog import SickRecordDialog
 
 _MONTH_NAMES = [
@@ -52,7 +52,7 @@ class SicknessTab(ttk.Frame):
         self.settings = settings
         self.bus = bus
         self.root = root
-        self._theme_mode: str = resolve_theme_mode(self.settings.get("theme"))
+        self._theme_mode: ThemeMode = resolve_theme_mode(self.settings.get("theme"))
 
         today = date.today()
         self._selected_year: int = today.year
@@ -226,7 +226,7 @@ class SicknessTab(ttk.Frame):
         allowance = summary.allowance_hours
         remaining = summary.remaining_hours
 
-        c = COLORS.get(self._theme_mode, COLORS["light"])
+        c = COLORS.get(self._theme_mode, COLORS[ThemeMode.LIGHT])
         if remaining < 0:
             bal_color = c["warning"]
         elif remaining == 0:
@@ -289,7 +289,7 @@ class SicknessTab(ttk.Frame):
                 values=self._make_row_values(None, f"Total: {total_hours:.1f}h"),
                 tags=("total",),
             )
-            c = COLORS.get(self._theme_mode, COLORS["light"])
+            c = COLORS.get(self._theme_mode, COLORS[ThemeMode.LIGHT])
             self._tree.tag_configure(
                 "total", foreground=c["fg.muted"], font=("Helvetica", 9, "bold")
             )

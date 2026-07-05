@@ -31,6 +31,7 @@ from reportlab.platypus import (
 
 from core.report import MONTH_NAMES, ReportData, period_range, period_summary
 from core.timeutil import to_display_date
+from domain.enums import PeriodType
 from models.miliuim_model import MiliuimModel
 from models.sickness_model import SicknessModel
 from models.time_clock_model import TimeClockModel
@@ -112,17 +113,17 @@ class ReportDialog(tk.Toplevel):
         )
         frm_radios = ttk.Frame(frm)
         frm_radios.grid(row=0, column=1, sticky="w", pady=3)
-        self._var_period = tk.StringVar(value="month")
+        self._var_period = tk.StringVar(value=str(PeriodType.MONTH))
         for label, value in [
-            ("Month", "month"),
-            ("Quarter", "quarter"),
-            ("Year", "year"),
+            ("Month", PeriodType.MONTH),
+            ("Quarter", PeriodType.QUARTER),
+            ("Year", PeriodType.YEAR),
         ]:
             ttk.Radiobutton(
                 frm_radios,
                 text=label,
                 variable=self._var_period,
-                value=value,
+                value=str(value),
                 command=self._on_period_changed,
             ).pack(side="left", padx=(0, 10))
 
@@ -219,13 +220,13 @@ class ReportDialog(tk.Toplevel):
     # ─────────────────────────── Period Toggle ───────────────────────────────
 
     def _on_period_changed(self) -> None:
-        period = self._var_period.get()
-        if period == "month":
+        period = PeriodType(self._var_period.get())
+        if period == PeriodType.MONTH:
             self._lbl_month.grid()
             self._cbo_month.grid()
             self._lbl_quarter.grid_remove()
             self._cbo_quarter.grid_remove()
-        elif period == "quarter":
+        elif period == PeriodType.QUARTER:
             self._lbl_month.grid_remove()
             self._cbo_month.grid_remove()
             self._lbl_quarter.grid()
@@ -247,11 +248,11 @@ class ReportDialog(tk.Toplevel):
             )
             return None
 
-        period_type = self._var_period.get()
+        period_type = PeriodType(self._var_period.get())
         month: int | None = None
         quarter: int | None = None
 
-        if period_type == "month":
+        if period_type == PeriodType.MONTH:
             month_name = self._var_month.get()
             if month_name not in MONTH_NAMES[1:]:
                 messagebox.showerror(
@@ -260,7 +261,7 @@ class ReportDialog(tk.Toplevel):
                 return None
             month = MONTH_NAMES.index(month_name)
 
-        elif period_type == "quarter":
+        elif period_type == PeriodType.QUARTER:
             q_str = self._var_quarter.get()
             try:
                 quarter = int(q_str[1])

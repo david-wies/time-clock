@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from datetime import date
 
 from core.balance import group_records_by_date, period_balance_from_grouped
+from domain.enums import PeriodType
 from models.miliuim_model import MiliuimModel
 from models.sickness_model import SicknessModel
 from models.time_clock_model import TimeClockModel
@@ -42,7 +43,7 @@ class MonthlyRow:
 @dataclass(slots=True)
 class ReportData:
     period_label: str  # e.g. "June 2026", "Q2 2026", "2026"
-    period_type: str  # "month" | "quarter" | "year"
+    period_type: PeriodType
     year: int
     month: int | None  # None for year/quarter reports
     quarter: int | None  # None for month/year reports
@@ -91,21 +92,21 @@ def _month_range(year: int, month: int) -> tuple[date, date]:
 
 
 def period_range(
-    period_type: str,
+    period_type: PeriodType,
     year: int,
     month: int | None,
     quarter: int | None,
 ) -> tuple[date, date]:
-    if period_type == "month":
+    if period_type == PeriodType.MONTH:
         if month is None:
             raise ValueError("month is required for period_type='month'")
         return _month_range(year, month)
-    if period_type == "quarter":
+    if period_type == PeriodType.QUARTER:
         if quarter is None:
             raise ValueError("quarter is required for period_type='quarter'")
         months = _quarter_months(quarter)
         return date(year, months[0], 1), _month_range(year, months[-1])[1]
-    if period_type == "year":
+    if period_type == PeriodType.YEAR:
         return date(year, 1, 1), date(year, 12, 31)
     raise ValueError(f"Unknown period_type: {period_type!r}")
 
@@ -114,14 +115,14 @@ _period_range = period_range
 
 
 def _period_label(
-    period_type: str,
+    period_type: PeriodType,
     year: int,
     month: int | None,
     quarter: int | None,
 ) -> str:
-    if period_type == "month":
+    if period_type == PeriodType.MONTH:
         return f"{MONTH_NAMES[month or 1]} {year}"
-    if period_type == "quarter":
+    if period_type == PeriodType.QUARTER:
         return f"Q{quarter} {year}"
     return str(year)
 
@@ -130,7 +131,7 @@ def _period_label(
 
 
 def period_summary(
-    period_type: str,  # "month" | "quarter" | "year"
+    period_type: PeriodType,
     year: int,
     # required when period_type="month"; pass None for "quarter" and "year"
     month: int | None,
@@ -151,7 +152,7 @@ def period_summary(
     label = _period_label(period_type, year, month, quarter)
 
     # Fetch records once for the full year so monthly rows can reuse them
-    if period_type == "month":
+    if period_type == PeriodType.MONTH:
         records = model_tc.get_records_for_period(year, month)
     else:
         records = model_tc.get_records_for_period(year)
@@ -174,8 +175,8 @@ def period_summary(
 
     # Monthly breakdown rows (only for quarter / year periods)
     monthly_rows: list[MonthlyRow] = []
-    if period_type in ("quarter", "year"):
-        if period_type == "quarter":
+    if period_type in {PeriodType.QUARTER, PeriodType.YEAR}:
+        if period_type == PeriodType.QUARTER:
             if quarter is None:
                 raise ValueError("quarter is required for period_type='quarter'")
             months_in_period: list[int] = _quarter_months(quarter)

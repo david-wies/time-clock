@@ -2,7 +2,7 @@ import logging
 import os
 import platform
 import sqlite3
-from collections.abc import Iterator
+from collections.abc import Generator
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
@@ -126,7 +126,7 @@ class Database:
         return self._shared_conn
 
     @contextmanager
-    def connection(self) -> Iterator[SharedConnectionWrapper]:
+    def connection(self) -> Generator[SharedConnectionWrapper]:
         """Yields the single persistent connection shared for the app's lifetime.
 
         This exists purely for readable call-site syntax (``with self.db.connection()
@@ -148,7 +148,7 @@ class Database:
             conn.close()
         return
 
-    def _create_tables(self, conn: sqlite3.Connection) -> None:
+    def _create_tables(self, conn: SharedConnectionWrapper) -> None:
         """Creates tables if they do not exist."""
         # 1. Daily work targets
         conn.execute("""
@@ -301,7 +301,7 @@ class Database:
         """)
         return
 
-    def _apply_migrations(self, conn: sqlite3.Connection) -> None:
+    def _apply_migrations(self, conn: SharedConnectionWrapper) -> None:
         """Applies schema migrations using user_version."""
         cursor = conn.cursor()
         cursor.execute("PRAGMA user_version;")

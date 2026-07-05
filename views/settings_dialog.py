@@ -11,12 +11,13 @@ import holidays
 
 from core.events import Event, EventBus
 from core.timeutil import date_to_iso, iso_to_date, to_display_date
-from domain.enums import VacationType, WorkType
+from domain.enums import OvertimePeriod, VacationType, Weekday, WorkType
 from domain.types import VacationRecord, WorkDayException
 from models.sickness_model import SicknessModel
 from models.time_clock_model import TimeClockModel
 from models.vacation_model import VacationModel
 from settings import SettingsManager
+from theme.style import ThemeMode
 from views.date_picker import make_date_picker
 
 _DAY_NAMES = [
@@ -72,7 +73,7 @@ _WORK_TYPE_OPTIONS: list[tuple[WorkType, str]] = [
     (WorkType.REMOTE, "Remote"),
 ]
 
-_OVERTIME_PERIODS = ["week", "month", "year"]
+_OVERTIME_PERIODS = [str(p) for p in OvertimePeriod]
 
 
 class SettingsDialog(tk.Toplevel):
@@ -188,7 +189,7 @@ class SettingsDialog(tk.Toplevel):
         targets = self._model_tc.get_work_day_targets()
         self._day_vars: dict[int, tuple[tk.BooleanVar, tk.StringVar]] = {}
 
-        week_start = int(self._settings.get("week_first_day") or 0)
+        week_start = Weekday(int(self._settings.get("week_first_day") or 0))
         day_order = [(week_start + i) % 7 for i in range(7)]
 
         for day_idx in day_order:
@@ -299,7 +300,7 @@ class SettingsDialog(tk.Toplevel):
         ).pack(side="left", padx=(4, 16))
         ttk.Label(ot_row, text="Period:").pack(side="left")
         self._var_ot_period = tk.StringVar(
-            value=self._settings.get("overtime_period") or "month"
+            value=str(self._settings.get("overtime_period") or OvertimePeriod.MONTH)
         )
         ttk.Combobox(
             ot_row,
@@ -725,10 +726,16 @@ class SettingsDialog(tk.Toplevel):
 
         lf_theme = ttk.LabelFrame(outer, text="Theme", padding=(8, 4, 8, 8))
         lf_theme.pack(fill="x")
-        self._var_theme = tk.StringVar(value=self._settings.get("theme") or "system")
-        for val, label in [("light", "Light"), ("dark", "Dark"), ("system", "System")]:
+        self._var_theme = tk.StringVar(
+            value=str(self._settings.get("theme") or ThemeMode.SYSTEM)
+        )
+        for val, label in [
+            (ThemeMode.LIGHT, "Light"),
+            (ThemeMode.DARK, "Dark"),
+            (ThemeMode.SYSTEM, "System"),
+        ]:
             ttk.Radiobutton(
-                lf_theme, text=label, variable=self._var_theme, value=val
+                lf_theme, text=label, variable=self._var_theme, value=str(val)
             ).pack(anchor="w", pady=2)
 
         lf_cal = ttk.LabelFrame(outer, text="Calendar", padding=(8, 4, 8, 8))
@@ -736,9 +743,9 @@ class SettingsDialog(tk.Toplevel):
         row = ttk.Frame(lf_cal)
         row.pack(anchor="w")
         ttk.Label(row, text="Week starts on:").pack(side="left", padx=(0, 8))
-        # _WEEK_FIRST_DAY_OPTIONS maps display label → Python weekday int (0=Mon, 6=Sun)
-        self._WEEK_FIRST_DAY_OPTIONS = {"Monday": 0, "Sunday": 6}
-        current_wfd = int(self._settings.get("week_first_day", 0))
+        # _WEEK_FIRST_DAY_OPTIONS maps display label → Weekday
+        self._WEEK_FIRST_DAY_OPTIONS = {"Monday": Weekday.MON, "Sunday": Weekday.SUN}
+        current_wfd = Weekday(int(self._settings.get("week_first_day", 0)))
         current_label = next(
             (k for k, v in self._WEEK_FIRST_DAY_OPTIONS.items() if v == current_wfd),
             "Monday",
@@ -810,7 +817,8 @@ class SettingsDialog(tk.Toplevel):
             self._settings.set("overtime_period", self._var_ot_period.get())
             self._settings.set("theme", self._var_theme.get())
             self._settings.set(
-                "week_first_day", self._WEEK_FIRST_DAY_OPTIONS.get(wfd_label, 0)
+                "week_first_day",
+                int(self._WEEK_FIRST_DAY_OPTIONS.get(wfd_label, Weekday.MON)),
             )
         except Exception as exc:
             messagebox.showerror(

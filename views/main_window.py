@@ -6,6 +6,7 @@ from tkinter import Menu, StringVar, messagebox, ttk
 from typing import Any
 
 from core.events import Event, EventBus
+from views.enums import ExportTab
 from views.export_dialog import ExportDialog
 from views.help_viewer import open_help, report_bug, show_about, suggest_feature
 from views.report_dialog import ReportDialog
@@ -95,13 +96,16 @@ class MainWindow(ttk.Frame):
 
         file_menu = Menu(menubar, tearoff=0)
         file_menu.add_command(
-            label="Export Time Records", command=lambda: self._open_export("time")
+            label="Export Time Records",
+            command=lambda: self._open_export(ExportTab.TIME),
         )
         file_menu.add_command(
-            label="Export Vacation", command=lambda: self._open_export("vacation")
+            label="Export Vacation",
+            command=lambda: self._open_export(ExportTab.VACATION),
         )
         file_menu.add_command(
-            label="Export Sickness", command=lambda: self._open_export("sickness")
+            label="Export Sickness",
+            command=lambda: self._open_export(ExportTab.SICKNESS),
         )
         file_menu.add_separator()
         file_menu.add_command(label="Reports", command=self._open_report)
@@ -145,7 +149,7 @@ class MainWindow(ttk.Frame):
             bus=self.bus,
         )
 
-    def _open_export(self, tab: str = "time") -> None:
+    def _open_export(self, tab: ExportTab = ExportTab.TIME) -> None:
         if not all([self._model_tc, self._model_vacation, self._model_sickness]):
             self._set_status("Export not available")
             return

@@ -1,11 +1,21 @@
 """Semantic ttk style system with graceful sv-ttk fallback."""
 
+from enum import StrEnum
 from tkinter import ttk
 
 import sv_ttk
 
+__all__ = ["ThemeMode", "COLORS", "resolve_theme_mode", "apply_theme"]
+
+
+class ThemeMode(StrEnum):
+    LIGHT = "light"
+    DARK = "dark"
+    SYSTEM = "system"
+
+
 COLORS = {
-    "light": {
+    ThemeMode.LIGHT: {
         "bg.surface": "#FAFAFA",
         "bg.card": "#FFFFFF",
         "fg.default": "#1A1A1A",
@@ -17,7 +27,7 @@ COLORS = {
         "overtime": "#7C3AED",
         "inprogress_bg": "#FEF3C7",
     },
-    "dark": {
+    ThemeMode.DARK: {
         "bg.surface": "#1E1E1E",
         "bg.card": "#2D2D2D",
         "fg.default": "#E0E0E0",
@@ -32,22 +42,29 @@ COLORS = {
 }
 
 
-def resolve_theme_mode(mode: str | None) -> str:
+def resolve_theme_mode(mode: str | ThemeMode | None) -> ThemeMode:
     """Resolves a stored theme setting (e.g. from SettingsManager) to a
-    concrete ``COLORS`` key. ``"system"`` (no OS dark-mode detection yet),
-    ``None``, and any other unrecognized value fall back to ``"light"``.
+    concrete ``COLORS`` key. ``ThemeMode.SYSTEM`` (no OS dark-mode detection
+    yet), ``None``, and any other unrecognized value fall back to
+    ``ThemeMode.LIGHT``.
 
     Views that build their own tag/foreground colors (treeviews, labels)
-    should use this instead of hardcoding ``COLORS["light"]`` so they
+    should use this instead of hardcoding ``COLORS[ThemeMode.LIGHT]`` so they
     honor the active theme mode the same way ``apply_theme`` does.
     """
-    return mode if mode in COLORS else "light"
+    if mode is None:
+        return ThemeMode.LIGHT
+    try:
+        candidate = ThemeMode(mode)
+    except ValueError:
+        return ThemeMode.LIGHT
+    return candidate if candidate in COLORS else ThemeMode.LIGHT
 
 
-def apply_theme(root, mode: str = "light") -> str:
-    """Applies theme to root window. Returns the effective mode string."""
-    if mode == "system":
-        mode = "light"
+def apply_theme(root, mode: ThemeMode = ThemeMode.LIGHT) -> ThemeMode:
+    """Applies theme to root window. Returns the effective mode."""
+    if mode == ThemeMode.SYSTEM:
+        mode = ThemeMode.LIGHT
 
     sv_ttk.set_theme(mode)
 
@@ -55,9 +72,9 @@ def apply_theme(root, mode: str = "light") -> str:
     return mode
 
 
-def _configure_named_styles(root, mode: str) -> None:
+def _configure_named_styles(root, mode: ThemeMode) -> None:
     """Registers custom ttk styles using semantic color tokens."""
-    c = COLORS.get(mode, COLORS["light"])
+    c = COLORS.get(mode, COLORS[ThemeMode.LIGHT])
     style = ttk.Style()
 
     style.configure(

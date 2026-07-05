@@ -14,7 +14,7 @@ from core.timeutil import date_to_iso, period_bounds, to_display_date
 from domain.types import MiliuimRecord
 from models.miliuim_model import MiliuimModel
 from settings import SettingsManager
-from theme.style import COLORS, resolve_theme_mode
+from theme.style import COLORS, ThemeMode, resolve_theme_mode
 from views.miliuim_record_dialog import MiliuimRecordDialog
 
 _MONTH_NAMES = [
@@ -52,7 +52,7 @@ class MiliuimTab(ttk.Frame):
         self.settings = settings
         self.bus = bus
         self.root = root
-        self._theme_mode: str = resolve_theme_mode(self.settings.get("theme"))
+        self._theme_mode: ThemeMode = resolve_theme_mode(self.settings.get("theme"))
 
         today = date.today()
         self._selected_year: int = today.year
@@ -213,7 +213,7 @@ class MiliuimTab(ttk.Frame):
     def _refresh_summary(self, records: list[MiliuimRecord]) -> None:
         year = self._selected_year
         summary = self.model.calculate_summary(year, records=records)
-        c = COLORS.get(self._theme_mode, COLORS["light"])
+        c = COLORS.get(self._theme_mode, COLORS[ThemeMode.LIGHT])
         text = (
             f"Miliuim {year}: {summary.period_count} period(s)"
             f"  |  {summary.total_days} day(s) total"
@@ -268,7 +268,7 @@ class MiliuimTab(ttk.Frame):
                 values=("", "", "", str(total_days), f"Total: {total_days} days"),
                 tags=("total",),
             )
-            c = COLORS.get(self._theme_mode, COLORS["light"])
+            c = COLORS.get(self._theme_mode, COLORS[ThemeMode.LIGHT])
             self._tree.tag_configure(
                 "total", foreground=c["fg.muted"], font=("Helvetica", 9, "bold")
             )

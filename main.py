@@ -18,7 +18,7 @@ from models.sickness_model import SicknessModel
 from models.time_clock_model import TimeClockModel
 from models.vacation_model import VacationModel
 from settings import SettingsManager
-from theme.style import apply_theme
+from theme.style import ThemeMode, apply_theme, resolve_theme_mode
 from views.main_window import MainWindow
 from views.miliuim_tab import MiliuimTab
 from views.sickness_tab import SicknessTab
@@ -82,7 +82,7 @@ def main() -> None:
     root = tk.Tk()
     root.title("Time Clock")
 
-    mode = settings.get("theme") or "light"
+    mode: ThemeMode = resolve_theme_mode(settings.get("theme"))
     apply_theme(root, mode)
 
     window = MainWindow(
