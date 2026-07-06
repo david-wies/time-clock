@@ -18,8 +18,7 @@ def test_miliuim_events(db: Database, event_bus: EventBus) -> None:
 
     event_bus.subscribe(Event.MILIUIM_CHANGED, on_change)
 
-    rec = MiliuimRecord(None, date(2026, 2, 15),
-                        date(2026, 2, 20), "Reserve duty")
+    rec = MiliuimRecord(None, date(2026, 2, 15), date(2026, 2, 20), "Reserve duty")
     rec_id = model.insert_record(rec)
     assert change_called is True
 
@@ -115,15 +114,13 @@ def test_get_records_in_date_range(db: Database, event_bus: EventBus) -> None:
     model = MiliuimModel(db, event_bus)
 
     rec_inside = MiliuimRecord(None, date(2026, 6, 10), date(2026, 6, 15))
-    rec_overlap_start = MiliuimRecord(
-        None, date(2026, 5, 28), date(2026, 6, 2))
+    rec_overlap_start = MiliuimRecord(None, date(2026, 5, 28), date(2026, 6, 2))
     rec_outside = MiliuimRecord(None, date(2026, 8, 1), date(2026, 8, 5))
     model.insert_record(rec_inside)
     model.insert_record(rec_overlap_start)
     model.insert_record(rec_outside)
 
-    records = model.get_records_in_date_range(
-        date(2026, 6, 1), date(2026, 6, 30))
+    records = model.get_records_in_date_range(date(2026, 6, 1), date(2026, 6, 30))
 
     assert len(records) == 2
     # Ordered by start_date ASC.
@@ -224,8 +221,7 @@ def test_get_date_ranges_in_range_skips_corrupt_date_row_and_logs_warning(
         conn.close()
 
     with caplog.at_level(logging.WARNING, logger="models.miliuim_model"):
-        ranges = model.get_date_ranges_in_range(
-            date(2026, 6, 1), date(2026, 6, 30))
+        ranges = model.get_date_ranges_in_range(date(2026, 6, 1), date(2026, 6, 30))
 
     assert len(ranges) == 1
     assert ranges[0][0] == good_id

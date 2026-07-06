@@ -18,8 +18,7 @@ def controller(db: Database, event_bus: EventBus) -> SicknessController:
 
 
 def test_save_valid_record(controller: SicknessController) -> None:
-    rec = SicknessRecord(id=None, date=date(
-        2026, 2, 15), hours=8.0, note="Flu")
+    rec = SicknessRecord(id=None, date=date(2026, 2, 15), hours=8.0, note="Flu")
     res = controller.save_record(rec)
     assert res.ok is True
 
@@ -202,8 +201,7 @@ def test_save_range_rejects_over_balance_and_confirms_override(
     # Allowance = 16h; a 3-day range at 8h/day would use 24h, exceeding it.
     controller.model.save_settings(2026, 16.0)
 
-    res = controller.save_range(
-        date(2026, 6, 1), date(2026, 6, 3), 8.0, "Sick")
+    res = controller.save_range(date(2026, 6, 1), date(2026, 6, 3), 8.0, "Sick")
     assert res.ok is False
     assert res.errors == ["OVER_BALANCE_WARNING"]
 
@@ -237,8 +235,7 @@ def test_save_range_year_boundary_splits_day_counts_per_year(
     controller.model.save_settings(2026, 100.0)
     controller.model.save_settings(2027, 4.0)
 
-    res = controller.save_range(
-        date(2026, 12, 31), date(2027, 1, 2), 8.0, "Sick")
+    res = controller.save_range(date(2026, 12, 31), date(2027, 1, 2), 8.0, "Sick")
 
     assert res.ok is False
     assert res.errors == ["OVER_BALANCE_WARNING"]
@@ -259,8 +256,7 @@ def test_save_range_year_boundary_succeeds_when_both_years_have_balance(
     controller.model.save_settings(2026, 100.0)
     controller.model.save_settings(2027, 100.0)
 
-    res = controller.save_range(
-        date(2026, 12, 31), date(2027, 1, 2), 8.0, "Sick")
+    res = controller.save_range(date(2026, 12, 31), date(2027, 1, 2), 8.0, "Sick")
 
     assert res.ok is True
 

@@ -56,8 +56,7 @@ class VacationTab(RecordTabMixin, ttk.Frame):
         self.settings = settings
         self.bus = bus
         self.root = root
-        self._theme_mode: ThemeMode = resolve_theme_mode(
-            self.settings.get("theme"))
+        self._theme_mode: ThemeMode = resolve_theme_mode(self.settings.get("theme"))
 
         today = date.today()
         self._selected_year: int = today.year
@@ -75,10 +74,8 @@ class VacationTab(RecordTabMixin, ttk.Frame):
         self._build_ui()
         self._refresh()
 
-        self._unsubs.append(bus.subscribe(
-            Event.VACATION_CHANGED, self._on_event))
-        self._unsubs.append(bus.subscribe(
-            Event.SETTINGS_CHANGED, self._on_event))
+        self._unsubs.append(bus.subscribe(Event.VACATION_CHANGED, self._on_event))
+        self._unsubs.append(bus.subscribe(Event.SETTINGS_CHANGED, self._on_event))
 
         self.bind("<Destroy>", self._on_destroy)
         self.pack(fill="both", expand=True)
@@ -112,8 +109,7 @@ class VacationTab(RecordTabMixin, ttk.Frame):
             side="left", fill="y", pady=5
         )
 
-        self._lbl_breakdown = ttk.Label(
-            self._frm_balance, text="", foreground="gray")
+        self._lbl_breakdown = ttk.Label(self._frm_balance, text="", foreground="gray")
         self._lbl_breakdown.pack(side="left", padx=10, pady=5)
 
         self._build_legend()
@@ -150,8 +146,7 @@ class VacationTab(RecordTabMixin, ttk.Frame):
             selectmode="browse",
         )
 
-        self._tree.column("date", width=110, minwidth=90,
-                          stretch=False, anchor="w")
+        self._tree.column("date", width=110, minwidth=90, stretch=False, anchor="w")
         self._tree.heading("date", text="Date", anchor="center")
 
         self._tree.column(
@@ -159,16 +154,13 @@ class VacationTab(RecordTabMixin, ttk.Frame):
         )
         self._tree.heading("hebrew_date", text="Hebrew Date", anchor="center")
 
-        self._tree.column("type", width=140, minwidth=100,
-                          stretch=False, anchor="w")
+        self._tree.column("type", width=140, minwidth=100, stretch=False, anchor="w")
         self._tree.heading("type", text="Type", anchor="center")
 
-        self._tree.column("hours", width=70, minwidth=50,
-                          stretch=False, anchor="e")
+        self._tree.column("hours", width=70, minwidth=50, stretch=False, anchor="e")
         self._tree.heading("hours", text="Hours", anchor="center")
 
-        self._tree.column("note", width=200, minwidth=80,
-                          stretch=True, anchor="w")
+        self._tree.column("note", width=200, minwidth=80, stretch=True, anchor="w")
         self._tree.heading("note", text="Note", anchor="center")
 
         vsb = ttk.Scrollbar(frame, orient="vertical", command=self._tree.yview)
@@ -285,8 +277,7 @@ class VacationTab(RecordTabMixin, ttk.Frame):
                 "",
                 "end",
                 iid="__total__",
-                values=self._make_row_values(
-                    None, f"Total: {_fmt_h(total_hours)}"),
+                values=self._make_row_values(None, f"Total: {_fmt_h(total_hours)}"),
                 tags=("total",),
             )
             c = COLORS.get(self._theme_mode, COLORS[ThemeMode.LIGHT])
@@ -335,8 +326,7 @@ class VacationTab(RecordTabMixin, ttk.Frame):
         year_records = self.model.get_records_for_year(self._selected_year)
         self._refresh_balance(year_records)
         self._refresh_tree(year_records)
-        self._append_skip_notice(
-            self._lbl_breakdown, self.model.last_skipped_count)
+        self._append_skip_notice(self._lbl_breakdown, self.model.last_skipped_count)
         self._update_button_states()
 
     def _on_event(self, **_kw) -> None:
@@ -382,8 +372,7 @@ class VacationTab(RecordTabMixin, ttk.Frame):
             return
         result = self.controller.delete_record(rec_id)
         if not result.ok:
-            messagebox.showerror("Remove Failed", "\n".join(
-                result.errors), parent=self)
+            messagebox.showerror("Remove Failed", "\n".join(result.errors), parent=self)
 
     def _do_carry_over(self) -> None:
         CarryOverDialog(

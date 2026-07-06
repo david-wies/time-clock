@@ -92,8 +92,7 @@ class TimeClockTab(RecordTabMixin, ttk.Frame):
         self.settings = settings
         self.bus = bus
         self.root = root
-        self._theme_mode: ThemeMode = resolve_theme_mode(
-            self.settings.get("theme"))
+        self._theme_mode: ThemeMode = resolve_theme_mode(self.settings.get("theme"))
 
         # Bare annotations (no value) for widgets assigned later inside the
         # various _build_*() helpers called from _build_ui() — pylint's
@@ -134,10 +133,8 @@ class TimeClockTab(RecordTabMixin, ttk.Frame):
         if self.model.get_open_records():
             self._start_auto_refresh()
 
-        self._unsubs.append(bus.subscribe(
-            Event.TIME_RECORDS_CHANGED, self._on_event))
-        self._unsubs.append(bus.subscribe(
-            Event.SETTINGS_CHANGED, self._on_event))
+        self._unsubs.append(bus.subscribe(Event.TIME_RECORDS_CHANGED, self._on_event))
+        self._unsubs.append(bus.subscribe(Event.SETTINGS_CHANGED, self._on_event))
 
         self.bind("<Destroy>", self._on_destroy)
         self.pack(fill="both", expand=True)
@@ -174,18 +171,15 @@ class TimeClockTab(RecordTabMixin, ttk.Frame):
         header_bar = ttk.Frame(self, style="Card.TFrame")
         header_bar.pack(fill="x", padx=4, pady=(4, 0))
 
-        self._lbl_today = ttk.Label(
-            header_bar, text="", style="DayHeader.TLabel")
+        self._lbl_today = ttk.Label(header_bar, text="", style="DayHeader.TLabel")
         self._lbl_today.pack(side="left", padx=(10, 6), pady=5)
 
-        ttk.Separator(header_bar, orient="vertical").pack(
-            side="left", fill="y", pady=5)
+        ttk.Separator(header_bar, orient="vertical").pack(side="left", fill="y", pady=5)
 
         self._lbl_target = ttk.Label(header_bar, text="")
         self._lbl_target.pack(side="left", padx=(8, 6), pady=5)
 
-        ttk.Separator(header_bar, orient="vertical").pack(
-            side="left", fill="y", pady=5)
+        ttk.Separator(header_bar, orient="vertical").pack(side="left", fill="y", pady=5)
 
         self._lbl_remaining = ttk.Label(header_bar, text="")
         self._lbl_remaining.pack(side="left", padx=(8, 10), pady=5)
@@ -242,8 +236,7 @@ class TimeClockTab(RecordTabMixin, ttk.Frame):
         self._cbo_year.bind("<<ComboboxSelected>>", self._on_period_changed)
 
         ttk.Label(self._frm_month, text="Month:").pack(side="left")
-        self._var_month = tk.StringVar(
-            value=_MONTH_NAMES[self._selected_month])
+        self._var_month = tk.StringVar(value=_MONTH_NAMES[self._selected_month])
         self._cbo_month = ttk.Combobox(
             self._frm_month,
             textvariable=self._var_month,
@@ -285,11 +278,9 @@ class TimeClockTab(RecordTabMixin, ttk.Frame):
         self._tree.column(
             "type_office", width=170, minwidth=100, stretch=False, anchor="center"
         )
-        self._tree.heading(
-            "type_office", text="Type / Office", anchor="center")
+        self._tree.heading("type_office", text="Type / Office", anchor="center")
 
-        self._tree.column("note", width=180, minwidth=60,
-                          stretch=True, anchor="center")
+        self._tree.column("note", width=180, minwidth=60, stretch=True, anchor="center")
         self._tree.heading("note", text="Note", anchor="center")
 
         self._tree.column(
@@ -309,8 +300,7 @@ class TimeClockTab(RecordTabMixin, ttk.Frame):
         action_bar = ttk.Frame(self)
         action_bar.pack(fill="x", padx=4, pady=(0, 6))
 
-        ttk.Separator(action_bar, orient="horizontal").pack(
-            fill="x", pady=(0, 6))
+        ttk.Separator(action_bar, orient="horizontal").pack(fill="x", pady=(0, 6))
 
         inner = ttk.Frame(action_bar)
         inner.pack(fill="x")
@@ -337,8 +327,7 @@ class TimeClockTab(RecordTabMixin, ttk.Frame):
             side="left", fill="y", padx=10, pady=2
         )
 
-        self._btn_add = ttk.Button(
-            inner, text="+ Add", command=self._do_add, width=10)
+        self._btn_add = ttk.Button(inner, text="+ Add", command=self._do_add, width=10)
         self._btn_add.pack(side="left", padx=(0, 4))
 
         self._btn_edit = ttk.Button(
@@ -389,10 +378,8 @@ class TimeClockTab(RecordTabMixin, ttk.Frame):
         self._tree.tag_configure("overtime", foreground=c["overtime"])
 
         style = ttk.Style()
-        style.configure("TimeClock.Treeview", font=(
-            "Consolas", 10), rowheight=22)
-        style.configure("TimeClock.Treeview.Heading",
-                        font=("Helvetica", 9, "bold"))
+        style.configure("TimeClock.Treeview", font=("Consolas", 10), rowheight=22)
+        style.configure("TimeClock.Treeview.Heading", font=("Helvetica", 9, "bold"))
 
     # ─────────────────────────── Toolbar / View Mode ────────────────────────
 
@@ -490,8 +477,7 @@ class TimeClockTab(RecordTabMixin, ttk.Frame):
 
         c = COLORS.get(self._theme_mode, COLORS[ThemeMode.LIGHT])
         if target_h == 0:
-            self._lbl_remaining.config(
-                text="Day off", foreground=c["fg.muted"])
+            self._lbl_remaining.config(text="Day off", foreground=c["fg.muted"])
         elif remaining > 0:
             self._lbl_remaining.config(
                 text=f"{_fmt_h(remaining)} left", foreground=c["warning"]
@@ -576,16 +562,13 @@ class TimeClockTab(RecordTabMixin, ttk.Frame):
             if not day_recs and day != today:
                 continue
             day_recs_sorted = sorted(day_recs, key=lambda r: r.start_time)
-            day_worked = sum(get_record_duration(r, today, now_t)
-                             for r in day_recs)
+            day_worked = sum(get_record_duration(r, today, now_t) for r in day_recs)
             day_target = get_daily_target(day, targets, exceptions)
             is_overtime_day = day_worked > day_target > 0
 
-            day_node = self._insert_day_header(
-                month_node, day, day_worked, day_target)
+            day_node = self._insert_day_header(month_node, day, day_worked, day_target)
             for rec in day_recs_sorted:
-                self._insert_record_row(
-                    day_node, rec, today, now_t, is_overtime_day)
+                self._insert_record_row(day_node, rec, today, now_t, is_overtime_day)
 
     def _populate_week(
         self,
@@ -600,11 +583,9 @@ class TimeClockTab(RecordTabMixin, ttk.Frame):
         # Fetch records — single date-range query handles cross-month weeks correctly
         records = self.model.get_records_for_date_range(week_start, week_end)
 
-        exceptions = dict(self._exceptions_for_year(
-            week_start.year, exc_cache))
+        exceptions = dict(self._exceptions_for_year(week_start.year, exc_cache))
         if week_end.year != week_start.year:
-            exceptions.update(self._exceptions_for_year(
-                week_end.year, exc_cache))
+            exceptions.update(self._exceptions_for_year(week_end.year, exc_cache))
         overtime_rate: float = self.settings.get("overtime_rate") or 1.0
 
         balance = calculate_period_balance(
@@ -637,18 +618,14 @@ class TimeClockTab(RecordTabMixin, ttk.Frame):
 
         for i in range(7):
             day = week_start + timedelta(days=i)
-            day_recs = sorted(records_by_date.get(day, []),
-                              key=lambda r: r.start_time)
-            day_worked = sum(get_record_duration(r, today, now_t)
-                             for r in day_recs)
+            day_recs = sorted(records_by_date.get(day, []), key=lambda r: r.start_time)
+            day_worked = sum(get_record_duration(r, today, now_t) for r in day_recs)
             day_target = get_daily_target(day, targets, exceptions)
             is_overtime_day = day_worked > day_target > 0
 
-            day_node = self._insert_day_header(
-                week_node, day, day_worked, day_target)
+            day_node = self._insert_day_header(week_node, day, day_worked, day_target)
             for rec in day_recs:
-                self._insert_record_row(
-                    day_node, rec, today, now_t, is_overtime_day)
+                self._insert_record_row(day_node, rec, today, now_t, is_overtime_day)
 
         bal = balance.balance
         sign = "+" if bal >= 0 else "-"
@@ -702,8 +679,7 @@ class TimeClockTab(RecordTabMixin, ttk.Frame):
 
         hours = get_record_duration(rec, today, now_t)
         dur_str = (
-            _fmt_h(hours) if (
-                rec.end_time is not None or rec.date == today) else "—"
+            _fmt_h(hours) if (rec.end_time is not None or rec.date == today) else "—"
         )
         note = rec.note or ""
 
@@ -793,8 +769,7 @@ class TimeClockTab(RecordTabMixin, ttk.Frame):
 
     def _update_button_states(self) -> None:
         has_open = bool(self.model.get_open_records())
-        self._btn_clock_in.config(
-            state="normal" if not has_open else "disabled")
+        self._btn_clock_in.config(state="normal" if not has_open else "disabled")
         self._btn_clock_out.config(state="normal" if has_open else "disabled")
         self._update_edit_delete_states()
 
@@ -891,8 +866,7 @@ class TimeClockTab(RecordTabMixin, ttk.Frame):
         ttk.Button(
             btn_frame, text="Clock Out", style="Danger.TButton", command=_confirm
         ).pack(side="left", padx=(0, 6))
-        ttk.Button(btn_frame, text="Cancel",
-                   command=dlg.destroy).pack(side="left")
+        ttk.Button(btn_frame, text="Cancel", command=dlg.destroy).pack(side="left")
         dlg.wait_window()
 
     def _do_add(self) -> None:
@@ -927,8 +901,7 @@ class TimeClockTab(RecordTabMixin, ttk.Frame):
             return
         result = self.controller.delete_record(rec_id)
         if not result.ok:
-            messagebox.showerror("Delete Failed", "\n".join(
-                result.errors), parent=self)
+            messagebox.showerror("Delete Failed", "\n".join(result.errors), parent=self)
 
     # ─────────────────────────── Lifecycle ──────────────────────────────────
 

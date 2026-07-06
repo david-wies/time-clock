@@ -76,8 +76,7 @@ def test_get_records_for_year_uses_real_month_end_date(
 def test_sickness_record_crud(db: Database, event_bus: EventBus) -> None:
     model = SicknessModel(db, event_bus)
 
-    rec = SicknessRecord(id=None, date=date(
-        2026, 2, 15), hours=8.0, note="Flu")
+    rec = SicknessRecord(id=None, date=date(2026, 2, 15), hours=8.0, note="Flu")
 
     # Insert
     rec_id = model.insert_record(rec)
@@ -145,14 +144,12 @@ def test_sickness_summary_accepts_prefetched_records(
     # Insert a record directly, then pass a *different* explicit records
     # list to prove the DB isn't re-queried -- the summary must reflect the
     # passed-in list, not what's actually in the table.
-    sick_model.insert_record(SicknessRecord(
-        None, date(2026, 6, 22), 8.0, "Flu"))
+    sick_model.insert_record(SicknessRecord(None, date(2026, 6, 22), 8.0, "Flu"))
 
     explicit_records = [
         SicknessRecord(None, date(2026, 1, 1), 5.0, "Explicit only"),
     ]
-    summary = sick_model.calculate_sickness_summary(
-        2026, records=explicit_records)
+    summary = sick_model.calculate_sickness_summary(2026, records=explicit_records)
     assert summary.used_hours == 5.0
     assert summary.remaining_hours == 75.0
 

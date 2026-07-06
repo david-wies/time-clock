@@ -67,13 +67,11 @@ def test_time_record_crud(db: Database, event_bus: EventBus) -> None:
 def test_get_records_for_period(db: Database, event_bus: EventBus) -> None:
     model = TimeClockModel(db, event_bus)
 
-    r1 = TimeRecord(None, date(2026, 6, 1), time(
-        9, 0), time(17, 0), 0, WorkType.REMOTE)
+    r1 = TimeRecord(None, date(2026, 6, 1), time(9, 0), time(17, 0), 0, WorkType.REMOTE)
     r2 = TimeRecord(
         None, date(2026, 6, 15), time(10, 0), None, 0, WorkType.REMOTE
     )  # Open record
-    r3 = TimeRecord(None, date(2026, 7, 1), time(
-        9, 0), time(17, 0), 0, WorkType.REMOTE)
+    r3 = TimeRecord(None, date(2026, 7, 1), time(9, 0), time(17, 0), 0, WorkType.REMOTE)
 
     model.insert_record(r1)
     model.insert_record(r2)
@@ -136,8 +134,7 @@ def test_get_records_by_date(db: Database, event_bus: EventBus) -> None:
     r1 = TimeRecord(
         None, date(2026, 6, 26), time(9, 0), time(12, 0), 0, WorkType.REMOTE
     )
-    r2 = TimeRecord(None, date(2026, 6, 26), time(
-        13, 0), time(17, 0), 0, WorkType.ROAD)
+    r2 = TimeRecord(None, date(2026, 6, 26), time(13, 0), time(17, 0), 0, WorkType.ROAD)
     r3 = TimeRecord(
         None, date(2026, 6, 27), time(9, 0), time(17, 0), 0, WorkType.REMOTE
     )

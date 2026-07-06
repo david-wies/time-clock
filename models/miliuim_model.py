@@ -62,8 +62,7 @@ class MiliuimModel:
         """Returns the Miliuim record with the given id, or None if not found."""
         with self.db.connection() as conn:
             cursor = conn.cursor()
-            cursor.execute(
-                "SELECT * FROM miliuim_period WHERE id = ?;", (record_id,))
+            cursor.execute("SELECT * FROM miliuim_period WHERE id = ?;", (record_id,))
             row = cursor.fetchone()
             return self._row_to_record(row) if row else None
 
@@ -184,8 +183,7 @@ class MiliuimModel:
         """Deletes the Miliuim period record with the given id."""
         with self.db.connection() as conn:
             with conn:
-                conn.execute(
-                    "DELETE FROM miliuim_period WHERE id = ?;", (record_id,))
+                conn.execute("DELETE FROM miliuim_period WHERE id = ?;", (record_id,))
             self.bus.publish(Event.MILIUIM_CHANGED)
 
     @staticmethod

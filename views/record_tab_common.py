@@ -101,8 +101,7 @@ class RecordTabMixin:
             return
         current = label.cget("text")
         notice = f"{skipped} record(s) skipped due to data errors"
-        label.config(
-            text=f"{current}  ({notice})" if current else f"({notice})")
+        label.config(text=f"{current}  ({notice})" if current else f"({notice})")
 
     def _clear_unsubs(self) -> None:
         """Unsubscribes every EventBus subscription registered in ``_unsubs``.

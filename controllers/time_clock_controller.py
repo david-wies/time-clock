@@ -154,8 +154,7 @@ class TimeClockController:
 
         # OVERNIGHT_SHIFT_WARNING is not a blocking error — filter it out
         # before blocking
-        blocking = [e for e in errors if e !=
-                    WarningCode.OVERNIGHT_SHIFT.value]
+        blocking = [e for e in errors if e != WarningCode.OVERNIGHT_SHIFT.value]
         if blocking:
             return Result(ok=False, errors=blocking)
 
@@ -227,8 +226,7 @@ class TimeClockController:
         existing = self.model.get_time_ranges_by_date(record.date)
         existing_for_validation = [t for t in existing if t[2] is not None]
         errors = validate_time_record(record, existing_for_validation)
-        blocking = [e for e in errors if e !=
-                    WarningCode.OVERNIGHT_SHIFT.value]
+        blocking = [e for e in errors if e != WarningCode.OVERNIGHT_SHIFT.value]
         if blocking:
             return Result(ok=False, errors=blocking)
 
@@ -281,8 +279,7 @@ class TimeClockController:
             t for t in existing if t[0] == target_record.id or t[2] is not None
         ]
         errors = validate_time_record(target_record, existing_for_validation)
-        blocking = [e for e in errors if e !=
-                    WarningCode.OVERNIGHT_SHIFT.value]
+        blocking = [e for e in errors if e != WarningCode.OVERNIGHT_SHIFT.value]
         if blocking:
             return Result(ok=False, errors=blocking)
 

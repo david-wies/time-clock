@@ -156,8 +156,7 @@ class TimeRecord(_ValidatingRecord):
     office: str | None = None
     note: str | None = None
     document_path: str | None = None
-    _constructed: bool = field(
-        default=False, init=False, repr=False, compare=False)
+    _constructed: bool = field(default=False, init=False, repr=False, compare=False)
 
     # break_minutes/note are single-field invariants, re-checked on every
     # mutation via _ValidatingRecord.__setattr__. The break-vs-shift-length
@@ -216,8 +215,7 @@ class VacationRecord(_ValidatingRecord):
     hours: Hours
     vtype: VacationType
     note: str | None = None
-    _constructed: bool = field(
-        default=False, init=False, repr=False, compare=False)
+    _constructed: bool = field(default=False, init=False, repr=False, compare=False)
 
     _VALIDATORS: ClassVar[dict[str, Callable[[Any], Any]]] = {
         "hours": Hours,
@@ -281,8 +279,7 @@ class SicknessRecord(_ValidatingRecord):
     hours: Hours
     note: str | None = None
     document_path: str | None = None
-    _constructed: bool = field(
-        default=False, init=False, repr=False, compare=False)
+    _constructed: bool = field(default=False, init=False, repr=False, compare=False)
 
     _VALIDATORS: ClassVar[dict[str, Callable[[Any], Any]]] = {
         "hours": Hours,
@@ -357,8 +354,7 @@ class WorkDayException(_ValidatingRecord):
     date: date
     hours: float
     label: str | None
-    _constructed: bool = field(
-        default=False, init=False, repr=False, compare=False)
+    _constructed: bool = field(default=False, init=False, repr=False, compare=False)
 
     _VALIDATORS: ClassVar[dict[str, Callable[[Any], Any]]] = {
         "hours": _validate_workday_exception_hours,
@@ -387,8 +383,7 @@ class CarryOverLogEntry(_ValidatingRecord):
     to_year: int
     hours: float
     transferred_at: datetime  # UTC
-    _constructed: bool = field(
-        default=False, init=False, repr=False, compare=False)
+    _constructed: bool = field(default=False, init=False, repr=False, compare=False)
 
     _VALIDATORS: ClassVar[dict[str, Callable[[Any], Any]]] = {
         "hours": _validate_carry_over_hours,
@@ -405,8 +400,7 @@ class CarryOverLogEntry(_ValidatingRecord):
         # cross-field check stays construction-only (a single-field
         # validator can't see both from_year and to_year together).
         if self.to_year != self.from_year + 1:
-            raise ValueError(
-                "to_year must be exactly one year after from_year.")
+            raise ValueError("to_year must be exactly one year after from_year.")
         self.hours = _validate_carry_over_hours(self.hours)
         self._constructed = True
 
@@ -438,8 +432,7 @@ class MiliuimRecord(_ValidatingRecord):
     end_date: date
     note: str | None = None
     document_path: str | None = None
-    _constructed: bool = field(
-        default=False, init=False, repr=False, compare=False)
+    _constructed: bool = field(default=False, init=False, repr=False, compare=False)
 
     # end_date/start_date form a cross-field invariant (end >= start) that
     # a single-field validator can't see both sides of, so it stays

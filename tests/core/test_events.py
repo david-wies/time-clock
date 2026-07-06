@@ -149,8 +149,7 @@ def test_unsubscribe_during_publish_uses_snapshot() -> None:
     def other_handler() -> None:
         calls.append("other")
 
-    unsub_self = bus.subscribe(
-        Event.TIME_RECORDS_CHANGED, self_unsubscribing_handler)
+    unsub_self = bus.subscribe(Event.TIME_RECORDS_CHANGED, self_unsubscribing_handler)
     bus.subscribe(Event.TIME_RECORDS_CHANGED, other_handler)
 
     bus.publish(Event.TIME_RECORDS_CHANGED)  # must not raise

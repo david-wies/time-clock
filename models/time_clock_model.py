@@ -44,8 +44,7 @@ class TimeClockModel:
                 id=row["id"],
                 date=iso_to_date(row["date"]),
                 start_time=str_to_time(row["start_time"]),
-                end_time=str_to_time(
-                    row["end_time"]) if row["end_time"] else None,
+                end_time=str_to_time(row["end_time"]) if row["end_time"] else None,
                 break_minutes=row["break_minutes"],
                 work_type=WorkType(row["work_type"]),
                 office=row["office"],
@@ -73,8 +72,7 @@ class TimeClockModel:
         """Returns the time record with the given id, or None if not found."""
         with self.db.connection() as conn:
             cursor = conn.cursor()
-            cursor.execute(
-                "SELECT * FROM time_record WHERE id = ?;", (record_id,))
+            cursor.execute("SELECT * FROM time_record WHERE id = ?;", (record_id,))
             row = cursor.fetchone()
             return self._row_to_record(row) if row else None
 
@@ -200,8 +198,7 @@ class TimeClockModel:
                     (
                         date_to_iso(record.date),
                         time_to_str(record.start_time),
-                        time_to_str(
-                            record.end_time) if record.end_time else None,
+                        time_to_str(record.end_time) if record.end_time else None,
                         record.break_minutes,
                         record.work_type.value,
                         record.office,
@@ -230,8 +227,7 @@ class TimeClockModel:
                     (
                         date_to_iso(record.date),
                         time_to_str(record.start_time),
-                        time_to_str(
-                            record.end_time) if record.end_time else None,
+                        time_to_str(record.end_time) if record.end_time else None,
                         record.break_minutes,
                         record.work_type.value,
                         record.office,
@@ -246,8 +242,7 @@ class TimeClockModel:
         """Deletes the time record with the given id."""
         with self.db.connection() as conn:
             with conn:
-                conn.execute(
-                    "DELETE FROM time_record WHERE id = ?;", (record_id,))
+                conn.execute("DELETE FROM time_record WHERE id = ?;", (record_id,))
             self.bus.publish(Event.TIME_RECORDS_CHANGED)
 
     # --- Target Hours & Exceptions Queries ---
@@ -345,8 +340,7 @@ class TimeClockModel:
         with self.db.connection() as conn:
             with conn:
                 conn.execute(
-                    "DELETE FROM work_day_exception WHERE id = ?;", (
-                        exception_id,)
+                    "DELETE FROM work_day_exception WHERE id = ?;", (exception_id,)
                 )
             self.bus.publish(Event.SETTINGS_CHANGED)
 
@@ -355,7 +349,6 @@ class TimeClockModel:
         with self.db.connection() as conn:
             with conn:
                 conn.execute(
-                    "DELETE FROM work_day_exception WHERE date = ?;", (
-                        date_str,)
+                    "DELETE FROM work_day_exception WHERE date = ?;", (date_str,)
                 )
             self.bus.publish(Event.SETTINGS_CHANGED)

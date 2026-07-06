@@ -93,8 +93,7 @@ def test_clock_out_rejects_break_exceeding_shift_length_after_mutation(
     stale break_minutes value that now exceeds the shift length —
     fixed_clock pins clock-in and clock-out at the same instant (09:00), so
     the resulting shift is zero-length and any positive break exceeds it."""
-    open_rec = TimeRecord(None, date(2026, 6, 26),
-                          time(9, 0), None, 0, WorkType.REMOTE)
+    open_rec = TimeRecord(None, date(2026, 6, 26), time(9, 0), None, 0, WorkType.REMOTE)
     record_id = controller.model.insert_record(open_rec)
 
     stored = controller.model.get_record_by_id(record_id)

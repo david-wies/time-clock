@@ -61,8 +61,7 @@ class SicknessModel:
         """Returns the sickness record with the given id, or None if not found."""
         with self.db.connection() as conn:
             cursor = conn.cursor()
-            cursor.execute(
-                "SELECT * FROM sickness_record WHERE id = ?;", (record_id,))
+            cursor.execute("SELECT * FROM sickness_record WHERE id = ?;", (record_id,))
             row = cursor.fetchone()
             return self._row_to_record(row) if row else None
 
@@ -184,8 +183,7 @@ class SicknessModel:
         """Deletes the sickness record with the given id."""
         with self.db.connection() as conn:
             with conn:
-                conn.execute(
-                    "DELETE FROM sickness_record WHERE id = ?;", (record_id,))
+                conn.execute("DELETE FROM sickness_record WHERE id = ?;", (record_id,))
             self.bus.publish(Event.SICKNESS_CHANGED)
 
     # --- Sickness Settings Queries ---
@@ -195,8 +193,7 @@ class SicknessModel:
         with self.db.connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
-                "SELECT hours_per_year FROM sickness_settings WHERE year = ?;", (
-                    year,)
+                "SELECT hours_per_year FROM sickness_settings WHERE year = ?;", (year,)
             )
             row = cursor.fetchone()
             return row["hours_per_year"] if row else None
