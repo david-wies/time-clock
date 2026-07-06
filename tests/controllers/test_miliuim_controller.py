@@ -58,8 +58,10 @@ def test_delete_record(controller: MiliuimController) -> None:
 
 
 def test_summary_counts_periods_and_days(controller: MiliuimController) -> None:
-    controller.save_record(MiliuimRecord(None, date(2026, 3, 1), date(2026, 3, 10)))
-    controller.save_record(MiliuimRecord(None, date(2026, 7, 5), date(2026, 7, 5)))
+    controller.save_record(MiliuimRecord(
+        None, date(2026, 3, 1), date(2026, 3, 10)))
+    controller.save_record(MiliuimRecord(
+        None, date(2026, 7, 5), date(2026, 7, 5)))
     summary = controller.model.calculate_summary(2026)
     assert summary.period_count == 2
     assert summary.total_days == 11  # 10 + 1
@@ -67,7 +69,8 @@ def test_summary_counts_periods_and_days(controller: MiliuimController) -> None:
 
 def test_summary_clips_to_year_boundary(controller: MiliuimController) -> None:
     # Period spans Dec 2025 → Jan 2026; only Jan 2026 days should count for 2026
-    controller.save_record(MiliuimRecord(None, date(2025, 12, 28), date(2026, 1, 3)))
+    controller.save_record(MiliuimRecord(
+        None, date(2025, 12, 28), date(2026, 1, 3)))
     summary = controller.model.calculate_summary(2026)
     assert summary.period_count == 1
     assert summary.total_days == 3  # Jan 1, 2, 3
@@ -103,7 +106,8 @@ def test_clip_days_clips_to_month_when_given(controller: MiliuimController) -> N
 
 
 def test_save_overlapping_period_rejected(controller: MiliuimController) -> None:
-    controller.save_record(MiliuimRecord(None, date(2026, 6, 1), date(2026, 6, 10)))
+    controller.save_record(MiliuimRecord(
+        None, date(2026, 6, 1), date(2026, 6, 10)))
 
     overlapping = MiliuimRecord(None, date(2026, 6, 5), date(2026, 6, 15))
     res = controller.save_record(overlapping)
@@ -114,7 +118,8 @@ def test_save_overlapping_period_rejected(controller: MiliuimController) -> None
 
 
 def test_save_non_overlapping_period_accepted(controller: MiliuimController) -> None:
-    controller.save_record(MiliuimRecord(None, date(2026, 6, 1), date(2026, 6, 10)))
+    controller.save_record(MiliuimRecord(
+        None, date(2026, 6, 1), date(2026, 6, 10)))
 
     non_overlapping = MiliuimRecord(None, date(2026, 7, 1), date(2026, 7, 10))
     res = controller.save_record(non_overlapping)
@@ -128,7 +133,8 @@ def test_save_back_to_back_periods_accepted(controller: MiliuimController) -> No
 
     Not an overlap.
     """
-    controller.save_record(MiliuimRecord(None, date(2026, 6, 1), date(2026, 6, 10)))
+    controller.save_record(MiliuimRecord(
+        None, date(2026, 6, 1), date(2026, 6, 10)))
 
     back_to_back = MiliuimRecord(None, date(2026, 6, 11), date(2026, 6, 20))
     res = controller.save_record(back_to_back)
@@ -142,7 +148,8 @@ def test_save_period_sharing_boundary_day_rejected(
 ) -> None:
     """Boundary case: new period starts on the same day the existing one ends —
     that day would be double-counted, so it must be rejected as an overlap."""
-    controller.save_record(MiliuimRecord(None, date(2026, 6, 1), date(2026, 6, 10)))
+    controller.save_record(MiliuimRecord(
+        None, date(2026, 6, 1), date(2026, 6, 10)))
 
     shares_boundary = MiliuimRecord(None, date(2026, 6, 10), date(2026, 6, 20))
     res = controller.save_record(shares_boundary)
@@ -168,7 +175,8 @@ def test_editing_record_does_not_overlap_with_itself(
 def test_editing_record_into_overlap_with_another_rejected(
     controller: MiliuimController,
 ) -> None:
-    controller.save_record(MiliuimRecord(None, date(2026, 1, 1), date(2026, 1, 10)))
+    controller.save_record(MiliuimRecord(
+        None, date(2026, 1, 1), date(2026, 1, 10)))
     other = MiliuimRecord(None, date(2026, 3, 1), date(2026, 3, 10))
     controller.save_record(other)
     assert other.id is not None
@@ -204,14 +212,16 @@ def test_save_record_rejects_end_before_start_after_mutation(
 def test_save_record_rejects_note_too_long_after_mutation(
     controller: MiliuimController,
 ) -> None:
+    """MiliuimRecord.note is a _ValidatingRecord-validated field (domain/
+    types.py), so mutating it to an invalid value on an already-saved
+    record now raises ValueError immediately — the value can never become
+    invalid in the first place, so MiliuimController.save_record() is no
+    longer needed as a second line of defense for this field."""
     rec = MiliuimRecord(None, date(2026, 6, 1), date(2026, 6, 10))
     assert controller.save_record(rec).ok is True
 
-    rec.note = "x" * 501
-    res = controller.save_record(rec)
-
-    assert res.ok is False
-    assert "Note is too long" in res.errors[0]
+    with pytest.raises(ValueError, match="Note is too long"):
+        rec.note = "x" * 501
 
 
 # ────────────────────── Exception narrowing (§ codebase review G2 #1) ───────

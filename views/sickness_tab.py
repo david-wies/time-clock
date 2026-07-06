@@ -42,7 +42,8 @@ class SicknessTab(RecordTabMixin, ttk.Frame):
         self.settings = settings
         self.bus = bus
         self.root = root
-        self._theme_mode: ThemeMode = resolve_theme_mode(self.settings.get("theme"))
+        self._theme_mode: ThemeMode = resolve_theme_mode(
+            self.settings.get("theme"))
 
         today = date.today()
         self._selected_year: int = today.year
@@ -59,8 +60,10 @@ class SicknessTab(RecordTabMixin, ttk.Frame):
         self._build_ui()
         self._refresh()
 
-        self._unsubs.append(bus.subscribe(Event.SICKNESS_CHANGED, self._on_event))
-        self._unsubs.append(bus.subscribe(Event.SETTINGS_CHANGED, self._on_event))
+        self._unsubs.append(bus.subscribe(
+            Event.SICKNESS_CHANGED, self._on_event))
+        self._unsubs.append(bus.subscribe(
+            Event.SETTINGS_CHANGED, self._on_event))
 
         self.bind("<Destroy>", self._on_destroy)
         self.pack(fill="both", expand=True)
@@ -94,7 +97,8 @@ class SicknessTab(RecordTabMixin, ttk.Frame):
             side="left", fill="y", pady=5
         )
 
-        self._lbl_hours = ttk.Label(self._frm_balance, text="", foreground="gray")
+        self._lbl_hours = ttk.Label(
+            self._frm_balance, text="", foreground="gray")
         self._lbl_hours.pack(side="left", padx=10, pady=5)
 
     def _build_treeview(self) -> None:
@@ -110,7 +114,8 @@ class SicknessTab(RecordTabMixin, ttk.Frame):
             selectmode="browse",
         )
 
-        self._tree.column("date", width=110, minwidth=90, stretch=False, anchor="w")
+        self._tree.column("date", width=110, minwidth=90,
+                          stretch=False, anchor="w")
         self._tree.heading("date", text="Date", anchor="center")
 
         self._tree.column(
@@ -118,10 +123,12 @@ class SicknessTab(RecordTabMixin, ttk.Frame):
         )
         self._tree.heading("hebrew_date", text="Hebrew Date", anchor="center")
 
-        self._tree.column("hours", width=70, minwidth=50, stretch=False, anchor="e")
+        self._tree.column("hours", width=70, minwidth=50,
+                          stretch=False, anchor="e")
         self._tree.heading("hours", text="Hours", anchor="center")
 
-        self._tree.column("note", width=200, minwidth=80, stretch=True, anchor="w")
+        self._tree.column("note", width=200, minwidth=80,
+                          stretch=True, anchor="w")
         self._tree.heading("note", text="Note", anchor="center")
 
         vsb = ttk.Scrollbar(frame, orient="vertical", command=self._tree.yview)
@@ -227,7 +234,8 @@ class SicknessTab(RecordTabMixin, ttk.Frame):
                 "",
                 "end",
                 iid="__total__",
-                values=self._make_row_values(None, f"Total: {total_hours:.1f}h"),
+                values=self._make_row_values(
+                    None, f"Total: {total_hours:.1f}h"),
                 tags=("total",),
             )
             c = COLORS.get(self._theme_mode, COLORS[ThemeMode.LIGHT])
@@ -244,6 +252,8 @@ class SicknessTab(RecordTabMixin, ttk.Frame):
         year_records = self.model.get_records_for_year(self._selected_year)
         self._refresh_balance(year_records)
         self._refresh_tree(year_records)
+        self._append_skip_notice(
+            self._lbl_hours, self.model.last_skipped_count)
         self._update_button_states()
 
     def _on_event(self, **_kw) -> None:
@@ -289,4 +299,5 @@ class SicknessTab(RecordTabMixin, ttk.Frame):
             return
         result = self.controller.delete_record(rec_id)
         if not result.ok:
-            messagebox.showerror("Remove Failed", "\n".join(result.errors), parent=self)
+            messagebox.showerror("Remove Failed", "\n".join(
+                result.errors), parent=self)

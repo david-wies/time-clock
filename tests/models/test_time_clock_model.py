@@ -67,11 +67,13 @@ def test_time_record_crud(db: Database, event_bus: EventBus) -> None:
 def test_get_records_for_period(db: Database, event_bus: EventBus) -> None:
     model = TimeClockModel(db, event_bus)
 
-    r1 = TimeRecord(None, date(2026, 6, 1), time(9, 0), time(17, 0), 0, WorkType.REMOTE)
+    r1 = TimeRecord(None, date(2026, 6, 1), time(
+        9, 0), time(17, 0), 0, WorkType.REMOTE)
     r2 = TimeRecord(
         None, date(2026, 6, 15), time(10, 0), None, 0, WorkType.REMOTE
     )  # Open record
-    r3 = TimeRecord(None, date(2026, 7, 1), time(9, 0), time(17, 0), 0, WorkType.REMOTE)
+    r3 = TimeRecord(None, date(2026, 7, 1), time(
+        9, 0), time(17, 0), 0, WorkType.REMOTE)
 
     model.insert_record(r1)
     model.insert_record(r2)
@@ -134,7 +136,8 @@ def test_get_records_by_date(db: Database, event_bus: EventBus) -> None:
     r1 = TimeRecord(
         None, date(2026, 6, 26), time(9, 0), time(12, 0), 0, WorkType.REMOTE
     )
-    r2 = TimeRecord(None, date(2026, 6, 26), time(13, 0), time(17, 0), 0, WorkType.ROAD)
+    r2 = TimeRecord(None, date(2026, 6, 26), time(
+        13, 0), time(17, 0), 0, WorkType.ROAD)
     r3 = TimeRecord(
         None, date(2026, 6, 27), time(9, 0), time(17, 0), 0, WorkType.REMOTE
     )
@@ -216,6 +219,44 @@ def test_get_date_exceptions_skips_malformed_date_and_logs_warning(
     )
 
 
+def test_get_date_exceptions_skips_malformed_hours_and_logs_warning(
+    db: Database, event_bus: EventBus, caplog
+) -> None:
+    """A corrupted `hours` column value (e.g. from manual DB editing) must
+    not crash get_date_exceptions(). WorkDayException.__post_init__
+    (domain/types.py) rejects a negative or non-numeric hours value with a
+    ValueError; get_date_exceptions() must catch that and skip the row with
+    a logged warning, exactly like the malformed-date handling above."""
+    model = TimeClockModel(db, event_bus)
+
+    model.save_date_exception("2026-12-24", 4.0, "Christmas Eve")
+    conn = db.get_connection()
+    try:
+        with conn:
+            # The column has a CHECK(hours >= 0) constraint, but that only
+            # blocks a negative *number* -- it can't catch a non-numeric
+            # value. SQLite's cross-type comparison rules rank TEXT above
+            # INTEGER/REAL, so 'not-a-number' >= 0 evaluates true and the
+            # CHECK passes, letting this corrupted row insert cleanly (same
+            # class of gap the malformed-date test above exploits).
+            conn.execute(
+                "INSERT INTO work_day_exception (date, hours, label) "
+                "VALUES ('2026-12-25', 'not-a-number', 'Corrupted row');"
+            )
+    finally:
+        conn.close()
+
+    with caplog.at_level(logging.WARNING, logger="models.time_clock_model"):
+        exceptions = model.get_date_exceptions()
+
+    assert len(exceptions) == 1
+    assert exceptions[0].date == date(2026, 12, 24)
+    assert any(
+        record.levelname == "WARNING" and "malformed" in record.message.lower()
+        for record in caplog.records
+    )
+
+
 def test_get_records_by_date_skips_malformed_row_and_logs_warning(
     db: Database, event_bus: EventBus, caplog
 ) -> None:
@@ -247,6 +288,7 @@ def test_get_records_by_date_skips_malformed_row_and_logs_warning(
 
     assert len(records) == 1
     assert records[0].break_minutes == 30
+    assert model.last_skipped_count == 1
     assert any(
         record.levelname == "WARNING" and "malformed" in record.message.lower()
         for record in caplog.records

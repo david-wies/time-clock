@@ -25,6 +25,13 @@ class TimeClockModel:
     def __init__(self, db: Database, bus: EventBus) -> None:
         self.db = db
         self.bus = bus
+        # Set by _rows_to_records() at the end of every list-fetch call
+        # (get_records_by_date(), get_records_for_period(), etc.) to the
+        # number of malformed rows that call silently dropped. The app is
+        # single-threaded/synchronous, so a caller can safely read this
+        # right after the fetch it corresponds to -- see
+        # views/record_tab_common.py:RecordTabMixin._append_skip_notice().
+        self.last_skipped_count = 0
 
     def _row_to_record(self, row: sqlite3.Row) -> TimeRecord | None:
         """Builds a TimeRecord from a DB row, or None (with a logged
@@ -37,7 +44,8 @@ class TimeClockModel:
                 id=row["id"],
                 date=iso_to_date(row["date"]),
                 start_time=str_to_time(row["start_time"]),
-                end_time=str_to_time(row["end_time"]) if row["end_time"] else None,
+                end_time=str_to_time(
+                    row["end_time"]) if row["end_time"] else None,
                 break_minutes=row["break_minutes"],
                 work_type=WorkType(row["work_type"]),
                 office=row["office"],
@@ -58,13 +66,15 @@ class TimeClockModel:
             rec = self._row_to_record(row)
             if rec is not None:
                 records.append(rec)
+        self.last_skipped_count = len(rows) - len(records)
         return records
 
     def get_record_by_id(self, record_id: int) -> TimeRecord | None:
         """Returns the time record with the given id, or None if not found."""
         with self.db.connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT * FROM time_record WHERE id = ?;", (record_id,))
+            cursor.execute(
+                "SELECT * FROM time_record WHERE id = ?;", (record_id,))
             row = cursor.fetchone()
             return self._row_to_record(row) if row else None
 
@@ -190,7 +200,8 @@ class TimeClockModel:
                     (
                         date_to_iso(record.date),
                         time_to_str(record.start_time),
-                        time_to_str(record.end_time) if record.end_time else None,
+                        time_to_str(
+                            record.end_time) if record.end_time else None,
                         record.break_minutes,
                         record.work_type.value,
                         record.office,
@@ -219,7 +230,8 @@ class TimeClockModel:
                     (
                         date_to_iso(record.date),
                         time_to_str(record.start_time),
-                        time_to_str(record.end_time) if record.end_time else None,
+                        time_to_str(
+                            record.end_time) if record.end_time else None,
                         record.break_minutes,
                         record.work_type.value,
                         record.office,
@@ -234,7 +246,8 @@ class TimeClockModel:
         """Deletes the time record with the given id."""
         with self.db.connection() as conn:
             with conn:
-                conn.execute("DELETE FROM time_record WHERE id = ?;", (record_id,))
+                conn.execute(
+                    "DELETE FROM time_record WHERE id = ?;", (record_id,))
             self.bus.publish(Event.TIME_RECORDS_CHANGED)
 
     # --- Target Hours & Exceptions Queries ---
@@ -292,14 +305,24 @@ class TimeClockModel:
                         row["date"],
                     )
                     continue
-                exceptions.append(
-                    WorkDayException(
+                try:
+                    exception = WorkDayException(
                         id=row["id"],
                         date=exc_date,
                         hours=row["hours"],
                         label=row["label"],
                     )
-                )
+                except ValueError:
+                    logger.warning(
+                        "Skipping malformed work-day exception row "
+                        "(falls back to the regular weekly target for that "
+                        "date): id=%r date=%r hours=%r",
+                        row["id"],
+                        row["date"],
+                        row["hours"],
+                    )
+                    continue
+                exceptions.append(exception)
             return exceptions
 
     def save_date_exception(
@@ -322,7 +345,8 @@ class TimeClockModel:
         with self.db.connection() as conn:
             with conn:
                 conn.execute(
-                    "DELETE FROM work_day_exception WHERE id = ?;", (exception_id,)
+                    "DELETE FROM work_day_exception WHERE id = ?;", (
+                        exception_id,)
                 )
             self.bus.publish(Event.SETTINGS_CHANGED)
 
@@ -331,6 +355,7 @@ class TimeClockModel:
         with self.db.connection() as conn:
             with conn:
                 conn.execute(
-                    "DELETE FROM work_day_exception WHERE date = ?;", (date_str,)
+                    "DELETE FROM work_day_exception WHERE date = ?;", (
+                        date_str,)
                 )
             self.bus.publish(Event.SETTINGS_CHANGED)

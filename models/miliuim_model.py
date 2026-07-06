@@ -19,6 +19,13 @@ class MiliuimModel:
     def __init__(self, db: Database, bus: EventBus) -> None:
         self.db = db
         self.bus = bus
+        # Set by _rows_to_records() at the end of every list-fetch call
+        # (get_records_for_year(), etc.) to the number of malformed rows
+        # that call silently dropped. The app is single-threaded/
+        # synchronous, so a caller can safely read this right after the
+        # fetch it corresponds to -- see
+        # views/record_tab_common.py:RecordTabMixin._append_skip_notice().
+        self.last_skipped_count = 0
 
     def _row_to_record(self, row: sqlite3.Row) -> MiliuimRecord | None:
         """Builds a MiliuimRecord from a DB row, or None (with a logged
@@ -48,13 +55,15 @@ class MiliuimModel:
             rec = self._row_to_record(row)
             if rec is not None:
                 records.append(rec)
+        self.last_skipped_count = len(rows) - len(records)
         return records
 
     def get_record_by_id(self, record_id: int) -> MiliuimRecord | None:
         """Returns the Miliuim record with the given id, or None if not found."""
         with self.db.connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT * FROM miliuim_period WHERE id = ?;", (record_id,))
+            cursor.execute(
+                "SELECT * FROM miliuim_period WHERE id = ?;", (record_id,))
             row = cursor.fetchone()
             return self._row_to_record(row) if row else None
 
@@ -175,7 +184,8 @@ class MiliuimModel:
         """Deletes the Miliuim period record with the given id."""
         with self.db.connection() as conn:
             with conn:
-                conn.execute("DELETE FROM miliuim_period WHERE id = ?;", (record_id,))
+                conn.execute(
+                    "DELETE FROM miliuim_period WHERE id = ?;", (record_id,))
             self.bus.publish(Event.MILIUIM_CHANGED)
 
     @staticmethod

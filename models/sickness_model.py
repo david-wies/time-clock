@@ -18,6 +18,13 @@ class SicknessModel:
     def __init__(self, db: Database, bus: EventBus) -> None:
         self.db = db
         self.bus = bus
+        # Set by _rows_to_records() at the end of every list-fetch call
+        # (get_records_for_year(), etc.) to the number of malformed rows
+        # that call silently dropped. The app is single-threaded/
+        # synchronous, so a caller can safely read this right after the
+        # fetch it corresponds to -- see
+        # views/record_tab_common.py:RecordTabMixin._append_skip_notice().
+        self.last_skipped_count = 0
 
     def _row_to_record(self, row: sqlite3.Row) -> SicknessRecord | None:
         """Builds a SicknessRecord from a DB row, or None (with a logged
@@ -47,13 +54,15 @@ class SicknessModel:
             rec = self._row_to_record(row)
             if rec is not None:
                 records.append(rec)
+        self.last_skipped_count = len(rows) - len(records)
         return records
 
     def get_record_by_id(self, record_id: int) -> SicknessRecord | None:
         """Returns the sickness record with the given id, or None if not found."""
         with self.db.connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT * FROM sickness_record WHERE id = ?;", (record_id,))
+            cursor.execute(
+                "SELECT * FROM sickness_record WHERE id = ?;", (record_id,))
             row = cursor.fetchone()
             return self._row_to_record(row) if row else None
 
@@ -175,7 +184,8 @@ class SicknessModel:
         """Deletes the sickness record with the given id."""
         with self.db.connection() as conn:
             with conn:
-                conn.execute("DELETE FROM sickness_record WHERE id = ?;", (record_id,))
+                conn.execute(
+                    "DELETE FROM sickness_record WHERE id = ?;", (record_id,))
             self.bus.publish(Event.SICKNESS_CHANGED)
 
     # --- Sickness Settings Queries ---
@@ -185,7 +195,8 @@ class SicknessModel:
         with self.db.connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
-                "SELECT hours_per_year FROM sickness_settings WHERE year = ?;", (year,)
+                "SELECT hours_per_year FROM sickness_settings WHERE year = ?;", (
+                    year,)
             )
             row = cursor.fetchone()
             return row["hours_per_year"] if row else None

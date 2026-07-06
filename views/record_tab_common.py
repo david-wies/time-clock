@@ -72,7 +72,10 @@ class RecordTabMixin:
         try:
             self._selected_year = int(self._var_year.get())
         except ValueError:
-            pass
+            logger.exception(
+                "Failed to parse year filter combobox value: %r",
+                self._var_year.get(),
+            )
         month_name = self._var_month.get()
         if month_name == "All":
             self._selected_month = 0
@@ -80,6 +83,26 @@ class RecordTabMixin:
             idx = MONTH_NAMES.index(month_name)
             self._selected_month = idx if idx > 0 else 0
         self._refresh()
+
+    @staticmethod
+    def _append_skip_notice(label: ttk.Label, skipped: int) -> None:
+        """Appends a data-integrity notice to `label`'s current text when a
+        model's most recent list-fetch call (surfaced via its
+        ``last_skipped_count`` attribute -- see models/*_model.py's
+        ``_rows_to_records()``) silently dropped malformed rows.
+
+        No-ops when `skipped` is 0, and preserves whatever text `label`
+        already shows (e.g. a balance/summary line set earlier in the same
+        refresh) rather than overwriting it, so callers can call this last
+        in their refresh method regardless of which label already carries
+        the primary status text for that tab.
+        """
+        if skipped <= 0:
+            return
+        current = label.cget("text")
+        notice = f"{skipped} record(s) skipped due to data errors"
+        label.config(
+            text=f"{current}  ({notice})" if current else f"({notice})")
 
     def _clear_unsubs(self) -> None:
         """Unsubscribes every EventBus subscription registered in ``_unsubs``.

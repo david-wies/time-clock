@@ -1,4 +1,5 @@
 import logging
+from typing import Callable
 
 import pytest
 
@@ -130,6 +131,37 @@ def test_no_on_handler_error_callback_is_fine(caplog: pytest.LogCaptureFixture) 
     bus.subscribe(Event.TIME_RECORDS_CHANGED, bad_handler)
     with caplog.at_level(logging.ERROR, logger="core.events"):
         bus.publish(Event.TIME_RECORDS_CHANGED)  # must not raise
+
+
+def test_unsubscribe_during_publish_uses_snapshot() -> None:
+    # publish() snapshots the subscriber list before iterating, so a handler
+    # that unsubscribes itself (or another handler) mid-publish must not
+    # raise and must not affect delivery for the in-progress publish() call.
+    bus = EventBus()
+    calls: list[str] = []
+    unsub_self: Callable[[], None] | None = None
+
+    def self_unsubscribing_handler() -> None:
+        calls.append("self")
+        assert unsub_self is not None
+        unsub_self()  # unsubscribe from inside the handler
+
+    def other_handler() -> None:
+        calls.append("other")
+
+    unsub_self = bus.subscribe(
+        Event.TIME_RECORDS_CHANGED, self_unsubscribing_handler)
+    bus.subscribe(Event.TIME_RECORDS_CHANGED, other_handler)
+
+    bus.publish(Event.TIME_RECORDS_CHANGED)  # must not raise
+    # Both handlers were subscribed when the snapshot was taken, so both
+    # still fire during this publish() call.
+    assert calls == ["self", "other"]
+
+    calls.clear()
+    bus.publish(Event.TIME_RECORDS_CHANGED)
+    # The self-unsubscribed handler is gone; only "other" fires now.
+    assert calls == ["other"]
 
 
 def test_on_handler_error_callback_raising_does_not_propagate(

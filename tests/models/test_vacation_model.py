@@ -22,7 +22,8 @@ def test_vacation_events(db: Database, event_bus: EventBus) -> None:
 
     event_bus.subscribe(Event.VACATION_CHANGED, on_change)
 
-    rec = VacationRecord(None, date(2026, 7, 15), 8.0, VacationType.ANNUAL_LEAVE)
+    rec = VacationRecord(None, date(2026, 7, 15), 8.0,
+                         VacationType.ANNUAL_LEAVE)
     rec_id = model.insert_record(rec)
     assert change_called is True
 
@@ -126,7 +127,8 @@ def test_unpaid_leave_not_counted_as_used(db: Database, event_bus: EventBus) -> 
     model = VacationModel(db, event_bus)
     model.save_settings(2026, 160.0, 40.0)
 
-    rec = VacationRecord(None, date(2026, 7, 1), 8.0, VacationType.UNPAID_LEAVE)
+    rec = VacationRecord(None, date(2026, 7, 1), 8.0,
+                         VacationType.UNPAID_LEAVE)
     model.insert_record(rec)
 
     summary = model.calculate_vacation_summary(2026)
@@ -149,13 +151,16 @@ def test_calculate_vacation_summary_combines_carry_over_and_used_in_one_query(
         VacationRecord(None, date(2026, 1, 1), 15.0, VacationType.CARRY_OVER)
     )
     model.insert_record(
-        VacationRecord(None, date(2026, 3, 10), 24.0, VacationType.ANNUAL_LEAVE)
+        VacationRecord(None, date(2026, 3, 10), 24.0,
+                       VacationType.ANNUAL_LEAVE)
     )
     model.insert_record(
-        VacationRecord(None, date(2026, 5, 5), 8.0, VacationType.PUBLIC_HOLIDAY)
+        VacationRecord(None, date(2026, 5, 5), 8.0,
+                       VacationType.PUBLIC_HOLIDAY)
     )
     model.insert_record(
-        VacationRecord(None, date(2026, 8, 20), 16.0, VacationType.SPECIAL_LEAVE)
+        VacationRecord(None, date(2026, 8, 20), 16.0,
+                       VacationType.SPECIAL_LEAVE)
     )
     # Not counted as "used" -- must not leak into either bucket.
     model.insert_record(
@@ -182,8 +187,10 @@ def test_vacation_balance_and_carry_over(db: Database, event_bus: EventBus) -> N
 
     # 2. Add some used vacation in 2025
     # Total used in 2025: 140h (so 20h remaining)
-    r1 = VacationRecord(None, date(2025, 6, 1), 120.0, VacationType.ANNUAL_LEAVE)
-    r2 = VacationRecord(None, date(2025, 12, 25), 20.0, VacationType.PUBLIC_HOLIDAY)
+    r1 = VacationRecord(None, date(2025, 6, 1), 120.0,
+                        VacationType.ANNUAL_LEAVE)
+    r2 = VacationRecord(None, date(2025, 12, 25), 20.0,
+                        VacationType.PUBLIC_HOLIDAY)
     model.insert_record(r1)
     model.insert_record(r2)
 
@@ -224,7 +231,8 @@ def test_carry_over_history(db: Database, event_bus: EventBus) -> None:
     model.save_settings(2026, 160.0, 40.0)
 
     # Use only 145h of 160h in 2025 (15h remaining)
-    r1 = VacationRecord(None, date(2025, 6, 1), 145.0, VacationType.ANNUAL_LEAVE)
+    r1 = VacationRecord(None, date(2025, 6, 1), 145.0,
+                        VacationType.ANNUAL_LEAVE)
     model.insert_record(r1)
 
     model.add_carry_over(2025, 2026, 15.0)
@@ -256,7 +264,8 @@ def test_get_records_for_year_skips_malformed_row_and_logs_warning(
     TimeClockModel.get_date_exceptions()."""
     model = VacationModel(db, event_bus)
 
-    good = VacationRecord(None, date(2026, 7, 15), 8.0, VacationType.ANNUAL_LEAVE, "ok")
+    good = VacationRecord(None, date(2026, 7, 15), 8.0,
+                          VacationType.ANNUAL_LEAVE, "ok")
     model.insert_record(good)
 
     conn = db.get_connection()
@@ -275,6 +284,7 @@ def test_get_records_for_year_skips_malformed_row_and_logs_warning(
 
     assert len(records) == 1
     assert records[0].note == "ok"
+    assert model.last_skipped_count == 1
     assert any(
         record.levelname == "WARNING" and "malformed" in record.message.lower()
         for record in caplog.records
@@ -352,7 +362,8 @@ def test_daily_target_uses_date_exception_over_weekday(
     tc_model.save_work_day_targets({0: 9.0})
 
     exception_date = date(2026, 6, 22)  # a Monday, normally 9.0h
-    tc_model.save_date_exception(exception_date.isoformat(), 4.0, "Short Friday-eve")
+    tc_model.save_date_exception(
+        exception_date.isoformat(), 4.0, "Short Friday-eve")
 
     assert model.get_daily_target_for_date(exception_date) == 4.0
     # A day without an exception still falls back to the weekday target.

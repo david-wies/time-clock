@@ -42,7 +42,8 @@ class MiliuimTab(RecordTabMixin, ttk.Frame):
         self.settings = settings
         self.bus = bus
         self.root = root
-        self._theme_mode: ThemeMode = resolve_theme_mode(self.settings.get("theme"))
+        self._theme_mode: ThemeMode = resolve_theme_mode(
+            self.settings.get("theme"))
 
         today = date.today()
         self._selected_year: int = today.year
@@ -58,7 +59,8 @@ class MiliuimTab(RecordTabMixin, ttk.Frame):
         self._build_ui()
         self._refresh()
 
-        self._unsubs.append(bus.subscribe(Event.MILIUIM_CHANGED, self._on_event))
+        self._unsubs.append(bus.subscribe(
+            Event.MILIUIM_CHANGED, self._on_event))
         self._unsubs.append(
             bus.subscribe(Event.SETTINGS_CHANGED, self._on_settings_changed)
         )
@@ -106,18 +108,22 @@ class MiliuimTab(RecordTabMixin, ttk.Frame):
         )
         self._tree.heading("start_date", text="Start Date", anchor="center")
 
-        self._tree.column("end_date", width=110, minwidth=90, stretch=False, anchor="w")
+        self._tree.column("end_date", width=110, minwidth=90,
+                          stretch=False, anchor="w")
         self._tree.heading("end_date", text="End Date", anchor="center")
 
         self._tree.column(
             "hebrew_date", width=150, minwidth=120, stretch=False, anchor="w"
         )
-        self._tree.heading("hebrew_date", text="Hebrew Date (Start)", anchor="center")
+        self._tree.heading(
+            "hebrew_date", text="Hebrew Date (Start)", anchor="center")
 
-        self._tree.column("days", width=60, minwidth=50, stretch=False, anchor="e")
+        self._tree.column("days", width=60, minwidth=50,
+                          stretch=False, anchor="e")
         self._tree.heading("days", text="Days", anchor="center")
 
-        self._tree.column("note", width=200, minwidth=80, stretch=True, anchor="w")
+        self._tree.column("note", width=200, minwidth=80,
+                          stretch=True, anchor="w")
         self._tree.heading("note", text="Note", anchor="center")
 
         vsb = ttk.Scrollbar(frame, orient="vertical", command=self._tree.yview)
@@ -187,7 +193,8 @@ class MiliuimTab(RecordTabMixin, ttk.Frame):
             # issuing a second SQL query for the same year's data. Mirrors
             # the overlap test get_records_for_year() runs in SQL: a period
             # is included if it overlaps the selected month at all.
-            period_start, period_end = period_bounds(self._selected_year, month)
+            period_start, period_end = period_bounds(
+                self._selected_year, month)
             records = [
                 r
                 for r in year_records
@@ -207,7 +214,8 @@ class MiliuimTab(RecordTabMixin, ttk.Frame):
                 "",
                 "end",
                 iid="__total__",
-                values=("", "", "", str(total_days), f"Total: {total_days} days"),
+                values=("", "", "", str(total_days),
+                        f"Total: {total_days} days"),
                 tags=("total",),
             )
             c = COLORS.get(self._theme_mode, COLORS[ThemeMode.LIGHT])
@@ -222,6 +230,8 @@ class MiliuimTab(RecordTabMixin, ttk.Frame):
         year_records = self.model.get_records_for_year(self._selected_year)
         self._refresh_summary(year_records)
         self._refresh_tree(year_records)
+        self._append_skip_notice(
+            self._lbl_summary, self.model.last_skipped_count)
         self._update_button_states()
 
     def _on_event(self, **_kw) -> None:
@@ -261,4 +271,5 @@ class MiliuimTab(RecordTabMixin, ttk.Frame):
             return
         result = self.controller.delete_record(rec_id)
         if not result.ok:
-            messagebox.showerror("Remove Failed", "\n".join(result.errors), parent=self)
+            messagebox.showerror("Remove Failed", "\n".join(
+                result.errors), parent=self)

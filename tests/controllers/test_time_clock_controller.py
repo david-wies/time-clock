@@ -67,20 +67,19 @@ def test_save_overlapping_record(controller: TimeClockController) -> None:
 def test_save_record_rejects_negative_break_minutes_after_mutation(
     controller: TimeClockController,
 ) -> None:
-    """TimeRecord.__post_init__ only runs at construction time, so
-    mutating a field on an already-saved record and calling save_record()
-    again must still be caught — by TimeClockController.save_record()
-    re-running time_record_invariant_errors(), not by __post_init__."""
+    """TimeRecord.break_minutes is a _ValidatingRecord-validated field
+    (domain/types.py), so mutating it to an invalid value on an
+    already-saved record now raises ValueError immediately — the value can
+    never become invalid in the first place, so
+    TimeClockController.save_record() is no longer needed as a second line
+    of defense for this field."""
     rec = TimeRecord(
         None, date(2026, 6, 26), time(9, 0), time(17, 0), 30, WorkType.REMOTE
     )
     assert controller.save_record(rec).ok is True
 
-    rec.break_minutes = -1
-    res = controller.save_record(rec)
-
-    assert res.ok is False
-    assert res.errors == ["Break minutes must be non-negative."]
+    with pytest.raises(ValueError, match="Break minutes must be non-negative"):
+        rec.break_minutes = -1
 
 
 def test_clock_out_rejects_break_exceeding_shift_length_after_mutation(
@@ -94,7 +93,8 @@ def test_clock_out_rejects_break_exceeding_shift_length_after_mutation(
     stale break_minutes value that now exceeds the shift length —
     fixed_clock pins clock-in and clock-out at the same instant (09:00), so
     the resulting shift is zero-length and any positive break exceeds it."""
-    open_rec = TimeRecord(None, date(2026, 6, 26), time(9, 0), None, 0, WorkType.REMOTE)
+    open_rec = TimeRecord(None, date(2026, 6, 26),
+                          time(9, 0), None, 0, WorkType.REMOTE)
     record_id = controller.model.insert_record(open_rec)
 
     stored = controller.model.get_record_by_id(record_id)
