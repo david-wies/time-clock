@@ -280,6 +280,45 @@ def test_edit_vtype_switch_to_debit_retriggers_balance_check(
     assert res_override.ok is True
 
 
+def test_edit_date_across_year_boundary_retriggers_balance_check(
+    controller: VacationController, event_bus: EventBus
+) -> None:
+    """Editing an existing debit record (ANNUAL_LEAVE) and moving its `date`
+    into a different year must NOT reuse the old record's hours as
+    `old_hours` against the new year's balance -- old_hours belonged to the
+    old year's summary, so subtracting it from the new year's
+    projected_remaining would artificially inflate the apparent remaining
+    balance and let an over-balance save through undetected."""
+    controller.model.save_settings(2025, 16.0, 0.0)
+    controller.model.save_settings(2026, 16.0, 0.0)
+    tc_model = TimeClockModel(controller.model.db, event_bus)
+    tc_model.save_work_day_targets({i: 24.0 for i in range(7)})
+
+    # Insert a debit record in 2025 using nearly all of 2025's allowance.
+    rec = VacationRecord(None, date(2025, 7, 15), 15.0, VacationType.ANNUAL_LEAVE)
+    assert controller.save_record(rec).ok is True
+    assert controller.model.calculate_vacation_summary(2025).remaining == 1.0
+    assert controller.model.calculate_vacation_summary(2026).remaining == 16.0
+
+    # Edit: move the record's date into 2026 and request more hours than
+    # 2026's full allowance. Without the year check, the old 2025 hours
+    # (15.0) would be subtracted from 2026's projected_remaining, making the
+    # over-request appear to fit.
+    fetched = controller.model.get_record_by_id(rec.id)
+    assert fetched is not None
+    fetched.date = date(2026, 7, 15)
+    fetched.hours = 20.0
+
+    res_edit = controller.save_record(fetched)
+
+    assert res_edit.ok is False
+    assert "OVER_BALANCE_WARNING" in res_edit.errors
+
+    # Confirming the override still succeeds.
+    res_override = controller.save_record(fetched, confirm_over_balance=True)
+    assert res_override.ok is True
+
+
 def test_add_carry_over_validation(controller: VacationController) -> None:
     # 1. Setup settings
     controller.model.save_settings(2025, 40.0, 10.0)  # max carryover 10h

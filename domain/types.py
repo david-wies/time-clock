@@ -336,14 +336,16 @@ class SicknessSummary:
 def _validate_workday_exception_hours(value: float) -> float:
     """Single-field non-negative check for WorkDayException.hours. Shared
     by __post_init__ (construction) and _VALIDATORS (post-construction
-    mutation, via _ValidatingRecord) so the logic lives in one place."""
+    mutation, via _ValidatingRecord) so the logic lives in one place.
+
+    Delegates to `Hours`, which already rejects negative, NaN, and
+    infinite values — reusing that check here instead of duplicating it
+    also fixes NaN silently passing through the old `value < 0` comparison
+    (NaN comparisons are always False in Python)."""
     try:
-        negative = value < 0
+        return Hours(value)
     except TypeError as e:
         raise ValueError("Hours must be a non-negative number.") from e
-    if negative:
-        raise ValueError("Hours must be non-negative.")
-    return value
 
 
 @dataclass(slots=True)

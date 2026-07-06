@@ -24,6 +24,7 @@ from domain.types import TimeRecord, WorkDayException
 from models.time_clock_model import TimeClockModel
 from settings import SettingsManager
 from theme.style import COLORS, ThemeMode, resolve_theme_mode
+from views.dialog_common import setup_modal_window
 from views.enums import ViewMode
 from views.record_tab_common import RecordTabMixin
 from views.time_record_dialog import TimeRecordDialog
@@ -819,11 +820,7 @@ class TimeClockTab(RecordTabMixin, ttk.Frame):
             return
 
         dlg = tk.Toplevel(self)
-        dlg.title("Select Record to Clock Out")
-        dlg.resizable(False, False)
-        dlg.transient(self.winfo_toplevel())
-        dlg.grab_set()
-        dlg.bind("<Escape>", lambda e: dlg.destroy())
+        setup_modal_window(dlg, self, "Select Record to Clock Out", minsize=(360, 220))
 
         ttk.Label(
             dlg,

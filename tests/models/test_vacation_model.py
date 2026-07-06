@@ -134,14 +134,16 @@ def test_unpaid_leave_not_counted_as_used(db: Database, event_bus: EventBus) -> 
     assert summary.remaining == 160.0
 
 
-def test_calculate_vacation_summary_combines_carry_over_and_used_in_one_query(
+def test_calculate_vacation_summary_sums_carry_over_and_used_from_one_fetch(
     db: Database, event_bus: EventBus
 ) -> None:
-    """calculate_vacation_summary() combines the carry-over-credit and
-    used-debit SUMs into a single conditional-aggregation query instead of
-    two sequential SELECT SUM(...) queries -- this test exercises a year
-    with *both* record kinds present simultaneously to confirm the
-    combined query still attributes hours to the right bucket."""
+    """calculate_vacation_summary() sums the carry-over-credit and used-debit
+    buckets from a single get_records_for_year() fetch (the same row-fetch
+    method -- and malformed-row-skip behavior -- every other reader in this
+    model uses), instead of issuing its own separate query per bucket. This
+    test exercises a year with *both* record kinds present simultaneously to
+    confirm the shared fetch still attributes hours to the right bucket, and
+    confirms only one SELECT is issued against vacation_record."""
     model = VacationModel(db, event_bus)
     model.save_settings(2026, 160.0, 40.0)
 
@@ -162,7 +164,18 @@ def test_calculate_vacation_summary_combines_carry_over_and_used_in_one_query(
         VacationRecord(None, date(2026, 9, 1), 40.0, VacationType.UNPAID_LEAVE)
     )
 
-    summary = model.calculate_vacation_summary(2026)
+    conn = db.get_connection()
+    captured_statements: list[str] = []
+    conn.set_trace_callback(captured_statements.append)
+    try:
+        summary = model.calculate_vacation_summary(2026)
+    finally:
+        conn.set_trace_callback(None)
+
+    select_statements = [
+        s for s in captured_statements if s.startswith("SELECT * FROM vacation_record")
+    ]
+    assert len(select_statements) == 1
 
     assert summary.allowance == 160.0
     assert summary.carry_over == 15.0

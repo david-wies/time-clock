@@ -149,6 +149,11 @@ class MiliuimRecordDialog(tk.Toplevel):
             self._lbl_error.config(text="\n".join(field_errors))
             return
 
+        # field_errors is empty here, so neither except branch above (the
+        # only places that assign None) was taken.
+        if start_date is None or end_date is None:
+            return
+
         note_s = self._var_note.get().strip() or None
 
         try:

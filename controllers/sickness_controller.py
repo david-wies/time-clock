@@ -11,6 +11,9 @@ from models.sickness_model import SicknessModel
 
 logger = logging.getLogger(__name__)
 
+_MIN_SICK_HOURS = 0.5
+_MAX_SICK_HOURS = 24.0
+
 
 def validate_sick_record(record: SicknessRecord) -> list[str]:
     """Pure validation function for SicknessRecord (enforces §7.3 table).
@@ -26,7 +29,7 @@ def validate_sick_record(record: SicknessRecord) -> list[str]:
     """
     errors = []
 
-    if record.hours < 0.5 or record.hours > 24.0:
+    if record.hours < _MIN_SICK_HOURS or record.hours > _MAX_SICK_HOURS:
         errors.append("Hours must be between 0.5 and 24.")
 
     return errors
@@ -75,8 +78,7 @@ class SicknessController:
             else:
                 self.model.update_record(record)
             return Result(ok=True, errors=[])
-        assert guard.result is not None
-        return guard.result
+        return guard.unwrap()
 
     def delete_record(self, record_id: int) -> Result:
         """Delete the sick record with the given id."""
@@ -86,8 +88,7 @@ class SicknessController:
         with guard:
             self.model.delete_record(record_id)
             return Result(ok=True, errors=[])
-        assert guard.result is not None
-        return guard.result
+        return guard.unwrap()
 
     def save_range(
         self,
@@ -101,7 +102,7 @@ class SicknessController:
         """Insert sick records for every day in [start_date, end_date] inclusive."""
         if end_date < start_date:
             return Result(ok=False, errors=["End date must be on or after start date."])
-        if hours < 0.5 or hours > 24.0:
+        if hours < _MIN_SICK_HOURS or hours > _MAX_SICK_HOURS:
             return Result(ok=False, errors=["Hours must be between 0.5 and 24."])
 
         # Uses a lightweight raw-SQL read (id, date only) instead of
@@ -164,5 +165,4 @@ class SicknessController:
         with guard:
             self.model.insert_records_bulk(records)
             return Result(ok=True, errors=[])
-        assert guard.result is not None
-        return guard.result
+        return guard.unwrap()

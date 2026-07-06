@@ -195,6 +195,11 @@ class SickRecordDialog(tk.Toplevel):
             self._lbl_error.config(text="\n".join(field_errors))
             return
 
+        # field_errors is empty here, so the except branch above (the only
+        # place that assigns None) was never taken.
+        if start_date is None:
+            return
+
         note_s = self._var_note.get().strip()
         note = note_s or None
 

@@ -29,14 +29,13 @@ class DatabaseErrorGuard(AbstractContextManager[None]):
 
     The `with` block is expected to `return` on its success path, so code
     after the `with` statement is reached only when an error was caught —
-    at which point `.result` is guaranteed to be set:
+    at which point `.unwrap()` is guaranteed to return the captured Result:
 
         guard = DatabaseErrorGuard(logger, "Database error while X %r", record)
         with guard:
             self.model.insert_record(record)
             return Result(ok=True, errors=[])
-        assert guard.result is not None
-        return guard.result
+        return guard.unwrap()
     """
 
     def __init__(self, log: logging.Logger, message: str, *args: object) -> None:
@@ -56,6 +55,19 @@ class DatabaseErrorGuard(AbstractContextManager[None]):
             self.result = Result(ok=False, errors=[f"Database error: {exc}"])
             return True
         return False
+
+    def unwrap(self) -> Result:
+        """Returns the Result captured by `__exit__` after a sqlite3.Error
+        was caught. Only call this in the code reached when the `with`
+        body did not itself return — i.e., right after the `with` block —
+        at which point an error is guaranteed to have been caught and
+        `self.result` populated.
+        """
+        if self.result is None:
+            raise RuntimeError(
+                "DatabaseErrorGuard.unwrap() called but no error was caught"
+            )
+        return self.result
 
 
 def times_overlap(s1: time, e1: time | None, s2: time, e2: time | None) -> bool:
@@ -171,8 +183,7 @@ class TimeClockController:
             self.settings.set("last_used_work_type", record.work_type.value)
             # may contain OVERNIGHT_SHIFT_WARNING
             return Result(ok=True, errors=errors)
-        assert guard.result is not None
-        return guard.result
+        return guard.unwrap()
 
     def clock_in(
         self, work_type: WorkType | None = None, force: bool = False
@@ -234,8 +245,7 @@ class TimeClockController:
         with guard:
             self.model.insert_record(record)
             return Result(ok=True, errors=[])
-        assert guard.result is not None
-        return guard.result
+        return guard.unwrap()
 
     def clock_out(self, record_id: int | None = None) -> Result:
         """
@@ -289,8 +299,7 @@ class TimeClockController:
         with guard:
             self.model.update_record(target_record)
             return Result(ok=True, errors=errors)
-        assert guard.result is not None
-        return guard.result
+        return guard.unwrap()
 
     def delete_record(self, record_id: int) -> Result:
         """Delete the time record with the given id."""
@@ -300,5 +309,4 @@ class TimeClockController:
         with guard:
             self.model.delete_record(record_id)
             return Result(ok=True, errors=[])
-        assert guard.result is not None
-        return guard.result
+        return guard.unwrap()

@@ -68,8 +68,7 @@ class MiliuimController:
             else:
                 self.model.update_record(record)
             return Result(ok=True, errors=[])
-        assert guard.result is not None
-        return guard.result
+        return guard.unwrap()
 
     def delete_record(self, record_id: int) -> Result:
         """Delete the Miliuim record with the given id."""
@@ -79,5 +78,4 @@ class MiliuimController:
         with guard:
             self.model.delete_record(record_id)
             return Result(ok=True, errors=[])
-        assert guard.result is not None
-        return guard.result
+        return guard.unwrap()

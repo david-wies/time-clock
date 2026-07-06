@@ -20,6 +20,7 @@ from domain.types import (
     SicknessRecord,
     TimeRecord,
     VacationRecord,
+    WorkDayException,
 )
 
 # ─────────────────────────── Hours / BreakMinutes ─────────────────────────────
@@ -28,6 +29,16 @@ from domain.types import (
 def test_hours_negative_raises() -> None:
     with pytest.raises(ValueError, match="non-negative"):
         Hours(-1)
+
+
+def test_hours_nan_raises() -> None:
+    with pytest.raises(ValueError, match="non-negative"):
+        Hours(float("nan"))
+
+
+def test_hours_infinite_raises() -> None:
+    with pytest.raises(ValueError, match="non-negative"):
+        Hours(float("inf"))
 
 
 def test_break_minutes_negative_raises() -> None:
@@ -225,6 +236,29 @@ def test_miliuim_record_end_before_start_raises() -> None:
 def test_miliuim_record_note_too_long_raises() -> None:
     with pytest.raises(ValueError, match="Note is too long"):
         MiliuimRecord(None, date(2026, 6, 1), date(2026, 6, 5), note="x" * 501)
+
+
+# ────────────────────────────── WorkDayException ─────────────────────────────
+
+
+def test_workday_exception_valid_construction_succeeds() -> None:
+    exc = WorkDayException(1, date(2026, 6, 1), 8.0, "Holiday")
+    assert exc.hours == 8.0
+
+
+def test_workday_exception_negative_hours_raises() -> None:
+    with pytest.raises(ValueError, match="non-negative"):
+        WorkDayException(1, date(2026, 6, 1), -1.0, "Holiday")
+
+
+def test_workday_exception_nan_hours_raises() -> None:
+    with pytest.raises(ValueError, match="non-negative"):
+        WorkDayException(1, date(2026, 6, 1), float("nan"), "Holiday")
+
+
+def test_workday_exception_infinite_hours_raises() -> None:
+    with pytest.raises(ValueError, match="non-negative"):
+        WorkDayException(1, date(2026, 6, 1), float("inf"), "Holiday")
 
 
 # ─────────────────────────────── PeriodBalance ───────────────────────────────

@@ -89,7 +89,11 @@ class VacationController:
             old_hours = 0.0
             if record.id is not None:
                 old_rec = self.model.get_record_by_id(record.id)
-                if old_rec and old_rec.vtype in _DEBIT_VACATION_TYPES:
+                if (
+                    old_rec
+                    and old_rec.vtype in _DEBIT_VACATION_TYPES
+                    and old_rec.date.year == year
+                ):
                     old_hours = old_rec.hours
 
             projected_remaining = summary.remaining + old_hours - record.hours
@@ -107,8 +111,7 @@ class VacationController:
             else:
                 self.model.update_record(record)
             return Result(ok=True, errors=[])
-        assert guard.result is not None
-        return guard.result
+        return guard.unwrap()
 
     def add_carry_over(self, from_year: int, to_year: int, hours: float) -> Result:
         """Validates and records a carry-over allocation."""
@@ -138,8 +141,7 @@ class VacationController:
         with guard:
             self.model.add_carry_over(from_year, to_year, hours)
             return Result(ok=True, errors=[])
-        assert guard.result is not None
-        return guard.result
+        return guard.unwrap()
 
     def delete_record(self, record_id: int) -> Result:
         """Delete the vacation record with the given id."""
@@ -149,5 +151,4 @@ class VacationController:
         with guard:
             self.model.delete_record(record_id)
             return Result(ok=True, errors=[])
-        assert guard.result is not None
-        return guard.result
+        return guard.unwrap()

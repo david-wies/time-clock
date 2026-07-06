@@ -9,6 +9,7 @@ from core.events import Event, EventBus
 from core.timeutil import date_to_iso, iso_to_date, period_bounds
 from db.database import Database
 from domain.types import MiliuimRecord, MiliuimSummary
+from models._row_mapping import rows_to_records
 
 logger = logging.getLogger(__name__)
 
@@ -50,12 +51,7 @@ class MiliuimModel:
             return None
 
     def _rows_to_records(self, rows: list[sqlite3.Row]) -> list[MiliuimRecord]:
-        records = []
-        for row in rows:
-            rec = self._row_to_record(row)
-            if rec is not None:
-                records.append(rec)
-        self.last_skipped_count = len(rows) - len(records)
+        records, self.last_skipped_count = rows_to_records(rows, self._row_to_record)
         return records
 
     def get_record_by_id(self, record_id: int) -> MiliuimRecord | None:

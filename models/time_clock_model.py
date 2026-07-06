@@ -15,6 +15,7 @@ from core.timeutil import (
 from db.database import Database
 from domain.enums import WorkType
 from domain.types import TimeRecord, WorkDayException
+from models._row_mapping import rows_to_records
 
 logger = logging.getLogger(__name__)
 
@@ -60,12 +61,7 @@ class TimeClockModel:
             return None
 
     def _rows_to_records(self, rows: list[sqlite3.Row]) -> list[TimeRecord]:
-        records = []
-        for row in rows:
-            rec = self._row_to_record(row)
-            if rec is not None:
-                records.append(rec)
-        self.last_skipped_count = len(rows) - len(records)
+        records, self.last_skipped_count = rows_to_records(rows, self._row_to_record)
         return records
 
     def get_record_by_id(self, record_id: int) -> TimeRecord | None:

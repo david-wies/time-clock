@@ -15,6 +15,7 @@ from domain.types import (
     VacationRecord,
     VacationSummary,
 )
+from models._row_mapping import rows_to_records
 
 logger = logging.getLogger(__name__)
 
@@ -56,12 +57,7 @@ class VacationModel:
             return None
 
     def _rows_to_records(self, rows: list[sqlite3.Row]) -> list[VacationRecord]:
-        records = []
-        for row in rows:
-            rec = self._row_to_record(row)
-            if rec is not None:
-                records.append(rec)
-        self.last_skipped_count = len(rows) - len(records)
+        records, self.last_skipped_count = rows_to_records(rows, self._row_to_record)
         return records
 
     def get_record_by_id(self, record_id: int) -> VacationRecord | None:
@@ -199,15 +195,25 @@ class VacationModel:
                         row["transferred_at"],
                     )
                     continue
-                entries.append(
-                    CarryOverLogEntry(
-                        id=row["id"],
-                        from_year=row["from_year"],
-                        to_year=row["to_year"],
-                        hours=row["hours"],
-                        transferred_at=transferred_at,
+                try:
+                    entries.append(
+                        CarryOverLogEntry(
+                            id=row["id"],
+                            from_year=row["from_year"],
+                            to_year=row["to_year"],
+                            hours=row["hours"],
+                            transferred_at=transferred_at,
+                        )
                     )
-                )
+                except ValueError:
+                    logger.warning(
+                        "Skipping malformed carry_over_log row: id=%r "
+                        "from_year=%r to_year=%r hours=%r",
+                        row["id"],
+                        row["from_year"],
+                        row["to_year"],
+                        row["hours"],
+                    )
             return entries
 
     def get_already_transferred(self, from_year: int, to_year: int) -> float:
@@ -233,56 +239,33 @@ class VacationModel:
           - used: total annual_leave, public_holiday, special_leave records
           - remaining: total_pool - used
 
-        If `records` is omitted, the full-year record set is fetched
-        internally via a single conditional-aggregation SQL query (existing
-        behavior, unchanged for any caller that doesn't already have the
-        records on hand). If the caller already fetched the year's records
-        itself (e.g. VacationTab building both the balance summary and the
-        record tree from one fetch per refresh), pass them in here to skip
-        the redundant query.
+        If `records` is omitted, the full year's records are fetched
+        internally via get_records_for_year() -- the same row-fetch method
+        (and malformed-row-skip behavior) every other caller uses. If the
+        caller already fetched the year's records itself (e.g. VacationTab
+        building both the balance summary and the record tree from one
+        fetch per refresh), pass them in here to skip the redundant fetch.
+        Both branches sum over the same VacationRecord objects, so a
+        malformed row is skipped consistently regardless of which path is
+        used.
         """
         settings = self.get_settings(year)
         allowance = settings["hours_per_year"] if settings else 0.0
 
-        if records is not None:
-            carry_over = sum(
-                r.hours for r in records if r.vtype == VacationType.CARRY_OVER
+        if records is None:
+            records = self.get_records_for_year(year)
+
+        carry_over = sum(r.hours for r in records if r.vtype == VacationType.CARRY_OVER)
+        used = sum(
+            r.hours
+            for r in records
+            if r.vtype
+            in (
+                VacationType.ANNUAL_LEAVE,
+                VacationType.PUBLIC_HOLIDAY,
+                VacationType.SPECIAL_LEAVE,
             )
-            used = sum(
-                r.hours
-                for r in records
-                if r.vtype
-                in (
-                    VacationType.ANNUAL_LEAVE,
-                    VacationType.PUBLIC_HOLIDAY,
-                    VacationType.SPECIAL_LEAVE,
-                )
-            )
-        else:
-            with self.db.connection() as conn:
-                cursor = conn.cursor()
-                # Carry-over credits and used debits in a single pass over
-                # the table via conditional aggregation, instead of two
-                # sequential SUM(...) queries over the same date range.
-                cursor.execute(
-                    """
-                    SELECT
-                        SUM(CASE WHEN vtype = 'carry_over' THEN hours ELSE 0 END)
-                            AS carry_over,
-                        SUM(CASE
-                            WHEN vtype IN
-                                ('annual_leave', 'public_holiday', 'special_leave')
-                            THEN hours ELSE 0 END) AS used
-                    FROM vacation_record
-                    WHERE date >= ? AND date <= ?;
-                    """,
-                    period_bounds(year),
-                )
-                row = cursor.fetchone()
-                carry_over = (
-                    row["carry_over"] if row and row["carry_over"] is not None else 0.0
-                )
-                used = row["used"] if row and row["used"] is not None else 0.0
+        )
 
         total_pool = allowance + carry_over
         remaining = total_pool - used
