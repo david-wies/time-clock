@@ -3,6 +3,7 @@
 import logging
 
 from controllers.time_clock_controller import DatabaseErrorGuard
+from core.timeutil import to_display_date
 from domain.types import MiliuimRecord, Result, miliuim_record_invariant_errors
 from models.miliuim_model import MiliuimModel
 
@@ -51,11 +52,13 @@ class MiliuimController:
             for other_id, other_start, other_end in existing_ranges:
                 if other_id == record.id:
                     continue
+                other_start_str = to_display_date(other_start)
+                other_end_str = to_display_date(other_end)
                 return Result(
                     ok=False,
                     errors=[
                         "Period overlaps with an existing Miliuim period "
-                        f"({other_start.isoformat()} – {other_end.isoformat()})."
+                        f"({other_start_str} – {other_end_str})."
                     ],
                 )
 

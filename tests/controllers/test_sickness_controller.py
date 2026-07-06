@@ -148,7 +148,7 @@ def test_save_range_rejects_overlapping_existing_record(
         "Range overlaps",
     )
     assert res.ok is False
-    assert "2026-06-10" in res.errors[0]
+    assert "10/06/2026" in res.errors[0]
 
     # No extra records were inserted for the conflicting date.
     records = controller.model.get_records_in_date_range(

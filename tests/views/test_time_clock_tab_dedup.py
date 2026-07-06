@@ -20,11 +20,13 @@ single ``targets`` fetch and a per-year exceptions cache through
 refresh cycle in ``_refresh()``/``_auto_refresh()``.
 """
 
-from datetime import date, timedelta
+from datetime import date, time, timedelta
 from unittest import mock
 
 from core.events import EventBus
 from db.database import Database
+from domain.enums import WorkType
+from domain.types import TimeRecord
 from models.time_clock_model import TimeClockModel
 from settings import SettingsManager
 from views.time_clock_tab import TimeClockTab
@@ -207,11 +209,6 @@ def test_auto_refresh_fetches_targets_and_exceptions_once(
     assert exc_spy.call_count == 0
 
     # Now with an open record present, it must refresh -- exactly once each.
-    from datetime import time
-
-    from domain.enums import WorkType
-    from domain.types import TimeRecord
-
     model.insert_record(TimeRecord(None, today, time(9, 0), None, 0, WorkType.REMOTE))
 
     with targets_patch as targets_spy, exc_patch as exc_spy:

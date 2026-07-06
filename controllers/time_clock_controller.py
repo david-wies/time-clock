@@ -76,7 +76,7 @@ def times_overlap(s1: time, e1: time | None, s2: time, e2: time | None) -> bool:
 
 
 def validate_time_record(
-    record: TimeRecord, existing_records: list[TimeRecord]
+    record: TimeRecord, existing_records: list[tuple[int, time, time | None]]
 ) -> list[str]:
     """Pure validation function for TimeRecord (enforces §5.6 table).
 
@@ -85,6 +85,11 @@ def validate_time_record(
     Context-free invariants (break_minutes non-negative, break not exceeding
     shift length, office required for in-site, note length) are enforced
     unconditionally by TimeRecord.__post_init__ and are not re-checked here.
+
+    `existing_records` is (id, start_time, end_time) tuples from
+    TimeClockModel.get_time_ranges_by_date() rather than full TimeRecords:
+    see that method's docstring for why the overlap check must not go
+    through get_records_by_date() -> _row_to_record().
     """
     errors = []
 
@@ -100,14 +105,14 @@ def validate_time_record(
             errors.append(WarningCode.OVERNIGHT_SHIFT.value)
 
     # overlap check
-    for existing in existing_records:
-        if existing.id == record.id:
+    for existing_id, existing_start, existing_end in existing_records:
+        if existing_id == record.id:
             continue
         if times_overlap(
             record.start_time,
             record.end_time,
-            existing.start_time,
-            existing.end_time,
+            existing_start,
+            existing_end,
         ):
             errors.append("Record overlaps with an existing time record.")
             break
@@ -138,7 +143,13 @@ class TimeClockController:
         if invariant_errors:
             return Result(ok=False, errors=invariant_errors)
 
-        existing = self.model.get_records_by_date(record.date)
+        # Uses a lightweight raw-SQL read (id, start_time, end_time only)
+        # instead of get_records_by_date(), which goes through TimeRecord
+        # construction and silently drops any row that fails validation
+        # (see TimeClockModel._row_to_record()). A dropped row here would
+        # make a genuinely overlapping record invisible to this check and
+        # let it be saved anyway.
+        existing = self.model.get_time_ranges_by_date(record.date)
         errors = validate_time_record(record, existing)
 
         # OVERNIGHT_SHIFT_WARNING is not a blocking error — filter it out
@@ -205,8 +216,10 @@ class TimeClockController:
         except ValueError as e:
             return Result(ok=False, errors=[str(e)])
 
-        existing = self.model.get_records_by_date(record.date)
-        existing_for_validation = [r for r in existing if r.end_time is not None]
+        # See save_record() above for why get_time_ranges_by_date() is used
+        # here instead of get_records_by_date().
+        existing = self.model.get_time_ranges_by_date(record.date)
+        existing_for_validation = [t for t in existing if t[2] is not None]
         errors = validate_time_record(record, existing_for_validation)
         blocking = [e for e in errors if e != WarningCode.OVERNIGHT_SHIFT.value]
         if blocking:
@@ -254,9 +267,11 @@ class TimeClockController:
         if invariant_errors:
             return Result(ok=False, errors=invariant_errors)
 
-        existing = self.model.get_records_by_date(target_record.date)
+        # See save_record() above for why get_time_ranges_by_date() is used
+        # here instead of get_records_by_date().
+        existing = self.model.get_time_ranges_by_date(target_record.date)
         existing_for_validation = [
-            r for r in existing if r.id == target_record.id or r.end_time is not None
+            t for t in existing if t[0] == target_record.id or t[2] is not None
         ]
         errors = validate_time_record(target_record, existing_for_validation)
         blocking = [e for e in errors if e != WarningCode.OVERNIGHT_SHIFT.value]

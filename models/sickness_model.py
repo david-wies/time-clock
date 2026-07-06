@@ -85,6 +85,29 @@ class SicknessModel:
             )
             return self._rows_to_records(cursor.fetchall())
 
+    def get_dates_in_range(self, start: date, end: date) -> list[tuple[int, date]]:
+        """Returns (id, date) for every sickness_record row whose date falls
+        in [start, end], via a raw SQL read that never constructs a
+        SicknessRecord.
+
+        Unlike get_records_in_date_range(), this cannot silently drop a row:
+        SicknessController.save_range()'s conflict-detection check needs
+        every existing sick day in the range to be visible, including a
+        pre-existing row that would fail SicknessRecord's invariants (e.g.
+        an overlong note from before the 500-char limit existed, or a
+        restored backup) and that get_records_in_date_range() ->
+        _row_to_record() would otherwise catch and skip. Mirrors
+        MiliuimModel.get_date_ranges_in_range().
+        """
+        with self.db.connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT id, date FROM sickness_record"
+                " WHERE date >= ? AND date <= ? ORDER BY date;",
+                (date_to_iso(start), date_to_iso(end)),
+            )
+            return [(row["id"], iso_to_date(row["date"])) for row in cursor.fetchall()]
+
     def insert_record(self, record: SicknessRecord) -> int:
         """Inserts a new sickness record and returns its id."""
         with self.db.connection() as conn:

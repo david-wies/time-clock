@@ -4,6 +4,7 @@ import logging
 from datetime import date, timedelta
 
 from controllers.time_clock_controller import DatabaseErrorGuard
+from core.timeutil import to_display_date
 from domain.enums import WarningCode
 from domain.types import Hours, Result, SicknessRecord, sickness_record_invariant_errors
 from models.sickness_model import SicknessModel
@@ -104,9 +105,17 @@ class SicknessController:
         if hours < 0.5 or hours > 24.0:
             return Result(ok=False, errors=["Hours must be between 0.5 and 24."])
 
-        existing = self.model.get_records_in_date_range(start_date, end_date)
+        # Uses a lightweight raw-SQL read (id, date only) instead of
+        # get_records_in_date_range(), which goes through SicknessRecord
+        # construction and silently drops any row that fails validation
+        # (see SicknessModel._row_to_record()). A dropped row here would
+        # make a genuinely conflicting sick day invisible to this check and
+        # let a duplicate/overlapping record be saved anyway.
+        existing = self.model.get_dates_in_range(start_date, end_date)
         if existing:
-            conflict_dates = ", ".join(sorted(d.date.isoformat() for d in existing))
+            conflict_dates = ", ".join(
+                to_display_date(d) for d in sorted(d for _, d in existing)
+            )
             return Result(
                 ok=False,
                 errors=[f"A sick record already exists for: {conflict_dates}."],

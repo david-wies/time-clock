@@ -2,6 +2,7 @@
 
 import logging
 import time
+import traceback
 from tkinter import Menu, StringVar, messagebox, ttk
 from typing import Any
 
@@ -292,13 +293,25 @@ class MainWindow(ttk.Frame):
     def _on_bus_handler_error(self, message: str) -> None:
         """EventBus.on_handler_error hook: a subscriber raised. The bus has
         already logged the full traceback; let the user know something went
-        wrong instead of leaving the UI silently stale."""
-        self._show_error_deduped(
-            f"bus:{message}",
-            "Unexpected Error",
-            "An internal error occurred while updating the app.\n"
-            "The application will keep running, but a screen may be stale — "
-            "details were written to the log.",
+        wrong instead of leaving the UI silently stale.
+
+        This hook is called synchronously from inside EventBus.publish()'s
+        subscriber loop, so it must return immediately — it only schedules
+        the dialog via `root.after(0, ...)` rather than showing it inline.
+        Showing it inline would block on the modal's own nested Tk event
+        loop before `publish()` could move on to the remaining subscribers
+        of the same event, effectively serializing unrelated tabs/handlers
+        behind one broken one. `message` is this call's own argument (not a
+        mutated loop variable), so a plain closure over it is safe."""
+        self.root.after(
+            0,
+            lambda: self._show_error_deduped(
+                f"bus:{message}",
+                "Unexpected Error",
+                "An internal error occurred while updating the app.\n"
+                "The application will keep running, but a screen may be "
+                "stale — details were written to the log.",
+            ),
         )
 
     def _on_tk_callback_exception(
@@ -306,10 +319,26 @@ class MainWindow(ttk.Frame):
     ) -> None:
         """Tk.report_callback_exception override: catches exceptions raised
         inside any bound widget callback (button, combobox, tree, ...) that
-        Tk would otherwise only print to stderr and silently swallow."""
+        Tk would otherwise only print to stderr and silently swallow.
+
+        Unlike `_on_bus_handler_error`, this isn't called from inside a loop
+        over other pending callbacks — Tk invokes it once, after a single
+        callback has already failed and control is unwinding back to the
+        event loop — so showing the dialog inline here doesn't block any
+        sibling handler the way it would in EventBus.publish(). No
+        `root.after` deferral needed."""
         logger.error("Unhandled exception in Tk callback", exc_info=(exc, val, tb))
+        # Build the dedupe key from the exception type plus the innermost
+        # (raising) frame's location, not `str(val)` — the latter embeds
+        # dynamic, per-call data (e.g. a record id), which would give a
+        # recurring same-site bug a different key on every occurrence and
+        # defeat the modal-storm dedup window entirely. The dialog body
+        # below still shows the full dynamic message; only the key is
+        # normalized.
+        frames = traceback.extract_tb(tb)
+        site = f"{frames[-1].filename}:{frames[-1].lineno}" if frames else "unknown"
         self._show_error_deduped(
-            f"tk:{exc.__name__}: {val}",
+            f"tk:{exc.__name__}:{site}",
             "Unexpected Error",
             f"An unexpected error occurred:\n\n{exc.__name__}: {val}",
         )

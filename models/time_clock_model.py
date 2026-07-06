@@ -2,7 +2,7 @@
 
 import logging
 import sqlite3
-from datetime import date
+from datetime import date, time
 
 from core.events import Event, EventBus
 from core.timeutil import (
@@ -78,6 +78,39 @@ class TimeClockModel:
             )
             rows = cursor.fetchall()
             return self._rows_to_records(rows)
+
+    def get_time_ranges_by_date(
+        self, target_date: date
+    ) -> list[tuple[int, time, time | None]]:
+        """Returns (id, start_time, end_time) for every time_record row on
+        `target_date`, via a raw SQL read that never constructs a
+        TimeRecord.
+
+        Unlike get_records_by_date(), this cannot silently drop a row:
+        the overlap check in TimeClockController.save_record()/clock_in()/
+        clock_out() needs every existing record for the day to be visible,
+        including a pre-existing row that would fail TimeRecord's
+        invariants (e.g. a legacy break_minutes exceeding shift length, or
+        a missing office for a WorkType.IN_SITE row added before that
+        requirement existed) and that get_records_by_date() ->
+        _row_to_record() would otherwise catch and skip. Mirrors
+        MiliuimModel.get_date_ranges_in_range().
+        """
+        with self.db.connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT id, start_time, end_time FROM time_record"
+                " WHERE date = ? ORDER BY start_time ASC;",
+                (date_to_iso(target_date),),
+            )
+            return [
+                (
+                    row["id"],
+                    str_to_time(row["start_time"]),
+                    str_to_time(row["end_time"]) if row["end_time"] else None,
+                )
+                for row in cursor.fetchall()
+            ]
 
     def get_records_for_period(
         self, year: int, month: int | None = None

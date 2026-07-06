@@ -92,13 +92,18 @@ class MiliuimModel:
         overlapping [start, end], via a raw SQL read that never constructs a
         MiliuimRecord.
 
-        Unlike get_records_in_date_range(), this cannot silently drop a row:
+        Unlike get_records_in_date_range(), this cannot silently drop a row
+        for failing a MiliuimRecord invariant (e.g. an overlong note from
+        before the 500-char limit existed, or a restored backup):
         MiliuimController.save_record()'s overlap check needs every
-        overlapping period to be visible, including a pre-existing row that
-        would fail MiliuimRecord's invariants (e.g. an overlong note from
-        before the 500-char limit existed, or a restored backup) and that
+        overlapping period to be visible, and
         get_records_in_date_range() -> _row_to_record() would otherwise
-        catch and skip.
+        catch and skip such a row.
+
+        A row whose start_date/end_date string is not itself a parseable
+        ISO date (corrupt data, a bad migration, a hand-edited DB) is a
+        different failure mode -- there is no date to compare for overlap --
+        so that row, and only that row, is logged and skipped.
         """
         with self.db.connection() as conn:
             cursor = conn.cursor()
@@ -107,14 +112,25 @@ class MiliuimModel:
                 " WHERE start_date <= ? AND end_date >= ? ORDER BY start_date;",
                 (date_to_iso(end), date_to_iso(start)),
             )
-            return [
-                (
-                    row["id"],
-                    iso_to_date(row["start_date"]),
-                    iso_to_date(row["end_date"]),
-                )
-                for row in cursor.fetchall()
-            ]
+            ranges: list[tuple[int, date, date]] = []
+            for row in cursor.fetchall():
+                try:
+                    ranges.append(
+                        (
+                            row["id"],
+                            iso_to_date(row["start_date"]),
+                            iso_to_date(row["end_date"]),
+                        )
+                    )
+                except ValueError:
+                    logger.warning(
+                        "Skipping miliuim_period row with unparseable date:"
+                        " id=%r start_date=%r end_date=%r",
+                        row["id"],
+                        row["start_date"],
+                        row["end_date"],
+                    )
+            return ranges
 
     def insert_record(self, record: MiliuimRecord) -> int:
         """Inserts a new Miliuim period record and returns its id."""
