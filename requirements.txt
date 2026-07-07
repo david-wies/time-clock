@@ -1,5 +1,5 @@
 tkcalendar>=1.6.1
-sv-ttk>=2.6.0
+sv-ttk>=2.6.1
 holidays>=0.100
 hdate>=1.2.1
 reportlab>=4.1.0
