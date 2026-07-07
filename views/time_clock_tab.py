@@ -14,6 +14,7 @@ from core.balance import (
     get_daily_target,
     get_month_range,
     get_record_duration,
+    sum_day_worked,
 )
 from core.events import Event, EventBus
 from core.hebrew_date import to_hebrew_label as _safe_hebrew
@@ -454,10 +455,7 @@ class TimeClockTab(RecordTabMixin, ttk.Frame):
         exceptions = self._exceptions_for_year(today.year, exc_cache)
 
         target_h = get_daily_target(today, targets, exceptions)
-        worked_h = sum(
-            get_record_duration(r, today, now_t)
-            for r in self.model.get_records_by_date(today)
-        )
+        worked_h = sum_day_worked(self.model.get_records_by_date(today), today, now_t)
         remaining = target_h - worked_h
 
         self._lbl_today.config(text=f"Today: {to_display_date(today)}")
@@ -550,7 +548,7 @@ class TimeClockTab(RecordTabMixin, ttk.Frame):
             if not day_recs and day != today:
                 continue
             day_recs_sorted = sorted(day_recs, key=lambda r: r.start_time)
-            day_worked = sum(get_record_duration(r, today, now_t) for r in day_recs)
+            day_worked = sum_day_worked(day_recs, today, now_t)
             day_target = get_daily_target(day, targets, exceptions)
             is_overtime_day = day_worked > day_target > 0
 
@@ -607,7 +605,7 @@ class TimeClockTab(RecordTabMixin, ttk.Frame):
         for i in range(7):
             day = week_start + timedelta(days=i)
             day_recs = sorted(records_by_date.get(day, []), key=lambda r: r.start_time)
-            day_worked = sum(get_record_duration(r, today, now_t) for r in day_recs)
+            day_worked = sum_day_worked(day_recs, today, now_t)
             day_target = get_daily_target(day, targets, exceptions)
             is_overtime_day = day_worked > day_target > 0
 

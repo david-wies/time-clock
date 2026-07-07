@@ -29,9 +29,7 @@ def get_record_duration(rec: TimeRecord, today: date, now_time: time) -> float:
     return 0.0
 
 
-def _sum_day_worked(
-    day_records: list[TimeRecord], today: date, now_time: time
-) -> float:
+def sum_day_worked(day_records: list[TimeRecord], today: date, now_time: time) -> float:
     """Sums worked hours for a single day's records, guarding against
     double-counting when multiple simultaneously-open records exist for
     `today` (e.g. a force-clock-in over an already-open record). Physically,
@@ -107,7 +105,7 @@ def period_balance_from_grouped(
 
         # Add worked
         day_records = records_by_date.get(current_date, [])
-        total_worked += _sum_day_worked(day_records, today, now_time)
+        total_worked += sum_day_worked(day_records, today, now_time)
 
     balance = total_worked - total_target
 
