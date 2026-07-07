@@ -29,6 +29,31 @@ def get_record_duration(rec: TimeRecord, today: date, now_time: time) -> float:
     return 0.0
 
 
+def _sum_day_worked(
+    day_records: list[TimeRecord], today: date, now_time: time
+) -> float:
+    """Sums worked hours for a single day's records, guarding against
+    double-counting when multiple simultaneously-open records exist for
+    `today` (e.g. a force-clock-in over an already-open record). Physically,
+    only one "still clocked in" span can be accruing elapsed time at once, so
+    among today-dated open records (end_time=None) only the one with the
+    earliest start_time contributes; all closed records still each
+    contribute their own duration independently, as before.
+    """
+    open_today_records = [
+        rec for rec in day_records if rec.end_time is None and rec.date == today
+    ]
+    other_records = [rec for rec in day_records if rec not in open_today_records]
+
+    total = sum(get_record_duration(rec, today, now_time) for rec in other_records)
+
+    if open_today_records:
+        earliest_open = min(open_today_records, key=lambda rec: rec.start_time)
+        total += get_record_duration(earliest_open, today, now_time)
+
+    return total
+
+
 def group_records_by_date(records: list[TimeRecord]) -> dict[date, list[TimeRecord]]:
     """Groups records by their `date` field. O(N) — call once and reuse the
     result across multiple `period_balance_from_grouped()` calls (e.g. an
@@ -82,8 +107,7 @@ def period_balance_from_grouped(
 
         # Add worked
         day_records = records_by_date.get(current_date, [])
-        for rec in day_records:
-            total_worked += get_record_duration(rec, today, now_time)
+        total_worked += _sum_day_worked(day_records, today, now_time)
 
     balance = total_worked - total_target
 

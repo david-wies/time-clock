@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import tkinter as tk
 from datetime import date
 from tkinter import messagebox, ttk
 from typing import Callable
@@ -197,24 +196,12 @@ class VacationTab(RecordTabMixin, ttk.Frame):
         self._btn_carry_over.pack(side="left")
 
     def _bind_shortcuts(self) -> None:
-        def _guard(fn: Callable) -> Callable:
-            def _handler(_e=None) -> None:
-                try:
-                    # bind_all is process-wide: all 4 tab frames coexist in the
-                    # Notebook, so without the winfo_ismapped() check a
-                    # shortcut fires on every hidden tab too, not just the
-                    # one currently selected/visible.
-                    if self.winfo_exists() and self.winfo_ismapped():
-                        fn()
-                except tk.TclError:
-                    pass
-
-            return _handler
-
-        self.root.bind_all("<Control-Shift-N>", _guard(self._do_add), add=True)
-        self.root.bind_all("<Control-e>", _guard(self._do_edit), add=True)
-        self.root.bind_all("<Delete>", _guard(self._do_delete), add=True)
-        self.root.bind_all("<F5>", _guard(self._refresh), add=True)
+        self.root.bind_all(
+            "<Control-Shift-N>", self._guard_visible(self._do_add), add=True
+        )
+        self.root.bind_all("<Control-e>", self._guard_visible(self._do_edit), add=True)
+        self.root.bind_all("<Delete>", self._guard_visible(self._do_delete), add=True)
+        self.root.bind_all("<F5>", self._guard_visible(self._refresh), add=True)
 
     # ─────────────────────────── Balance Bar ────────────────────────────────
 

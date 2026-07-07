@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import tkinter as tk
 from datetime import date
 from tkinter import messagebox, ttk
 from typing import Callable
@@ -135,22 +134,10 @@ class MiliuimTab(RecordTabMixin, ttk.Frame):
         )
 
     def _bind_shortcuts(self) -> None:
-        def _guard(fn: Callable) -> Callable:
-            def _handler(_e=None) -> None:
-                try:
-                    # bind_all is process-wide: all 4 tab frames coexist in the
-                    # Notebook, so without the winfo_ismapped() check a
-                    # shortcut fires on every hidden tab too, not just the
-                    # one currently selected/visible.
-                    if self.winfo_exists() and self.winfo_ismapped():
-                        fn()
-                except tk.TclError:
-                    pass
-
-            return _handler
-
-        self.root.bind_all("<Control-Shift-M>", _guard(self._do_add), add=True)
-        self.root.bind_all("<F5>", _guard(self._refresh), add=True)
+        self.root.bind_all(
+            "<Control-Shift-M>", self._guard_visible(self._do_add), add=True
+        )
+        self.root.bind_all("<F5>", self._guard_visible(self._refresh), add=True)
 
     def _refresh_summary(self, records: list[MiliuimRecord]) -> None:
         year = self._selected_year

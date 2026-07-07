@@ -346,26 +346,13 @@ class TimeClockTab(RecordTabMixin, ttk.Frame):
         self._btn_delete.pack(side="left")
 
     def _bind_shortcuts(self) -> None:
-        def _guard(fn: Callable) -> Callable:
-            # type: ignore[assignment]
-            def _handler(_e: tk.Event = None) -> None:
-                try:
-                    # bind_all is process-wide: all 4 tab frames coexist in the
-                    # Notebook, so without the winfo_ismapped() check a
-                    # shortcut fires on every hidden tab too, not just the
-                    # one currently selected/visible.
-                    if self.winfo_exists() and self.winfo_ismapped():
-                        fn()
-                except tk.TclError:
-                    pass
-
-            return _handler
-
-        self.root.bind_all("<Control-n>", _guard(self._do_add), add=True)
-        self.root.bind_all("<Control-e>", _guard(self._do_edit), add=True)
-        self.root.bind_all("<Delete>", _guard(self._do_delete), add=True)
-        self.root.bind_all("<Control-d>", _guard(self._do_clock_out), add=True)
-        self.root.bind_all("<F5>", _guard(self._refresh), add=True)
+        self.root.bind_all("<Control-n>", self._guard_visible(self._do_add), add=True)
+        self.root.bind_all("<Control-e>", self._guard_visible(self._do_edit), add=True)
+        self.root.bind_all("<Delete>", self._guard_visible(self._do_delete), add=True)
+        self.root.bind_all(
+            "<Control-d>", self._guard_visible(self._do_clock_out), add=True
+        )
+        self.root.bind_all("<F5>", self._guard_visible(self._refresh), add=True)
 
     def _apply_tag_styles(self) -> None:
         c = COLORS.get(self._theme_mode, COLORS[ThemeMode.LIGHT])

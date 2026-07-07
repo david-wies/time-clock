@@ -41,7 +41,7 @@ class SicknessModel:
                 note=row["note"],
                 document_path=row["document_path"],
             )
-        except ValueError:
+        except (ValueError, TypeError):
             logger.warning(
                 "Skipping malformed sickness_record row: id=%r date=%r",
                 row["id"],
@@ -110,7 +110,18 @@ class SicknessModel:
                 " WHERE date >= ? AND date <= ? ORDER BY date;",
                 (date_to_iso(start), date_to_iso(end)),
             )
-            return [(row["id"], iso_to_date(row["date"])) for row in cursor.fetchall()]
+            dates: list[tuple[int, date]] = []
+            for row in cursor.fetchall():
+                try:
+                    dates.append((row["id"], iso_to_date(row["date"])))
+                except (ValueError, TypeError):
+                    logger.warning(
+                        "Skipping sickness_record row with unparseable date:"
+                        " id=%r date=%r",
+                        row["id"],
+                        row["date"],
+                    )
+            return dates
 
     def insert_record(self, record: SicknessRecord) -> int:
         """Inserts a new sickness record and returns its id."""

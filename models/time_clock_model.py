@@ -52,7 +52,7 @@ class TimeClockModel:
                 note=row["note"],
                 document_path=row["document_path"],
             )
-        except ValueError:
+        except (ValueError, TypeError):
             logger.warning(
                 "Skipping malformed time_record row: id=%r date=%r",
                 row["id"],
@@ -99,6 +99,11 @@ class TimeClockModel:
         requirement existed) and that get_records_by_date() ->
         _row_to_record() would otherwise catch and skip. Mirrors
         MiliuimModel.get_date_ranges_in_range().
+
+        A row whose start_time/end_time string is not itself a parseable
+        time (corrupt data, a bad migration, a hand-edited DB) is a
+        different failure mode -- there is no time to compare for overlap --
+        so that row, and only that row, is logged and skipped.
         """
         with self.db.connection() as conn:
             cursor = conn.cursor()
@@ -107,14 +112,22 @@ class TimeClockModel:
                 " WHERE date = ? ORDER BY start_time ASC;",
                 (date_to_iso(target_date),),
             )
-            return [
-                (
-                    row["id"],
-                    str_to_time(row["start_time"]),
-                    str_to_time(row["end_time"]) if row["end_time"] else None,
-                )
-                for row in cursor.fetchall()
-            ]
+            ranges: list[tuple[int, time, time | None]] = []
+            for row in cursor.fetchall():
+                try:
+                    start = str_to_time(row["start_time"])
+                    end = str_to_time(row["end_time"]) if row["end_time"] else None
+                except (ValueError, TypeError):
+                    logger.warning(
+                        "Skipping time_record row with unparseable time:"
+                        " id=%r start_time=%r end_time=%r",
+                        row["id"],
+                        row["start_time"],
+                        row["end_time"],
+                    )
+                    continue
+                ranges.append((row["id"], start, end))
+            return ranges
 
     def get_records_for_period(
         self, year: int, month: int | None = None
@@ -287,7 +300,7 @@ class TimeClockModel:
             for row in rows:
                 try:
                     exc_date = date.fromisoformat(row["date"])
-                except ValueError:
+                except (ValueError, TypeError):
                     logger.warning(
                         "Skipping malformed work-day exception row "
                         "(falls back to the regular weekly target for that "
@@ -303,7 +316,7 @@ class TimeClockModel:
                         hours=row["hours"],
                         label=row["label"],
                     )
-                except ValueError:
+                except (ValueError, TypeError):
                     logger.warning(
                         "Skipping malformed work-day exception row "
                         "(falls back to the regular weekly target for that "

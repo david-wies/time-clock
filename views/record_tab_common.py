@@ -119,3 +119,23 @@ class RecordTabMixin:
 
     def _on_destroy(self, _event: object = None) -> None:
         self._clear_unsubs()
+
+    def _guard_visible(
+        self, fn: Callable[[], object]
+    ) -> Callable[[object | None], None]:
+        """Wraps a shortcut handler so it only fires when this tab frame is
+        the currently visible one.
+
+        ``bind_all`` is process-wide: all tab frames coexist in the
+        Notebook, so without this check a shortcut fires on every hidden tab
+        too, not just the one currently selected/visible.
+        """
+
+        def _handler(_e: object = None) -> None:
+            try:
+                if self.winfo_exists() and self.winfo_ismapped():
+                    fn()
+            except tk.TclError:
+                pass
+
+        return _handler

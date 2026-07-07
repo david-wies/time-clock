@@ -308,6 +308,37 @@ def test_calculate_period_balance_open_record_on_future_day_contributes_zero() -
     assert result.worked_hours == 0.0
 
 
+def test_period_balance_from_grouped_two_open_records_same_day_no_double_count() -> (
+    None
+):
+    """Regression: a force-clock-in can leave two simultaneously-open
+    TimeRecords (end_time=None) for the same date. Physically, only one
+    "still clocked in" span can be accruing elapsed time at once, so the
+    balance must count elapsed time from the earliest-starting open record
+    only -- not the sum of both, which would double-count wall-clock time."""
+    targets = {0: 8.0, 1: 8.0, 2: 8.0, 3: 8.0, 4: 8.0, 5: 0.0, 6: 0.0}
+    records = [
+        TimeRecord(1, date(2026, 6, 22), time(9, 0), None, 0, WorkType.REMOTE),
+        TimeRecord(2, date(2026, 6, 22), time(13, 0), None, 0, WorkType.REMOTE),
+    ]
+
+    grouped = group_records_by_date(records)
+    result = period_balance_from_grouped(
+        grouped,
+        start_date=date(2026, 6, 22),
+        end_date=date(2026, 6, 22),
+        targets=targets,
+        exceptions={},
+        today=date(2026, 6, 22),
+        now_time=time(15, 0),
+    )
+
+    # Expected: elapsed time from the earliest start (9:00) to now (15:00) =
+    # 6.0h. NOT 6.0 + 2.0 = 8.0h (the buggy double-count of both open spans).
+    assert result.worked_hours == 6.0
+    assert result.balance == pytest.approx(6.0 - 8.0)
+
+
 def test_get_week_range_crosses_year_boundary() -> None:
     """The week containing Jan 1, 2027 (a Friday) starts Mon Dec 28, 2026
     and ends Sun Jan 3, 2027 — get_week_range must cross the Dec 31 -> Jan 1
