@@ -117,12 +117,13 @@ def time_record_invariant_errors(record: TimeRecord) -> list[str]:
     """Context-free invariants for TimeRecord — checks that need only the
     record's own fields, not other DB records (overlap) or live settings.
 
-    Enforced unconditionally by TimeRecord.__post_init__ at construction
-    time. Controllers must call this again before save_record()/clock_out()
-    persist a record that was fetched and mutated rather than freshly
-    constructed, since __post_init__ never re-runs on attribute mutation —
-    see controllers.time_clock_controller.TimeClockController.save_record()
-    and .clock_out().
+    Enforced unconditionally by TimeRecord.__post_init__ — both at
+    construction and on every `dataclasses.replace()`, which is the only way
+    to derive a changed TimeRecord now that it is frozen (see
+    controllers.time_clock_controller.TimeClockController.clock_out()).
+    TimeClockController.save_record() still calls this function directly as
+    defense-in-depth before persisting, in case a caller was handed an
+    already-validated record from somewhere this module doesn't control.
     """
     errors: list[str] = []
 
@@ -144,9 +145,22 @@ def time_record_invariant_errors(record: TimeRecord) -> list[str]:
     return errors
 
 
-@dataclass(slots=True)
-class TimeRecord(_ValidatingRecord):
-    """A single clock-in/out record for one calendar day."""
+@dataclass(frozen=True, slots=True)
+class TimeRecord:
+    """A single clock-in/out record for one calendar day.
+
+    Frozen rather than a `_ValidatingRecord` subclass like the other record
+    types: TimeRecord's invariants span multiple fields (break vs. shift
+    length, office required for in-site work) rather than single ones, so a
+    per-field `_VALIDATORS` map can't cover them anyway. Freezing removes
+    in-place mutation entirely — the only way to change a field on an
+    existing TimeRecord is `dataclasses.replace(record, field=value)`, which
+    builds a new instance and reruns `__post_init__` in full, so there is no
+    way to end up with a record whose fields were valid individually but
+    invalid together (e.g. a fetched record whose `end_time` was set without
+    re-checking `break_minutes` against the new shift length). See
+    controllers.time_clock_controller.TimeClockController.clock_out().
+    """
 
     id: int | None
     date: date
@@ -157,16 +171,6 @@ class TimeRecord(_ValidatingRecord):
     office: str | None = None
     note: str | None = None
     document_path: str | None = None
-    _constructed: bool = field(default=False, init=False, repr=False, compare=False)
-
-    # break_minutes/note are single-field invariants, re-checked on every
-    # mutation via _ValidatingRecord.__setattr__. The break-vs-shift-length
-    # and work_type/office checks are cross-field (need start_time/end_time
-    # or work_type/office together) and stay construction-only below.
-    _VALIDATORS: ClassVar[dict[str, Callable[[Any], Any]]] = {
-        "break_minutes": BreakMinutes,
-        "note": _validate_note,
-    }
 
     def __post_init__(self) -> None:
         # Context-free invariants only — checks that need other DB records
@@ -175,8 +179,10 @@ class TimeRecord(_ValidatingRecord):
         errors = time_record_invariant_errors(self)
         if errors:
             raise ValueError("; ".join(errors))
-        self.break_minutes = BreakMinutes(self.break_minutes)
-        self._constructed = True
+        # object.__setattr__ bypasses the frozen-dataclass __setattr__ that
+        # would otherwise reject this — the standard pattern for a frozen
+        # dataclass that needs to normalize a field in __post_init__.
+        object.__setattr__(self, "break_minutes", BreakMinutes(self.break_minutes))
 
     @property
     def is_open(self) -> bool:
@@ -297,10 +303,25 @@ class SicknessRecord(_ValidatingRecord):
 
 @dataclass(slots=True)
 class Result:
-    """Outcome of a controller operation: success flag plus any validation errors."""
+    """Outcome of a controller operation: success flag, blocking errors, and
+    non-blocking warnings.
+
+    `errors` and `warnings` are deliberately separate fields rather than one
+    overloaded `errors` list read differently depending on `ok` — `errors`
+    holds the reason(s) a `ok=False` result failed (a caller must be able to
+    trust that `not ok` implies `errors` explains why), while `warnings`
+    holds non-blocking codes (e.g. `WarningCode.OVERNIGHT_SHIFT`) that may
+    accompany an `ok=True` result. `__post_init__` enforces the half of this
+    contract a type checker can't: a false result must carry a reason.
+    """
 
     ok: bool
-    errors: list[str]
+    errors: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        if not self.ok and not self.errors:
+            raise ValueError("Result(ok=False, ...) must carry at least one error.")
 
 
 @dataclass(slots=True)

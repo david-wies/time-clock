@@ -1,5 +1,6 @@
 """Time-clock controller: validates input and mediates model ↔ view."""
 
+import dataclasses
 import logging
 import sqlite3
 from collections.abc import Callable
@@ -21,11 +22,16 @@ class DatabaseErrorGuard(AbstractContextManager[None]):
     sqlite3 errors raised by model calls.
 
     Every controller `save_record()`/`delete_record()`/etc. method used to
-    hand-copy the same `except sqlite3.Error as e: logger.exception(...);
-    return Result(ok=False, errors=[f"Database error: {e}"])` block around
-    its DB calls. This context manager centralizes that policy so there is
-    one place to change it. Any exception type other than sqlite3.Error is
-    left to propagate unchanged, matching the original per-site behavior.
+    hand-copy the same `except Exception as e: return Result(ok=False,
+    errors=[f"Database error: {str(e)}"])` block around its DB calls — with
+    no `logging` import anywhere, so none of these catches ever logged
+    anything. This context manager is not merely a refactor of that
+    pattern: narrowing the catch to `sqlite3.Error` is a deliberate behavior
+    change. Any exception type other than sqlite3.Error (e.g. AttributeError,
+    TypeError — a programming error, not an expected DB failure) now
+    propagates instead of being swallowed into a generic Result, and every
+    caught sqlite3.Error is now logged via `logger.exception(...)` before
+    being converted, which the original bare `except Exception` never did.
 
     The `with` block is expected to `return` on its success path, so code
     after the `with` statement is reached only when an error was caught —
@@ -147,10 +153,12 @@ class TimeClockController:
 
     def save_record(self, record: TimeRecord) -> Result:
         """Validates and saves (inserts or updates) a TimeRecord."""
-        # Re-run TimeRecord's context-free invariants: __post_init__ only
-        # fires at construction time, so a caller that fetched an existing
-        # record and mutated a field (e.g. record.break_minutes = ...)
-        # before calling save_record() would otherwise bypass them.
+        # Defense-in-depth: TimeRecord is frozen (domain/types.py), so
+        # __post_init__ already guarantees these invariants for any record
+        # this module could have produced — there is no longer an in-place
+        # mutation path that could bypass it. This re-check guards against a
+        # record built or `dataclasses.replace()`-derived somewhere outside
+        # this module's control.
         invariant_errors = time_record_invariant_errors(record)
         if invariant_errors:
             return Result(ok=False, errors=invariant_errors)
@@ -176,13 +184,22 @@ class TimeClockController:
         with guard:
             if record.id is None:
                 record_id = self.model.insert_record(record)
-                record.id = record_id
+                # TimeRecord is frozen — object.__setattr__ is the
+                # documented escape hatch (see TimeRecord's docstring) for
+                # backfilling the DB-generated id onto the caller's
+                # instance, mirroring what the non-frozen record types do
+                # with a plain `record.id = record_id`. `id` never
+                # participates in any invariant check, so this bypass is
+                # inert with respect to validation.
+                object.__setattr__(record, "id", record_id)
             else:
                 self.model.update_record(record)
 
             self.settings.set("last_used_work_type", record.work_type.value)
-            # may contain OVERNIGHT_SHIFT_WARNING
-            return Result(ok=True, errors=errors)
+            # errors may contain OVERNIGHT_SHIFT_WARNING here (blocking
+            # codes were already filtered out above) — non-blocking, so it
+            # belongs in warnings, not errors, on this ok=True result.
+            return Result(ok=True, warnings=errors)
         return guard.unwrap()
 
     def clock_in(
@@ -272,15 +289,19 @@ class TimeClockController:
                 )
             target_record = open_today[0]
 
+        # TimeRecord is frozen, so target_record (fetched, not freshly
+        # constructed) can't be mutated in place — dataclasses.replace()
+        # builds a new instance with end_time set and reruns __post_init__
+        # in full, which is what re-validates the context-free invariants
+        # (e.g. break vs. the now-known shift length) that construction-time
+        # validation couldn't check back when end_time was still None.
         now = self._clock()
-        target_record.end_time = now.time().replace(second=0, microsecond=0)
-
-        # target_record was fetched then mutated above (end_time), not
-        # freshly constructed — re-run the context-free invariants that
-        # __post_init__ only checked at its original construction time.
-        invariant_errors = time_record_invariant_errors(target_record)
-        if invariant_errors:
-            return Result(ok=False, errors=invariant_errors)
+        try:
+            target_record = dataclasses.replace(
+                target_record, end_time=now.time().replace(second=0, microsecond=0)
+            )
+        except ValueError as e:
+            return Result(ok=False, errors=[str(e)])
 
         # See save_record() above for why get_time_ranges_by_date() is used
         # here instead of get_records_by_date().
@@ -298,7 +319,10 @@ class TimeClockController:
         )
         with guard:
             self.model.update_record(target_record)
-            return Result(ok=True, errors=errors)
+            # errors may contain OVERNIGHT_SHIFT_WARNING here (blocking
+            # codes were already filtered out above) — non-blocking, so it
+            # belongs in warnings, not errors, on this ok=True result.
+            return Result(ok=True, warnings=errors)
         return guard.unwrap()
 
     def delete_record(self, record_id: int) -> Result:

@@ -12,10 +12,16 @@ logger = logging.getLogger(__name__)
 
 class MiliuimController:
     """Note: there is no free validate_miliuim_record() function anymore —
-    every check it used to perform (start/end date required, end >= start,
-    note length) was context-free and is now enforced unconditionally by
-    MiliuimRecord.__post_init__. Only the overlap check remains here, since
-    it needs other persisted records (context-dependent).
+    every check it used to perform was context-free and either type-checked
+    or moved into MiliuimRecord.__post_init__. start_date/end_date being
+    required is enforced by their type annotation (`date`, not `date |
+    None`) rather than a runtime check — if a caller bypasses typing and
+    passes None anyway, the `end_date < start_date` comparison in
+    miliuim_record_invariant_errors() raises an unhandled TypeError, not a
+    clean ValueError/Result. end_date >= start_date and note length ARE
+    runtime-checked, unconditionally, by MiliuimRecord.__post_init__. Only
+    the overlap check remains here, since it needs other persisted records
+    (context-dependent).
 
     save_record() re-runs miliuim_record_invariant_errors() below because
     __post_init__ only fires at construction time — a caller that fetches

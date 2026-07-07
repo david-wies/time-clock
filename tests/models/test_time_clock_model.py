@@ -1,3 +1,4 @@
+import dataclasses
 import logging
 from datetime import date, time
 
@@ -45,10 +46,10 @@ def test_time_record_crud(db: Database, event_bus: EventBus) -> None:
     assert fetched.note == "Test record"
     assert fetched.work_type == WorkType.REMOTE
 
-    # 3. Update
+    # 3. Update — TimeRecord is frozen, so dataclasses.replace() derives the
+    # changed record instead of mutating `fetched` in place.
     change_called = False
-    fetched.note = "Updated note"
-    fetched.break_minutes = 45
+    fetched = dataclasses.replace(fetched, note="Updated note", break_minutes=45)
     model.update_record(fetched)
     assert change_called is True
 
@@ -288,6 +289,51 @@ def test_get_records_by_date_skips_malformed_row_and_logs_warning(
     assert model.last_skipped_count == 1
     assert any(
         record.levelname == "WARNING" and "malformed" in record.message.lower()
+        for record in caplog.records
+    )
+
+
+def test_get_time_ranges_by_date_skips_corrupt_time_row_and_logs_warning(
+    db: Database, event_bus: EventBus, caplog
+) -> None:
+    """A row whose start_time/end_time string is not a parseable HH:MM time
+    (corrupt data, a bad migration, a hand-edited DB) has no time to compare
+    for overlap, so it -- and only it -- is logged and skipped, while every
+    other record for the date must still come back (unlike
+    get_records_by_date(), this method must never silently drop a row just
+    for failing a TimeRecord invariant -- it feeds the overlap check in
+    TimeClockController.save_record()/clock_in()/clock_out())."""
+    model = TimeClockModel(db, event_bus)
+
+    good = TimeRecord(
+        None, date(2026, 6, 26), time(9, 0), time(17, 0), 30, WorkType.REMOTE
+    )
+    good_id = model.insert_record(good)
+
+    conn = db.get_connection()
+    try:
+        with conn:
+            # "not-a-time" has no ':' to split into hour/minute parts, so
+            # str_to_time() raises ValueError on it. There is no CHECK
+            # constraint on start_time's format, so the DB happily stores it
+            # as plain TEXT.
+            conn.execute(
+                "INSERT INTO time_record "
+                "(date, start_time, end_time, break_minutes, work_type) "
+                "VALUES ('2026-06-26', 'not-a-time', NULL, 0, 'remote');"
+            )
+    finally:
+        conn.close()
+
+    with caplog.at_level(logging.WARNING, logger="models.time_clock_model"):
+        ranges = model.get_time_ranges_by_date(date(2026, 6, 26))
+
+    assert len(ranges) == 1
+    assert ranges[0][0] == good_id
+    assert ranges[0][1] == time(9, 0)
+    assert ranges[0][2] == time(17, 0)
+    assert any(
+        record.levelname == "WARNING" and "unparseable" in record.message.lower()
         for record in caplog.records
     )
 

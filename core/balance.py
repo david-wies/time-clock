@@ -78,8 +78,11 @@ def period_balance_from_grouped(
     given records already grouped by date (see `group_records_by_date`).
     Overtime rate multiplier is applied only to positive balances.
 
-    This is the O(days_in_range) core of `calculate_period_balance` --
-    factored out so callers that need the balance for several sub-ranges of
+    This is the O(days_in_range) core of `calculate_period_balance` -- it
+    iterates one entry per day in the range, plus one pass over each day's
+    records (via `sum_day_worked`/`get_record_duration`), so total cost is
+    O(days_in_range + N) where N is the number of records in the range.
+    Factored out so callers that need the balance for several sub-ranges of
     the same underlying record set (e.g. core/report.py's monthly
     breakdown) can group once and slice many times, instead of re-grouping
     the full record list on every call.

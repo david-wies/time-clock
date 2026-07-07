@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 from datetime import date, datetime, time
 
 import pytest
@@ -158,7 +159,7 @@ def test_add_edit_delete_record(
     assert result.ok
     assert record.id is not None
 
-    record.note = "Updated"
+    record = dataclasses.replace(record, note="Updated")
     result2 = tc_ctrl.save_record(record)
     assert result2.ok
 

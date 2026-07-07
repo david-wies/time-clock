@@ -193,6 +193,46 @@ def test_get_records_for_year_skips_malformed_row_and_logs_warning(
     )
 
 
+def test_get_dates_in_range_skips_corrupt_date_row_and_logs_warning(
+    db: Database, event_bus: EventBus, caplog
+) -> None:
+    """A row whose date string is not a parseable ISO date (corrupt data, a
+    bad migration, a hand-edited DB) has no date to return, so it -- and
+    only it -- is logged and skipped, while every other row in range must
+    still come back (unlike get_records_in_date_range(), this method must
+    never silently drop a row just for failing a SicknessRecord invariant,
+    since SicknessController.save_range()'s conflict check needs every
+    existing sick day in the range to be visible)."""
+    model = SicknessModel(db, event_bus)
+
+    good = SicknessRecord(None, date(2026, 6, 10), 8.0, "ok")
+    good_id = model.insert_record(good)
+
+    conn = db.get_connection()
+    try:
+        with conn:
+            # "2026-06-15X" sorts lexicographically within the query's range
+            # bounds but is not a parseable ISO date, so date.fromisoformat
+            # raises ValueError on it.
+            conn.execute(
+                "INSERT INTO sickness_record (date, hours) VALUES (?, ?);",
+                ("2026-06-15X", 4.0),
+            )
+    finally:
+        conn.close()
+
+    with caplog.at_level(logging.WARNING, logger="models.sickness_model"):
+        dates = model.get_dates_in_range(date(2026, 6, 1), date(2026, 6, 30))
+
+    assert len(dates) == 1
+    assert dates[0][0] == good_id
+    assert dates[0][1] == date(2026, 6, 10)
+    assert any(
+        record.levelname == "WARNING" and "unparseable" in record.message.lower()
+        for record in caplog.records
+    )
+
+
 def test_get_record_by_id_returns_none_for_malformed_row(
     db: Database, event_bus: EventBus, caplog
 ) -> None:

@@ -72,8 +72,12 @@ class SystemTray:
         self._clocked_in_cache: bool = False
         try:
             self._base_icon: Image.Image = _load_base_icon()
-        except FileNotFoundError, OSError:
-            logger.warning("icon file not found at %r; using fallback icon.", _PNG_PATH)
+        except OSError as e:
+            logger.warning(
+                "Failed to load tray icon from %r: %s; using fallback icon.",
+                _PNG_PATH,
+                e,
+            )
             self._base_icon = Image.new(
                 "RGBA", (_ICON_SIZE, _ICON_SIZE), (80, 120, 200, 255)
             )
@@ -162,7 +166,28 @@ class SystemTray:
 
     def _do_clock_in(self) -> None:
         result = self._controller.clock_in()
-        if not result.ok and result.errors != [WarningCode.OPEN_RECORD_EXISTS.value]:
+        if not result.ok:
+            if result.errors == [WarningCode.OPEN_RECORD_EXISTS.value]:
+                # The tray menu's "Clock In" item is enabled based on
+                # self._clocked_in_cache, which is only refreshed on
+                # CLOCK_STATE_CHANGED/TIME_RECORDS_CHANGED events (see
+                # __init__). If the click reached the controller anyway
+                # (e.g. a stale cache on a backend that doesn't
+                # re-evaluate `enabled` before dispatching), the user is
+                # already clocked in -- surface that instead of silently
+                # dropping the click.
+                logger.warning(
+                    "Tray 'Clock In' invoked while already clocked in; "
+                    "tray-menu cache was stale."
+                )
+                self._root.after(
+                    0,
+                    lambda: messagebox.showinfo(
+                        "Already Clocked In",
+                        "You are already clocked in for today.",
+                    ),
+                )
+                return
             errors = result.errors
             self._root.after(
                 0,

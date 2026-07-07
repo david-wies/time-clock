@@ -24,9 +24,9 @@ _VTYPE_OPTIONS: list[tuple[VacationType, str]] = [
     (VacationType.UNPAID_LEAVE, "Unpaid Leave"),
     # Carry-Over deliberately excluded: it can only be recorded via
     # VacationController.add_carry_over() (see carry_over_dialog.py), never
-    # through this Add/Edit dialog. Selecting it here used to type-check
-    # fine but always failed on save with an opaque rejection from
-    # VacationController.save_record() — see codebase review G3 #4.
+    # through this Add/Edit dialog. VacationController.save_record() has an
+    # explicit type check that rejects VacationType.CARRY_OVER, so selecting
+    # it here would type-check fine but always fail on save.
 ]
 
 

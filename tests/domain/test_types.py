@@ -5,14 +5,16 @@ are NOT tested here — they remain controller-level and are covered by
 tests/controllers/*.
 """
 
+import dataclasses
 import sqlite3
-from datetime import date, time
+from datetime import date, datetime, time
 
 import pytest
 
 from domain.enums import VacationType, WorkType
 from domain.types import (
     BreakMinutes,
+    CarryOverLogEntry,
     Hours,
     MiliuimRecord,
     PeriodBalance,
@@ -158,6 +160,27 @@ def test_time_record_note_at_limit_succeeds() -> None:
     assert rec.note is not None and len(rec.note) == 500
 
 
+def test_time_record_is_frozen() -> None:
+    """TimeRecord is immutable: direct field assignment must raise rather
+    than silently produce a record whose fields are individually valid but
+    jointly invalid (e.g. break_minutes no longer fitting the shift once
+    end_time changes). Callers must use dataclasses.replace() instead, which
+    reruns __post_init__ in full — see
+    test_time_record_replace_reruns_full_validation below and
+    controllers.time_clock_controller.TimeClockController.clock_out()."""
+    rec = _time_record()
+
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        rec.break_minutes = 45  # type: ignore[misc]
+
+
+def test_time_record_replace_reruns_full_validation() -> None:
+    rec = _time_record(start_time=time(9, 0), end_time=time(10, 0), break_minutes=30)
+
+    with pytest.raises(ValueError, match="Break cannot exceed shift length"):
+        dataclasses.replace(rec, break_minutes=75)
+
+
 # ─────────────────────────────── VacationRecord ──────────────────────────────
 
 
@@ -259,6 +282,46 @@ def test_workday_exception_nan_hours_raises() -> None:
 def test_workday_exception_infinite_hours_raises() -> None:
     with pytest.raises(ValueError, match="non-negative"):
         WorkDayException(1, date(2026, 6, 1), float("inf"), "Holiday")
+
+
+def test_workday_exception_rejects_negative_hours_after_mutation() -> None:
+    """WorkDayException.hours is a _ValidatingRecord-validated field
+    (domain/types.py), so mutating it to an invalid value on an
+    already-constructed instance raises ValueError immediately, same as at
+    construction time — see test_workday_exception_negative_hours_raises."""
+    exc = WorkDayException(1, date(2026, 6, 1), 8.0, "Holiday")
+
+    with pytest.raises(ValueError, match="non-negative"):
+        exc.hours = -1.0
+
+
+# ───────────────────────────── CarryOverLogEntry ─────────────────────────────
+
+
+def test_carry_over_log_entry_valid_construction_succeeds() -> None:
+    entry = CarryOverLogEntry(1, 2025, 2026, 5.0, datetime(2026, 1, 1))
+    assert entry.hours == 5.0
+
+
+def test_carry_over_log_entry_non_positive_hours_raises() -> None:
+    with pytest.raises(ValueError, match="positive"):
+        CarryOverLogEntry(1, 2025, 2026, 0.0, datetime(2026, 1, 1))
+
+
+def test_carry_over_log_entry_non_consecutive_years_raises() -> None:
+    with pytest.raises(ValueError, match="one year after"):
+        CarryOverLogEntry(1, 2024, 2026, 5.0, datetime(2026, 1, 1))
+
+
+def test_carry_over_log_entry_rejects_non_positive_hours_after_mutation() -> None:
+    """CarryOverLogEntry.hours is a _ValidatingRecord-validated field
+    (domain/types.py), so mutating it to an invalid value on an
+    already-constructed instance raises ValueError immediately, same as at
+    construction time — see test_carry_over_log_entry_non_positive_hours_raises."""
+    entry = CarryOverLogEntry(1, 2025, 2026, 5.0, datetime(2026, 1, 1))
+
+    with pytest.raises(ValueError, match="positive"):
+        entry.hours = -1.0
 
 
 # ─────────────────────────────── PeriodBalance ───────────────────────────────

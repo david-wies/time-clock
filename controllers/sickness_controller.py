@@ -18,14 +18,13 @@ _MAX_SICK_HOURS = 24.0
 def validate_sick_record(record: SicknessRecord) -> list[str]:
     """Pure validation function for SicknessRecord (enforces §7.3 table).
 
-    The 0.5-24 bound is fixed policy (not context-dependent), but is kept
-    here rather than in SicknessRecord.__post_init__: only the universal
-    non-negative floor is enforced at construction. Note-length and that
-    non-negative floor ARE context-free and are enforced unconditionally by
-    SicknessRecord.__post_init__ at construction time — but
-    SicknessController.save_record() re-runs them via
-    sickness_record_invariant_errors() below, since __post_init__ never
-    re-fires for a record fetched from the DB and then mutated in place.
+    The 0.5-24 bound is fixed business policy (not context-dependent), but
+    stays here rather than in SicknessRecord.__post_init__ — only the
+    universal non-negative-hours floor and note length are context-free and
+    are enforced unconditionally there instead. SicknessController.save_record()
+    re-runs them via sickness_record_invariant_errors() below, since
+    __post_init__ never re-fires for a record fetched from the DB and then
+    mutated in place.
     """
     errors = []
 
