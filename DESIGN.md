@@ -1,14 +1,27 @@
 # Time Clock Application — Design Document
 
+## Document Map
+
+This is the main design document — architecture, UI layout, and contracts between layers. The more involved subsystems have their own detail doc; each linked section below gives a condensed summary here and the full spec there.
+
+| Detail doc | Covers |
+|---|---|
+| [design/data-model.md](design/data-model.md) | Full SQLite schema (§3), domain dataclasses & enums (§15) |
+| [design/data-flow.md](design/data-flow.md) | Step-by-step mutation sequences (§10) |
+| [design/visual-design.md](design/visual-design.md) | Theme system, color tokens, typography (§16) |
+| [design/time-and-balance.md](design/time-and-balance.md) | Wall-clock/DST semantics, running overtime balance (§18) |
+| [design/testing.md](design/testing.md) | Test strategy, fixtures, coverage targets (§20) |
+| [design/v1-features.md](design/v1-features.md) | Holidays import, reports, tray icon, etc. (§21) |
+
 ## 1. Technology Stack
 
 | Layer | Choice | Rationale |
 |---|---|---|
 | Language | Python 3.14+ | User requirement |
 | GUI Framework | tkinter + ttk (stdlib) + tkcalendar | Stdlib, no deps for core UI; tkcalendar for date picker |
-| Theme | `sv-ttk` (optional, bundled fallback) | Modern flat light/dark ttk theme; degrades to stock `clam` if absent (see §16) |
+| Theme | `sv-ttk` (optional, bundled fallback) | Modern flat light/dark ttk theme; degrades to stock `clam` if absent (see [visual-design.md](design/visual-design.md)) |
 | Data Persistence | SQLite via sqlite3 (stdlib) | Local, single-file, no setup |
-| Domain Layer | `@dataclass` + `enum.Enum` (stdlib) | Typed records, no ORM; one source of truth for fields (see §15) |
+| Domain Layer | `@dataclass` + `enum.Enum` (stdlib) | Typed records, no ORM; one source of truth for fields (see [data-model.md](design/data-model.md)) |
 | UI Pattern | MVC + Observer event bus | View ↔ Controller ↔ Model; Model change broadcasts via event bus (§17) since tkinter has no native signals |
 | Type Checking | `mypy --strict` (dev only) | Catch field/enum mistakes before runtime |
 | Packaging | PyInstaller (optional) | Single executable if needed |
@@ -81,110 +94,29 @@
 
 ## 3. Data Model (SQLite Schema)
 
-```sql
--- Daily work-hour targets (Settings → Time Clock)
-CREATE TABLE work_day_target (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    day_of_week INTEGER NOT NULL CHECK(day_of_week BETWEEN 0 AND 6),
-    hours       REAL    NOT NULL CHECK(hours >= 0),
-    UNIQUE(day_of_week)
-);
-
--- Date-specific overrides for work-hour targets
--- Takes priority over work_day_target for matching dates
-CREATE TABLE work_day_exception (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    date        TEXT    NOT NULL,   -- ISO 8601: YYYY-MM-DD
-    hours       REAL    NOT NULL CHECK(hours >= 0),
-    label       TEXT,               -- e.g. "Christmas Eve", "Public Holiday"
-    UNIQUE(date)
-);
-
--- Time clock records
-CREATE TABLE time_record (
-    id            INTEGER PRIMARY KEY AUTOINCREMENT,
-    date          TEXT    NOT NULL,   -- ISO 8601: YYYY-MM-DD
-    start_time    TEXT    NOT NULL,   -- HH:MM
-    end_time      TEXT    DEFAULT NULL,   -- HH:MM, NULL = clocked in, not yet out
-    break_minutes INTEGER NOT NULL DEFAULT 0,  -- unpaid break in minutes
-    work_type     TEXT    NOT NULL CHECK(work_type IN ('in_site', 'road', 'remote')),
-    office        TEXT,               -- office name when work_type = 'in_site'
-    note          TEXT,
-    created_at    TEXT    NOT NULL DEFAULT (datetime('now')),
-    updated_at    TEXT    NOT NULL DEFAULT (datetime('now'))
-);
-
-CREATE INDEX idx_time_record_date ON time_record(date);
-
--- Vacation settings keyed by year (supports contract changes)
-CREATE TABLE vacation_settings (
-    year             INTEGER PRIMARY KEY, -- e.g., 2025, 2026
-    hours_per_year   REAL NOT NULL CHECK(hours_per_year >= 0),
-    max_carry_over   REAL NOT NULL CHECK(max_carry_over >= 0)
-);
-
--- Vacation records
-CREATE TABLE vacation_record (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    date        TEXT    NOT NULL,   -- ISO 8601
-    hours       REAL    NOT NULL CHECK(hours > 0),
-    vtype       TEXT    NOT NULL CHECK(vtype IN ('annual_leave', 'public_holiday', 'unpaid_leave', 'special_leave', 'carry_over')),
-    note        TEXT,
-    created_at  TEXT    NOT NULL DEFAULT (datetime('now')),
-    updated_at  TEXT    NOT NULL DEFAULT (datetime('now'))
-);
-
-CREATE INDEX idx_vacation_record_date ON vacation_record(date);
-
--- Sickness settings keyed by year (supports allowance changes)
-CREATE TABLE sickness_settings (
-    year             INTEGER PRIMARY KEY, -- e.g., 2025, 2026
-    days_per_year    REAL NOT NULL CHECK(days_per_year >= 0)
-);
-
--- Sickness records
-CREATE TABLE sickness_record (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    date        TEXT    NOT NULL,   -- ISO 8601
-    hours       REAL    NOT NULL CHECK(hours > 0),
-    note        TEXT,
-    created_at  TEXT    NOT NULL DEFAULT (datetime('now')),
-    updated_at  TEXT    NOT NULL DEFAULT (datetime('now'))
-);
-
-CREATE INDEX idx_sickness_record_date ON sickness_record(date);
-
--- Carry-over log: tracks hours transferred between years
--- Each row = one transfer operation. References the source year
--- and destination year so totals are auditable.
-CREATE TABLE carry_over_log (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    from_year       INTEGER NOT NULL,
-    to_year         INTEGER NOT NULL,
-    hours           REAL    NOT NULL CHECK(hours > 0),
-    transferred_at  TEXT    NOT NULL DEFAULT (datetime('now'))
-);
-
--- Centralized Settings Table (replaces JSON settings files)
-CREATE TABLE app_config (
-    key             TEXT PRIMARY KEY,
-    value           TEXT NOT NULL -- JSON-serialized configuration/settings values
-);
-```
+| Table | Purpose |
+|---|---|
+| `work_day_target` | Default daily-hours target per day-of-week |
+| `work_day_exception` | Date-specific target override (holidays, half-days) — takes priority over `work_day_target` |
+| `time_record` | Clock-in/out records: date, start/end `HH:MM`, break minutes, work_type, office, note |
+| `vacation_settings` | Yearly vacation allowance + max carry-over, keyed by year |
+| `vacation_record` | Vacation/holiday/unpaid/carry-over entries |
+| `sickness_settings` | Yearly sick-day allowance, keyed by year |
+| `sickness_record` | Sick-hour entries |
+| `carry_over_log` | Audit trail of vacation-hour transfers between years |
+| `app_config` | All settings/preferences (JSON value per key) — replaces settings files |
 
 ### 3.1 Duration Calculation
 
 ```
 net_duration = (end_time - start_time) - break_minutes
-
-Example:
-  start=09:00, end=17:00, break=30min  →  7.5h net
-  start=08:30, end=12:00, break=0      →  3.5h net
 ```
 
-Stored as computed value on read — not persisted. DB stores raw start/end/break.
+Computed on read, never persisted — DB stores raw start/end/break.
 
-> **Time semantics (important).** `start_time`/`end_time` are **wall-clock local** `HH:MM`. The schema default `datetime('now')` returns **UTC**, so it is used **only** for the audit columns `created_at`/`updated_at`, never for `start_time`/`end_time`. "Now" for clock-in/out comes from `datetime.now().strftime('%H:%M')` (local). See §18 for DST and overnight handling.
+> **Time semantics (important).** `start_time`/`end_time` are **wall-clock local** `HH:MM`. The schema default `datetime('now')` returns **UTC**, so it is used **only** for the audit columns `created_at`/`updated_at`, never for `start_time`/`end_time`. See [time-and-balance.md](design/time-and-balance.md) (§18) for DST and overnight handling.
+
+Full `CREATE TABLE` SQL, `CHECK` constraints, and indexes: [design/data-model.md](design/data-model.md) §3.
 
 ## 4. MainWindow Layout
 
@@ -574,107 +506,29 @@ If `end_time < start_time` (e.g., 22:00 → 06:00):
 
 ## 10. Data Flow
 
-### 10.1 Time Clock — Add Record
+High-level mutation flow: View → Controller (validation, orchestration) → Model (business rules, CRUD) → DB → `EventBus.publish` → subscribed tabs refresh. Full step-by-step sequences for each flow below are in [design/data-flow.md](design/data-flow.md).
 
-```
-User clicks [+ Add Record]
-  → TimeRecordDialog opens (pre-filled with today, now)
-  → User fills form, clicks Save
-  → Dialog validates (see §5.6)
-  → Controller.save_record(model_data)
-    → Model validates business rules (no overlap)
-    → DB insert
-    → Model emits data_changed signal
-      → Tab's table view refreshes
-      → Remaining-today indicator recalculates
-```
-
-### 10.2 Vacation Usage Calculation
-
-```
-On tab load & after any mutation:
-  1. Read vacation_settings for current year Y:
-     SELECT hours_per_year FROM vacation_settings WHERE year = Y
-  2. SELECT SUM(hours) FROM vacation_record
-     WHERE date BETWEEN 'Y-01-01' AND 'Y-12-31'
-     AND vtype IN ('annual_leave', 'public_holiday', 'special_leave')
-     (this represents used debits X)
-  3. SELECT SUM(hours) FROM vacation_record
-     WHERE date BETWEEN 'Y-01-01' AND 'Y-12-31'
-     AND vtype = 'carry_over'
-     (this represents carry-over credit C)
-  4. Total pool = Y_allowance + C
-  5. Available = Total pool - X
-  6. Display "X.Xh / Total pool available" (Remaining: Available)
-  7. Compute carry-over from prev year:
-     a. prev_year_allowance = SELECT hours_per_year FROM vacation_settings WHERE year = Y-1
-     b. prev_year_carry_over = SELECT SUM(hours) FROM vacation_record WHERE date LIKE 'Y-1-%' AND vtype = 'carry_over'
-     c. prev_year_used = SELECT SUM(hours) FROM vacation_record WHERE date LIKE 'Y-1-%' AND vtype IN ('annual_leave', 'public_holiday', 'special_leave')
-     d. surplus = prev_year_allowance + prev_year_carry_over - prev_year_used
-     e. already_transferred = SUM(hours) FROM carry_over_log WHERE from_year = Y-1, to_year = Y
-     f. available = MIN(max_carry_over_for_Y, surplus - already_transferred)
-```
-
-### 10.3 Vacation — Add Carry-Over
-
-```
-User clicks [+ Add Carry-Over Hours]
-  → CarryOverDialog opens
-  → Dialog queries DB for prev year surplus and already_transferred
-  → User enters hours, clicks Add
-  → Validation: hours <= available carry-over
-  → Transaction:
-    1. INSERT INTO carry_over_log (from_year, to_year, hours)
-    2. INSERT INTO vacation_record (date, hours, vtype='carry_over', note='Carry-over from YYYY')
-   → Tab refreshes
-```
-
-### 10.4 Clock-In
-
-```
-User clicks [▶ Clock In]
-  → If open record exists: prompt "Open record exists. Clock out first or start new?"
-    → User chooses "Start new" → proceed
-    → User chooses "Cancel" → abort
-  → Model checks last-used work_type from settings (default: remote)
-  → INSERT INTO time_record (date, start_time, end_time=NULL, work_type, office, note)
-  → Tab refreshes, Clock In disables, Clock Out enables
-  → root.after(60000, auto_refresh) starts
-```
-
-### 10.5 Clock-Out
-
-```
-User clicks [■ Clock Out]
-  → Model finds today's record(s) WHERE end_time IS NULL
-  → If multiple: prompt user to select which record to close
-  → If one: close it directly
-  → Sets end_time = now
-  → UPDATE time_record SET end_time = ? WHERE id = ?
-  → Tab refreshes, remaining indicator recalculates
-  → If no more open records, cancel auto-refresh timer
-```
-
-### 10.6 Sickness Usage Calculation
-
-```
-On tab load & after any mutation:
-  1. Read sickness_settings for current year Y:
-     SELECT days_per_year FROM sickness_settings WHERE year = Y
-  2. SELECT SUM(hours) FROM sickness_record
-     WHERE date BETWEEN 'Y-01-01' AND 'Y-12-31'
-  3. Convert hours → days: divide by daily_target for each record's day-of-week
-     (fallback 8h if no target set)
-  4. Display "X.X days / Y.Y days used"
-  5. Remaining = days_per_year - used_days
-```
+- **§10.1 Time Clock — Add Record**: dialog validates, controller saves, model checks overlap, event triggers table + remaining-today refresh.
+- **§10.2 Vacation Usage Calculation**: sums debits/credits for the year, folds in carry-over from the prior year, computes remaining balance.
+- **§10.3 Vacation — Add Carry-Over**: dialog computes available transfer, writes both a `carry_over_log` row and a `vacation_record`.
+- **§10.4 Clock-In**: warns on an already-open record, inserts a new open `time_record`, starts the 60s auto-refresh.
+- **§10.5 Clock-Out**: closes the open record (prompts if more than one), stops auto-refresh once none remain.
+- **§10.6 Sickness Usage Calculation**: sums hours for the year, converts to day-equivalents per day-of-week target.
 
 ## 11. File Structure
 
 ```
 time-clock/
 ├── main.py                     # Entry point: wires Database → Models → Controllers → Views
-├── DESIGN.md                   # This document
+├── DESIGN.md                   # Main design document (this file)
+├── design/                     # Detail docs for the more involved subsystems
+│   ├── data-model.md           # Full schema + domain types (§3, §15)
+│   ├── data-flow.md            # Full mutation sequences (§10)
+│   ├── visual-design.md        # Theme system, color tokens (§16)
+│   ├── time-and-balance.md     # Wall-clock/DST semantics, running balance (§18)
+│   ├── testing.md              # Test strategy, fixtures (§20)
+│   └── v1-features.md          # Holidays import, reports, tray, etc. (§21)
+├── AGENTS.md                   # Agent-facing project state & file map
 ├── requirements.txt            # tkcalendar, sv-ttk, holidays, reportlab, pystray, Pillow — all optional / graceful
 ├── tray.py                     # System-tray icon + quick clock in/out (§21.4), started from main.py
 ├── settings.py                 # Settings manager (reads/writes using DB app_config table)
@@ -682,7 +536,7 @@ time-clock/
 │   ├── types.py                # @dataclass records: TimeRecord, VacationRecord, SicknessRecord (§15)
 │   └── enums.py                # WorkType, VacationType, Weekday (§15)
 ├── core/
-│   ├── events.py               # EventBus + Event enum — Observer mechanism (§17)
+│   ├── events.py                # EventBus + Event enum — Observer mechanism (§17)
 │   ├── timeutil.py             # Local-time "now", duration math, DST-safe overnight (§18)
 │   ├── balance.py              # Period overtime / running-balance + rate (§18, §21.3)
 │   └── report.py               # Report data assembly — period summaries (§21.2)
@@ -817,80 +671,17 @@ User selects File → Export → [Tab]
 
 A single typed source of truth for every record, shared by models, controllers, views, and tests. No raw dicts crossing layer boundaries.
 
-Declared in `domain/enums.py` and `domain/types.py`:
+- `domain/enums.py`: `WorkType` (in_site/road/remote), `VacationType` (annual_leave/public_holiday/unpaid_leave/special_leave/carry_over), `Weekday` (0-6) — all `(str|int, Enum)` so they serialize straight to DB columns.
+- `domain/types.py`: `TimeRecord`, `VacationRecord`, `SicknessRecord` — `@dataclass(slots=True)`, always hold real `date`/`time` objects (never strings).
+- Models own the only mapping between these dataclasses and SQLite rows (`row_to_record` / `record_to_params`); schema `CHECK(...)` constraints mirror the enum values.
 
-```
-Enums:
-  WorkType      = IN_SITE | ROAD | REMOTE                                               (str enum → DB text)
-  VacationType  = ANNUAL_LEAVE | PUBLIC_HOLIDAY | UNPAID_LEAVE | SPECIAL_LEAVE | CARRY_OVER (str enum → DB text)
-  Weekday       = MON..SUN (0..6)                                                       (int enum → DB int)
-
-Dataclasses (slots=True):
-  TimeRecord:      id, date, start, end | None, break_minutes, work_type, office?, note?
-                   .is_open → bool (end is None)
-
-  VacationRecord:  id, date, hours, vtype, note?
-
-  SicknessRecord:  id, date, hours, note?
-```
-
-- `(str, Enum)` / `(int, Enum)` values serialize straight to DB columns and round-trip cleanly.
-- Models own the only mapping between these dataclasses and SQLite rows (`row_to_record` / `record_to_params`). Schema `CHECK(...)` on each column mirrors the Python enum values.
-- `str`/`date`/`time` ↔ ISO conversion centralized in `core/timeutil.py`; dataclasses always hold real `date`/`time`, never strings.
+Full enum values, dataclass fields: [design/data-model.md](design/data-model.md) §15.
 
 ## 16. Visual Design System
 
-Goal: kill the "stock Tk" look. One `theme/style.py` owns all appearance; no view hard-codes colors or fonts.
+One `theme/style.py` owns all appearance — no view hard-codes colors or fonts. `sv_ttk` provides the modern flat theme with a `clam` fallback if absent. Status is always communicated via semantic color tokens (`success`/`warning`/`danger`/`overtime`/`inprogress`) **paired with a text label or icon**, never color alone (accessibility). Typography and spacing pull from a fixed scale; the grouped record list is a single `ttk.Treeview` with per-state tags rather than ad-hoc frames. Dark mode is a single re-style call, persisted in `app_config`.
 
-### 16.1 Theme loading (graceful)
-
-```python
-# theme/style.py
-def apply_theme(root, mode="light"):
-    try:
-        import sv_ttk            # modern flat theme
-        sv_ttk.set_theme(mode)
-    except ImportError:
-        from tkinter import ttk
-        ttk.Style().theme_use("clam")   # best stock fallback
-    _configure_named_styles(root)        # custom ttk styles below
-```
-
-### 16.2 Semantic color tokens
-
-Defined once, referenced by name. Light values shown; dark variants in the same dict.
-
-| Token | Light | Use |
-|---|---|---|
-| `bg.surface` | `#FAFAFA` | Window / tab background |
-| `bg.card` | `#FFFFFF` | Grouped list, cards |
-| `fg.default` | `#1A1A1A` | Primary text |
-| `fg.muted` | `#6B7280` | Day headers, hints, secondary |
-| `accent` | `#2563EB` | Buttons, selection, focus ring |
-| `success` | `#16A34A` | "✓ Done", clock-in green |
-| `warning` | `#D97706` | "X.Xh left", over-balance |
-| `danger` | `#DC2626` | Clock-out, delete, validation errors |
-| `overtime` | `#7C3AED` | "−2.0h overtime" |
-| `inprogress` | `#FEF3C7` | Open-record row background + "in progress" text label |
-
-> **All status indicators must include a text label or icon — never color alone** (accessibility, color-blind safe). Paired presentation: "✓ Done", "⚠ 3.5h left", "⏎ −2.0h overtime", "[in progress]".
-
-### 16.3 Typography & spacing
-
-- Fonts: UI `Segoe UI`/`Helvetica` 10pt; numeric totals tabular 11pt **bold**; monospace (`Consolas`) for time columns so `09:00–17:00` aligns.
-- Spacing scale (px): `4, 8, 12, 16, 24`. All `padding`/`pady`/`padx` pick from this scale — no arbitrary values.
-- Named ttk styles: `Accent.TButton` (primary), `Danger.TButton` (clock-out/delete), `Card.TFrame`, `DayHeader.TLabel`, `Total.TLabel`.
-
-### 16.4 Custom-drawn elements
-
-- Clock In/Out are large `Accent.TButton`/`Danger.TButton` with leading glyphs (▶ / ■).
-- Grouped record list uses a `ttk.Treeview` with `tag_configure` per state (`open`, `selected`, `overtime`) rather than ad-hoc frames — gives native selection, keyboard nav, and column sorting for free.
-- Optional toolbar icons from `resources/icons/` (16px PNG); absent icons degrade to text labels.
-
-### 16.5 Dark mode
-
-- Toggle in Settings + respect OS preference where detectable. Persisted in database via the `app_config` table (`"theme": "light"|"dark"|"system"`).
-- All views read tokens, so dark mode is a single `apply_theme(root, "dark")` re-style + Treeview tag refresh.
+Full token table, theme-loading code, typography scale, dark-mode details: [design/visual-design.md](design/visual-design.md).
 
 ## 17. Application Events (Observer)
 
@@ -914,31 +705,9 @@ Contract:
 
 ## 18. Time Semantics, DST & Running Balance
 
-Centralizes every "what time is it / how long was that" decision so it is testable in isolation (`core/timeutil.py`, `core/balance.py`).
+All wall-clock handling (`start_time`/`end_time`, duration, overnight wrap) lives in `core/timeutil.py`; the running overtime balance lives in `core/balance.py`. Key points: times are naive local wall-clock, never UTC (UTC is reserved for `created_at`/`updated_at`); display dates use `dd/mm/yyyy` via `to_display_date()`; duration is wall-clock minute arithmetic, so it has a documented, accepted discrepancy on DST spring-forward/fall-back days; the running balance `period_balance(period) = Σ(worked − target)` is a pure function over week/month/year.
 
-### 18.1 Local time, no UTC for wall-clock
-
-- `now_hm() -> str` returns `datetime.now().strftime("%H:%M")` (local). Used by clock-in/out.
-- All `start_time`/`end_time` are naive local wall-clock; the app is single-user single-timezone. UTC is reserved for `created_at`/`updated_at` audit columns only.
-- **Display date format**: all Gregorian dates shown to the user use `dd/mm/yyyy` (e.g., `26/06/2026`). Storage in DB and internal Python `date` objects remain ISO 8601 (`YYYY-MM-DD`). Conversion lives in `core/timeutil.py` as `to_display_date(d: date) -> str` (returns `d.strftime("%d/%m/%Y")`). No view or model formats dates directly.
-
-### 18.2 Duration & overnight (DST-aware)
-
-- Duration uses **wall-clock minute arithmetic**, not absolute timestamps, so it is unaffected by DST shifts on normal same-day shifts: `mins(end) - mins(start) - break`.
-- Overnight (`end < start`): `(1440 - mins(start)) + mins(end) - break`.
-- **DST caveat**: on "spring forward" day (23h) a wall-clock shift e.g. 08:00–17:00 with 1h break reports **7h** (not 8h) because the wall-clock day is only 23h long. On "fall back" day (25h) the same shift reports **9h**. v1 accepts this — single user, rare, documented in `timeutil.duration()` unit test pinning the behavior. Future v2 should use UTC for diff and convert to local for display.
-
-### 18.3 Running overtime balance (new capability)
-
-Per-day "remaining" (§5.4) is good but users care about the cumulative balance. Add:
-
-```
-period_balance(period) = Σ over days in period of (worked − target)
-```
-
-- Shown in the Time Clock header: `This week: +2.5h  |  This month: −1.0h`.
-- Pure function over already-fetched records + targets → no DB coupling, trivially unit-testable.
-- Period selector: Week / Month / Year. Computed in `core/balance.py`, surfaced by the controller.
+Full formulas, DST worked examples, `period_balance` signature: [design/time-and-balance.md](design/time-and-balance.md).
 
 ## 19. Controllers
 
@@ -965,157 +734,21 @@ SicknessController:
 
 ## 20. Testing
 
-Tests are a first-class deliverable, run with `pytest`. The layered/typed design above makes the logic-heavy parts testable **without a GUI**.
+Tests are a first-class deliverable, run with `pytest`. Target ≥ 90% coverage on `core/`, `models/`, `controllers/`, using an in-memory SQLite fixture and an injected `clock` callable (never call `datetime.now()` directly in logic). GUI is smoke-tested only — the logic-heavy layers are testable without one. Priority order: `timeutil` duration/overnight/DST → `balance` running totals → validation tables (one parametrized test per rule) → model CRUD → carry-over auditability → migrations.
 
-### 20.1 Strategy & tooling
-
-| Concern | Tool | Notes |
-|---|---|---|
-| Test runner | `pytest` | `tests/` mirrors source tree |
-| Coverage | `pytest-cov` | Target ≥ 90% on `core/`, `models/`, `controllers/`, validation |
-| DB isolation | in-memory SQLite (`:memory:`) | Fresh schema per test via a `db` fixture |
-| Time control | inject a `clock` callable | Pass `now` into controllers/timeutil; never call `datetime.now()` directly in logic |
-| GUI | **not** unit-tested broadly | Smoke test only (§20.4); logic lives outside views by design |
-
-### 20.2 What gets unit tested (priority order)
-
-1. **`core/timeutil.py`** — duration (same-day, zero-length, break-exceeds-shift), overnight wrap, documented DST behavior, ISO ↔ `date`/`time` round-trip.
-2. **`core/balance.py`** — per-day remaining, week/month/year running balance, overtime sign, "no target" path.
-3. **Validation functions** — every row of the §5.6 / §6.5 / §7.3 tables = one parametrized test (valid + each failure mode), incl. overlap and overnight-vs-overlap interaction.
-4. **Models** (CRUD on `:memory:` DB) — insert/update/delete, open-record queries, monthly grouping/sorting, vacation/sickness yearly sums.
-5. **Carry-over logic** — surplus calc, `max_carry_over` clamp, double-transfer prevention (§10.2/§10.3), `carry_over_log` auditability.
-6. **Migrations** — `PRAGMA user_version` upgrade path applies cleanly to an old DB fixture.
-
-### 20.3 Fixtures (`tests/conftest.py`)
-
-```python
-@pytest.fixture
-def db():
-    conn = sqlite3.connect(":memory:")
-    apply_schema(conn)            # same DDL as production
-    yield Database(conn)
-    conn.close()
-
-@pytest.fixture
-def fixed_clock():
-    return lambda: datetime(2026, 6, 26, 9, 0)   # deterministic "now"
-```
-
-### 20.4 Layout & example
-
-```
-tests/
-├── conftest.py
-├── core/
-│   ├── test_timeutil.py
-│   └── test_balance.py
-├── models/
-│   ├── test_time_clock_model.py
-│   ├── test_vacation_model.py     # incl. carry-over
-│   └── test_sickness_model.py
-├── controllers/
-│   └── test_time_clock_controller.py
-└── validation/
-    └── test_time_record_validation.py
-```
-
-```python
-# tests/core/test_timeutil.py
-import pytest
-from core.timeutil import duration
-
-@pytest.mark.parametrize("start,end,brk,expected", [
-    ("09:00", "17:00", 30, 7.5),   # normal
-    ("08:30", "12:00", 0,  3.5),   # no break
-    ("22:00", "06:00", 0,  8.0),   # overnight wrap
-    ("09:00", "09:00", 0,  0.0),   # zero-length
-])
-def test_duration(start, end, brk, expected):
-    assert duration(start, end, brk) == pytest.approx(expected)
-
-def test_break_exceeds_shift_is_negative():
-    assert duration("09:00", "10:00", 90) < 0   # caller blocks save (§12 #5)
-```
-
-### 20.5 CI hook (optional)
-
-- `pytest -q --cov` runnable locally and in CI; `mypy --strict` on `domain/`, `core/`, `controllers/` as a second gate.
-- Tests must pass before PyInstaller packaging.
+Full fixtures, test layout, examples, CI hook: [design/testing.md](design/testing.md).
 
 ## 21. Additional v1 Features
 
-The following were originally deferred but are now in scope for v1.
+The following were originally deferred but are now in scope for v1. Full specs: [design/v1-features.md](design/v1-features.md).
 
-### 21.1 Public Holidays Auto-Import
-
-- Settings → Time Clock gains a **Country/Region** selector (default: none) and an **"Import holidays for year"** button.
-- Uses the `holidays` library (optional dep; button disabled with hint if missing) to enumerate public holidays for the chosen region + year.
-- Each holiday becomes a `work_day_exception` row with `hours = 0` and `label = <holiday name>` — reusing the existing exception mechanism (§3, §5.4). No new table.
-- Conflict handling: respects `UNIQUE(date)` — existing exception on a date is **kept**, import skips it and reports "N added, M skipped (already set)".
-- Holidays therefore flow automatically into the daily-target logic (0h target ⇒ "Day off") and into the sickness day-equivalent rules.
-- **Jewish/Israeli holidays**: when country is set to `IL` (Israel) or `JewishHolidays` locale is selected, the `holidays` library's Israel support is used. This includes Rosh Hashana, Yom Kippur, Sukkot, Passover, Shavuot, Independence Day, etc. These are imported as `work_day_exception` rows exactly like any other country's holidays.
-- Country/Region is **optional** — app functions fully without it. Selector defaults to blank ("None"); no import is attempted until a region is chosen.
-
-### 21.2 Reports (PDF summary)
-
-- New **`File → Reports`** menu (distinct from raw Export §14): generates a formatted summary PDF, not a data dump.
-- Period selector: **Month / Quarter / Year** + year picker.
-- Content: worked vs target totals, running overtime balance (§18.3), vacation used/remaining + carry-over, sickness used/remaining, per-month breakdown table.
-- Engine: `reportlab` (same optional dep as PDF export); shares table-styling helpers with §14. Graceful "install reportlab" prompt if absent.
-- Implemented in `views/report_dialog.py` + `core/report.py` (pure data assembly → testable without PDF rendering).
-
-### 21.3 Overtime Tracking (configurable rate)
-
-- Builds directly on the running balance (§18.3).
-- Settings → Time Clock: **overtime rate** (multiplier, default `1.0`) and **balance period** (week/month/year, default month).
-- `core/balance.py` exposes `overtime(period) → (raw_hours, weighted_hours)` where `weighted = raw × rate` for positive balance.
-- Header + Reports show both: `Overtime: +5.0h (×1.5 = 7.5h)`. Rate only applies to surplus; deficit shown raw.
-- Pure function, covered by §20.2 tests (add rate cases).
-
-### 21.4 Tray Icon + Quick Clock-In/Out
-
-- Optional dep `pystray` (+ `Pillow`); if missing, feature silently disabled, app runs normally.
-- Tray icon reflects clock state via color (uses `success`/`fg.muted` tokens, §16.2): active = green, idle = grey.
-- Right-click menu: **Clock In**, **Clock Out**, **Open**, **Quit**. Menu items call the same `TimeClockController.clock_in/clock_out` (§19) — no logic duplication.
-- Tray actions publish `CLOCK_STATE_CHANGED` (§17) so the main window stays in sync if open.
-- Setting: **"Minimize to tray"** (default off) — window close → hide to tray instead of exit when enabled.
-- Lives in `tray.py`, started from `main.py` only when the deps + setting allow.
-- **Thread Safety & DB Concurrency**: Because the system tray run-loop executes on a separate thread, all actions that invoke controller methods or touch the database must be marshalled back to the main tkinter thread (e.g., using `root.after()` or `root.event_generate()`) to avoid SQLite concurrency violations. Database connections should utilize WAL mode.
-
-### 21.5 Break Presets
-
-- Add/Edit Time Record dialog (§5.5) gains quick-set buttons next to the Break field: **`[15m] [30m] [45m] [1h]`** plus the existing manual `HH:MM` entry.
-- Clicking a preset sets the field and re-runs the live net-duration calc. Purely a view-layer convenience; no model/schema change.
-- Preset list configurable in Settings (defaults above), stored in the `app_config` table (§3).
-
-### 21.6 Week / Month View Toggle
-
-- Time Clock tab header gains a segmented control: **`[ Week | Month ]`** (default Month, persisted in the `app_config` table).
-- **Month view**: existing grouped-by-day display (§5.3).
-- **Week view**: 7-day strip (Mon–Sun) for the selected week with prev/next-week nav; each day shows its records + daily subtotal and target delta; week footer shows the §18.3 weekly running balance.
-- Both views share the same `ttk.Treeview` and tag styling (§16.4); the toggle swaps the grouping/query, not the widget.
-- Week navigation reuses Year/Month filter state; selecting a day in week view scrolls month view to it and vice-versa.
-
-### 21.7 Hebrew Calendar Date Display
-
-Always shown — `hdate` is a required dependency.
-
-- **Dependency**: `hdate` (PyPI: `hdate`). Listed in `requirements.txt`; imported unconditionally.
-- **Conversion utility**: `core/hebrew_date.py` — single function `to_hebrew_label(d: date) -> str` that always returns a formatted Hebrew date string (e.g., `"י"ז סיוון תשפ"ו"`).
-- **Display locations**:
-  - Time Clock grouped list day headers: `── Monday, June 1 / י"ז סיוון תשפ"ו (7.5h) ──`
-  - Vacation list: "Hebrew Date" column next to "Date" column (always visible)
-  - Sickness list: "Hebrew Date" column next to "Date" column (always visible)
-  - Export: "Hebrew Date" column always included in CSV/Excel/PDF
-- **Column width**: fixed monospace-aligned column; uses the same `Consolas` font as time columns (§16.3).
-- **No settings toggle**: Hebrew dates are always shown; no `show_hebrew_dates` setting.
-- **No schema change**: Hebrew dates are always computed on the fly from the stored Gregorian ISO date. Never persisted.
-
-```python
-# core/hebrew_date.py
-def to_hebrew_label(d: date) -> str:
-    return str(HebrewDate.from_gdate(d))[::-1]
-```
+- **§21.1 Public Holidays Auto-Import** — `holidays` library populates `work_day_exception` rows per region/year (incl. Israel/Jewish holidays); existing exceptions are never overwritten.
+- **§21.2 Reports (PDF)** — formatted period summary (Month/Quarter/Year), distinct from raw Export §14, via `reportlab`.
+- **§21.3 Overtime Tracking (rate)** — configurable multiplier applied to positive running balance only.
+- **§21.4 Tray Icon** — `pystray` quick clock in/out; silently disabled if dep missing; all actions marshalled to the tkinter thread.
+- **§21.5 Break Presets** — quick-set buttons (`15m/30m/45m/1h`) in the time record dialog; view-layer only.
+- **§21.6 Week / Month View Toggle** — segmented control on the Time Clock tab; both views share one `Treeview`.
+- **§21.7 Hebrew Calendar Date Display** — `hdate` is a required dependency; Hebrew date always shown, never a setting.
 
 ## 22. Future Considerations (non-goal for v1)
 

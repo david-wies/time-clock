@@ -393,7 +393,7 @@ class CarryOverLogEntry(_ValidatingRecord):
 
     def __post_init__(self) -> None:
         # Carry-over always moves surplus from the immediately preceding
-        # year into the next one (DESIGN.md §10.2/§10.3: "prev_year_surplus"
+        # year into the next one (design/data-flow.md §10.2/§10.3: "prev_year_surplus"
         # is always to_year - 1, and VacationModel.add_carry_over()'s only
         # caller, views/carry_over_dialog.py, hardcodes
         # self._from_year = to_year - 1). from_year < to_year alone would be
