@@ -72,7 +72,7 @@ class SharedConnectionWrapper:
     def close(self) -> None:
         """No-op to preserve in-memory DB lifetime."""
 
-    def __enter__(self) -> "SharedConnectionWrapper":
+    def __enter__(self) -> SharedConnectionWrapper:
         self._conn.__enter__()
         return self
 
@@ -103,6 +103,13 @@ class Database:
         # underlying SharedConnectionWrapper.close() is a no-op, so those
         # call sites safely "close" the shared connection on `with`-exit
         # without ever actually closing it, for both DB kinds.
+        #
+        # Thread constraint: sqlite3's default check_same_thread=True means
+        # this connection may only be used from the thread that constructs
+        # Database() (the main/tkinter thread). Any code touching the DB
+        # from another thread (e.g. a pystray callback) MUST marshal to the
+        # main thread via `root.after(0, fn)` first — it can no longer rely
+        # on get_connection() opening a fresh, thread-safe connection.
         raw_conn = sqlite3.connect(self.db_path)
         raw_conn.row_factory = sqlite3.Row
         raw_conn.execute("PRAGMA journal_mode=WAL;")

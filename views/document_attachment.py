@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import os
 import tkinter as tk
+from collections.abc import Callable
 from tkinter import ttk
 from tkinter.filedialog import askopenfilename
-from typing import Callable
 
 DOCUMENT_FILETYPES = [
     ("Documents", "*.pdf *.png *.jpg *.jpeg *.bmp *.tiff *.tif *.gif"),

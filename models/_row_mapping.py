@@ -8,12 +8,9 @@ is identical across models. That shared loop lives here.
 
 import sqlite3
 from collections.abc import Callable
-from typing import TypeVar
-
-T = TypeVar("T")
 
 
-def rows_to_records(
+def rows_to_records[T](
     rows: list[sqlite3.Row], row_to_record: Callable[[sqlite3.Row], T | None]
 ) -> tuple[list[T], int]:
     """Maps each row via `row_to_record`, dropping rows that map to None.

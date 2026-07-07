@@ -2,10 +2,10 @@
 
 import logging
 import sqlite3
+from collections.abc import Callable
 from contextlib import AbstractContextManager
 from datetime import datetime, time
 from types import TracebackType
-from typing import Callable
 
 from domain.enums import WarningCode, WorkType
 from domain.types import BreakMinutes, Result, TimeRecord, time_record_invariant_errors

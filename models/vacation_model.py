@@ -48,7 +48,7 @@ class VacationModel:
                 vtype=VacationType(row["vtype"]),
                 note=row["note"],
             )
-        except (ValueError, TypeError):
+        except ValueError, TypeError:
             logger.warning(
                 "Skipping malformed vacation_record row: id=%r date=%r",
                 row["id"],
@@ -187,7 +187,7 @@ class VacationModel:
             for row in rows:
                 try:
                     transferred_at = datetime.fromisoformat(row["transferred_at"])
-                except (ValueError, TypeError):
+                except ValueError, TypeError:
                     logger.warning(
                         "Skipping malformed carry_over_log row: "
                         "id=%r transferred_at=%r",
@@ -205,7 +205,7 @@ class VacationModel:
                             transferred_at=transferred_at,
                         )
                     )
-                except (ValueError, TypeError):
+                except ValueError, TypeError:
                     logger.warning(
                         "Skipping malformed carry_over_log row: id=%r "
                         "from_year=%r to_year=%r hours=%r",

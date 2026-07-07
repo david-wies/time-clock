@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import date
 from tkinter import messagebox, ttk
-from typing import Callable
 
 from controllers.vacation_controller import VacationController
 from core.events import Event, EventBus
@@ -317,6 +317,9 @@ class VacationTab(RecordTabMixin, ttk.Frame):
         self._update_button_states()
 
     def _on_event(self, **_kw) -> None:
+        # Recompute theme mode in case the theme setting changed while this
+        # tab was open — otherwise row colors stay stale until rebuilt.
+        self._theme_mode = resolve_theme_mode(self.settings.get("theme"))
         self._refresh()
 
     # ─────────────────────────── Button State ───────────────────────────────

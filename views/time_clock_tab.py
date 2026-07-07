@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import logging
 import tkinter as tk
+from collections.abc import Callable
 from datetime import date, datetime, time, timedelta
 from tkinter import messagebox, ttk
-from typing import Callable
 
 from controllers.time_clock_controller import TimeClockController
 from core.balance import (
@@ -67,7 +67,7 @@ def _build_exc_dict(raw: list[WorkDayException]) -> dict[date, float]:
     for exc in raw:
         try:
             result[exc.date] = float(exc.hours)
-        except (ValueError, TypeError):
+        except ValueError, TypeError:
             logger.warning(
                 "Skipping malformed work-day exception (falls back to the "
                 "regular weekly target for that date): %r",
@@ -148,7 +148,7 @@ class TimeClockTab(RecordTabMixin, ttk.Frame):
         raw = self.settings.get("week_first_day", 0)
         try:
             return Weekday(int(raw))
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             return Weekday.MON
 
     def _week_start_for(self, d: date) -> date:

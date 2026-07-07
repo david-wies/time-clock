@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import logging
 import tkinter as tk
+from collections.abc import Callable
 from datetime import date
 from tkinter import messagebox, simpledialog, ttk
-from typing import Callable
 
 import holidays
 

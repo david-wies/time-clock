@@ -42,7 +42,7 @@ class MiliuimModel:
                 note=row["note"],
                 document_path=row["document_path"],
             )
-        except (ValueError, TypeError):
+        except ValueError, TypeError:
             logger.warning(
                 "Skipping malformed miliuim_period row: id=%r start_date=%r",
                 row["id"],
@@ -126,7 +126,7 @@ class MiliuimModel:
                             iso_to_date(row["end_date"]),
                         )
                     )
-                except (ValueError, TypeError):
+                except ValueError, TypeError:
                     logger.warning(
                         "Skipping miliuim_period row with unparseable date:"
                         " id=%r start_date=%r end_date=%r",

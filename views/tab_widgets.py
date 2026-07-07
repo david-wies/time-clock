@@ -4,9 +4,9 @@
 from __future__ import annotations
 
 import tkinter as tk
+from collections.abc import Callable
 from datetime import date
 from tkinter import ttk
-from typing import Callable
 
 from core.timeutil import MONTH_NAMES
 

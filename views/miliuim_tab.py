@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import date
 from tkinter import messagebox, ttk
-from typing import Callable
 
 from controllers.miliuim_controller import MiliuimController
 from core.events import Event, EventBus

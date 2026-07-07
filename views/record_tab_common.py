@@ -10,8 +10,8 @@ from __future__ import annotations
 
 import logging
 import tkinter as tk
+from collections.abc import Callable
 from tkinter import ttk
-from typing import Callable
 
 from core.timeutil import MONTH_NAMES
 

@@ -41,7 +41,7 @@ class SicknessModel:
                 note=row["note"],
                 document_path=row["document_path"],
             )
-        except (ValueError, TypeError):
+        except ValueError, TypeError:
             logger.warning(
                 "Skipping malformed sickness_record row: id=%r date=%r",
                 row["id"],
@@ -114,7 +114,7 @@ class SicknessModel:
             for row in cursor.fetchall():
                 try:
                     dates.append((row["id"], iso_to_date(row["date"])))
-                except (ValueError, TypeError):
+                except ValueError, TypeError:
                     logger.warning(
                         "Skipping sickness_record row with unparseable date:"
                         " id=%r date=%r",

@@ -17,9 +17,10 @@ __all__ = [
 ]
 
 import math
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import date, datetime, time
-from typing import Any, Callable, ClassVar
+from typing import Any, ClassVar
 
 from core.timeutil import duration
 from domain.enums import VacationType, WorkType
@@ -90,7 +91,7 @@ class Hours(float):
     """A non-negative quantity of hours. Behaves as a plain ``float`` (arithmetic,
     formatting, sqlite3 binding) but rejects negative values at construction."""
 
-    def __new__(cls, value: float) -> "Hours":
+    def __new__(cls, value: float) -> Hours:
         v = float(value)
         if math.isnan(v) or math.isinf(v):
             raise ValueError("Hours must be non-negative.")
@@ -103,7 +104,7 @@ class BreakMinutes(int):
     """A non-negative quantity of break minutes. Behaves as a plain ``int``
     but rejects negative values at construction."""
 
-    def __new__(cls, value: int) -> "BreakMinutes":
+    def __new__(cls, value: int) -> BreakMinutes:
         if isinstance(value, float) and (math.isnan(value) or math.isinf(value)):
             raise ValueError("Break minutes must be non-negative.")
         v = int(value)
@@ -112,7 +113,7 @@ class BreakMinutes(int):
         return super().__new__(cls, v)
 
 
-def time_record_invariant_errors(record: "TimeRecord") -> list[str]:
+def time_record_invariant_errors(record: TimeRecord) -> list[str]:
     """Context-free invariants for TimeRecord — checks that need only the
     record's own fields, not other DB records (overlap) or live settings.
 
@@ -183,7 +184,7 @@ class TimeRecord(_ValidatingRecord):
         return self.end_time is None
 
 
-def vacation_record_invariant_errors(record: "VacationRecord") -> list[str]:
+def vacation_record_invariant_errors(record: VacationRecord) -> list[str]:
     """Context-free invariants for VacationRecord.
 
     The bounds on `hours` (0.5 vs 0 minimum, live max_hours cap) are
@@ -244,7 +245,7 @@ class VacationRecord(_ValidatingRecord):
         self._constructed = True
 
 
-def sickness_record_invariant_errors(record: "SicknessRecord") -> list[str]:
+def sickness_record_invariant_errors(record: SicknessRecord) -> list[str]:
     """Context-free invariants for SicknessRecord.
 
     The 0.5–24 bound is fixed business policy, not context-dependent, but is
@@ -407,7 +408,7 @@ class CarryOverLogEntry(_ValidatingRecord):
         self._constructed = True
 
 
-def miliuim_record_invariant_errors(record: "MiliuimRecord") -> list[str]:
+def miliuim_record_invariant_errors(record: MiliuimRecord) -> list[str]:
     """Context-free invariants for MiliuimRecord.
 
     Enforced unconditionally by MiliuimRecord.__post_init__ at construction

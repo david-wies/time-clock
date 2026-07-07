@@ -52,7 +52,7 @@ class TimeClockModel:
                 note=row["note"],
                 document_path=row["document_path"],
             )
-        except (ValueError, TypeError):
+        except ValueError, TypeError:
             logger.warning(
                 "Skipping malformed time_record row: id=%r date=%r",
                 row["id"],
@@ -117,7 +117,7 @@ class TimeClockModel:
                 try:
                     start = str_to_time(row["start_time"])
                     end = str_to_time(row["end_time"]) if row["end_time"] else None
-                except (ValueError, TypeError):
+                except ValueError, TypeError:
                     logger.warning(
                         "Skipping time_record row with unparseable time:"
                         " id=%r start_time=%r end_time=%r",
@@ -300,7 +300,7 @@ class TimeClockModel:
             for row in rows:
                 try:
                     exc_date = date.fromisoformat(row["date"])
-                except (ValueError, TypeError):
+                except ValueError, TypeError:
                     logger.warning(
                         "Skipping malformed work-day exception row "
                         "(falls back to the regular weekly target for that "
@@ -316,7 +316,7 @@ class TimeClockModel:
                         hours=row["hours"],
                         label=row["label"],
                     )
-                except (ValueError, TypeError):
+                except ValueError, TypeError:
                     logger.warning(
                         "Skipping malformed work-day exception row "
                         "(falls back to the regular weekly target for that "

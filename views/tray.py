@@ -72,7 +72,7 @@ class SystemTray:
         self._clocked_in_cache: bool = False
         try:
             self._base_icon: Image.Image = _load_base_icon()
-        except (FileNotFoundError, OSError):
+        except FileNotFoundError, OSError:
             logger.warning("icon file not found at %r; using fallback icon.", _PNG_PATH)
             self._base_icon = Image.new(
                 "RGBA", (_ICON_SIZE, _ICON_SIZE), (80, 120, 200, 255)
