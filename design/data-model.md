@@ -51,7 +51,7 @@ CREATE TABLE vacation_settings (
 CREATE TABLE vacation_record (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     date        TEXT    NOT NULL,   -- ISO 8601
-    hours       REAL    NOT NULL CHECK(hours > 0),
+    hours       REAL    NOT NULL CHECK(hours >= 0),
     vtype       TEXT    NOT NULL CHECK(vtype IN ('annual_leave', 'public_holiday', 'unpaid_leave', 'special_leave', 'carry_over')),
     note        TEXT,
     created_at  TEXT    NOT NULL DEFAULT (datetime('now')),
@@ -59,11 +59,18 @@ CREATE TABLE vacation_record (
 );
 
 CREATE INDEX idx_vacation_record_date ON vacation_record(date);
+```
 
+> **Migration note.** `hours` was originally `CHECK(hours > 0)`; a `PRAGMA
+> user_version` migration (db/database.py, version 2) relaxed it to
+> `CHECK(hours >= 0)` to allow 0-hour holiday imports (e.g. a
+> `public_holiday` row imported for a day that carries no hour value).
+
+```sql
 -- Sickness settings keyed by year (supports allowance changes)
 CREATE TABLE sickness_settings (
     year             INTEGER PRIMARY KEY, -- e.g., 2025, 2026
-    days_per_year    REAL NOT NULL CHECK(days_per_year >= 0)
+    hours_per_year   REAL NOT NULL CHECK(hours_per_year >= 0)
 );
 
 -- Sickness records
@@ -94,6 +101,20 @@ CREATE TABLE app_config (
     key             TEXT PRIMARY KEY,
     value           TEXT NOT NULL -- JSON-serialized configuration/settings values
 );
+
+-- Miliuim (reserve duty) periods — date-range model. Replaced the earlier
+-- per-day miliuim_record + miliuim_settings tables (PRAGMA user_version 6).
+CREATE TABLE miliuim_period (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    start_date    TEXT    NOT NULL,
+    end_date      TEXT    NOT NULL CHECK(end_date >= start_date),
+    note          TEXT,
+    document_path TEXT,
+    created_at    TEXT    NOT NULL DEFAULT (datetime('now')),
+    updated_at    TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX idx_miliuim_period_start ON miliuim_period(start_date);
 ```
 
 ### 3.1 Duration Calculation

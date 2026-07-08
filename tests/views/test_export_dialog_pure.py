@@ -43,7 +43,7 @@ def test_export_failure_leaves_no_partial_file_at_final_path(
     show_info = mock.MagicMock()
     monkeypatch.setattr("views.export_dialog.messagebox.showerror", show_error)
     monkeypatch.setattr("views.export_dialog.messagebox.showinfo", show_info)
-    monkeypatch.setattr(dialog, "_fetch_records", lambda *_a: [])
+    monkeypatch.setattr(dialog, "_fetch_records", lambda *_a: ([], 0))
 
     def _boom(_records, path: str) -> None:
         # Simulate a real writer that gets partway through before failing.
@@ -78,9 +78,11 @@ def test_export_success_writes_final_path_and_leaves_no_temp_file(
     )
     show_error = mock.MagicMock()
     show_info = mock.MagicMock()
+    show_warning = mock.MagicMock()
     monkeypatch.setattr("views.export_dialog.messagebox.showerror", show_error)
     monkeypatch.setattr("views.export_dialog.messagebox.showinfo", show_info)
-    monkeypatch.setattr(dialog, "_fetch_records", lambda *_a: [])
+    monkeypatch.setattr("views.export_dialog.messagebox.showwarning", show_warning)
+    monkeypatch.setattr(dialog, "_fetch_records", lambda *_a: ([], 0))
 
     def _write(_records, path: str) -> None:
         with open(path, "w", encoding="utf-8") as f:
@@ -96,6 +98,48 @@ def test_export_success_writes_final_path_and_leaves_no_temp_file(
         assert f.read() == "Date,Hours\n2026-01-01,8.0\n"
     show_error.assert_not_called()
     show_info.assert_called_once()
+    show_warning.assert_not_called()
+    dialog.destroy.assert_called_once()
+
+
+def test_export_with_skipped_records_shows_warning_not_info(
+    tmp_path, monkeypatch
+) -> None:
+    """When the underlying model fetch silently dropped malformed rows, the
+    export must still succeed (the row is malformed, not the export), but
+    the completion dialog must warn the user rather than silently claiming
+    success -- otherwise a partial-but-complete-looking export is exactly
+    the failure mode the temp-file/rename dance in `_on_export()` exists to
+    prevent (see the comment at the top of that method)."""
+    dialog = _make_dialog()
+    final_path = str(tmp_path / "export.csv")
+
+    monkeypatch.setattr(
+        "views.export_dialog.filedialog.asksaveasfilename",
+        lambda **_kw: final_path,
+    )
+    show_error = mock.MagicMock()
+    show_info = mock.MagicMock()
+    show_warning = mock.MagicMock()
+    monkeypatch.setattr("views.export_dialog.messagebox.showerror", show_error)
+    monkeypatch.setattr("views.export_dialog.messagebox.showinfo", show_info)
+    monkeypatch.setattr("views.export_dialog.messagebox.showwarning", show_warning)
+    monkeypatch.setattr(dialog, "_fetch_records", lambda *_a: ([], 3))
+
+    def _write(_records, path: str) -> None:
+        with open(path, "w", encoding="utf-8") as f:
+            f.write("Date,Hours\n2026-01-01,8.0\n")
+
+    monkeypatch.setattr(dialog, "_export_csv", _write)
+
+    dialog._on_export()
+
+    assert os.path.exists(final_path)
+    show_error.assert_not_called()
+    show_info.assert_not_called()
+    show_warning.assert_called_once()
+    warning_text = show_warning.call_args.args[1]
+    assert "3 record(s) skipped due to data errors" in warning_text
     dialog.destroy.assert_called_once()
 
 

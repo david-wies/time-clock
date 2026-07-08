@@ -185,6 +185,61 @@ def test_targets_and_exceptions(db: Database, event_bus: EventBus) -> None:
     assert exceptions_after[0].date == date(2026, 12, 25)
 
 
+def test_update_record_without_id_raises(db: Database, event_bus: EventBus) -> None:
+    """update_record() requires a persisted id -- a record that was never
+    inserted (id=None) cannot be targeted by an UPDATE ... WHERE id = ?
+    statement, so this is checked explicitly rather than silently updating
+    zero rows."""
+    model = TimeClockModel(db, event_bus)
+    rec = TimeRecord(
+        None, date(2026, 6, 26), time(9, 0), time(17, 0), 30, WorkType.REMOTE
+    )
+
+    with pytest.raises(ValueError, match="Cannot update a record without an ID"):
+        model.update_record(rec)
+
+
+def test_get_open_records_for_today_returns_only_todays_open_records(
+    db: Database, event_bus: EventBus
+) -> None:
+    """Convenience wrapper around get_open_records_for_date(date.today()) --
+    uses the real wall-clock date (no injectable clock at the model layer),
+    so this builds records against the actual today rather than a fixed
+    date. Confirms it returns only today's still-open record and excludes a
+    closed one on the same day."""
+    model = TimeClockModel(db, event_bus)
+    today = date.today()
+    open_rec = TimeRecord(None, today, time(9, 0), None, 0, WorkType.REMOTE)
+    closed_rec = TimeRecord(None, today, time(10, 0), time(11, 0), 0, WorkType.REMOTE)
+    model.insert_record(open_rec)
+    model.insert_record(closed_rec)
+
+    open_today = model.get_open_records_for_today()
+
+    assert len(open_today) == 1
+    assert open_today[0].start_time == time(9, 0)
+    assert open_today[0].end_time is None
+
+
+def test_delete_date_exception_by_id(db: Database, event_bus: EventBus) -> None:
+    """delete_date_exception(id) -- distinct from
+    delete_date_exception_by_date(date_str), which is exercised in
+    test_targets_and_exceptions above. Only the exception matching the
+    given id is removed."""
+    model = TimeClockModel(db, event_bus)
+    model.save_date_exception("2026-12-24", 4.0, "Christmas Eve")
+    model.save_date_exception("2026-12-25", 0.0, "Christmas Day")
+    exceptions = model.get_date_exceptions(year=2026)
+    assert len(exceptions) == 2
+    target_id = exceptions[0].id
+
+    model.delete_date_exception(target_id)
+
+    remaining = model.get_date_exceptions(year=2026)
+    assert len(remaining) == 1
+    assert remaining[0].id != target_id
+
+
 def test_get_date_exceptions_skips_malformed_date_and_logs_warning(
     db: Database, event_bus: EventBus, caplog
 ) -> None:

@@ -121,6 +121,10 @@ class TimeClockTab(RecordTabMixin, ttk.Frame):
                 self.settings.get("view_mode") or ViewMode.MONTH
             )
         except ValueError:
+            logger.warning(
+                "Invalid stored view_mode setting %r, falling back to MONTH",
+                self.settings.get("view_mode"),
+            )
             self._view_mode = ViewMode.MONTH
         self._selected_year: int = today.year
         self._selected_month: int = today.month
@@ -149,6 +153,10 @@ class TimeClockTab(RecordTabMixin, ttk.Frame):
         try:
             return Weekday(int(raw))
         except TypeError, ValueError:
+            logger.warning(
+                "Invalid stored week_first_day setting %r, falling back to MON",
+                raw,
+            )
             return Weekday.MON
 
     def _week_start_for(self, d: date) -> date:

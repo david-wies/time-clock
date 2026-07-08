@@ -1,3 +1,4 @@
+import dataclasses
 import logging
 from datetime import date
 
@@ -27,7 +28,9 @@ def test_sickness_events(db: Database, event_bus: EventBus) -> None:
     change_called = False
     fetched = model.get_record_by_id(rec_id)
     assert fetched is not None
-    fetched.hours = 4.0
+    # SicknessRecord is frozen (domain/types.py) -- dataclasses.replace()
+    # builds a new, revalidated instance instead of mutating in place.
+    fetched = dataclasses.replace(fetched, hours=4.0)
     model.update_record(fetched)
     assert change_called is True
 
@@ -89,8 +92,7 @@ def test_sickness_record_crud(db: Database, event_bus: EventBus) -> None:
     assert fetched.note == "Flu"
 
     # Update
-    fetched.hours = 4.0
-    fetched.note = "Mild headache"
+    fetched = dataclasses.replace(fetched, hours=4.0, note="Mild headache")
     model.update_record(fetched)
 
     updated = model.get_record_by_id(rec_id)
@@ -191,6 +193,41 @@ def test_get_records_for_year_skips_malformed_row_and_logs_warning(
         record.levelname == "WARNING" and "malformed" in record.message.lower()
         for record in caplog.records
     )
+
+
+def test_insert_records_bulk_empty_list_is_noop(
+    db: Database, event_bus: EventBus
+) -> None:
+    """insert_records_bulk([]) must return immediately without opening a
+    transaction or publishing SICKNESS_CHANGED -- an empty range from
+    save_range() (which can't actually happen given its date-inclusive loop,
+    but insert_records_bulk() is a public model method other callers could
+    invoke directly with an empty list) must be a true no-op."""
+    model = SicknessModel(db, event_bus)
+    published = False
+
+    def on_change() -> None:
+        nonlocal published
+        published = True
+
+    event_bus.subscribe(Event.SICKNESS_CHANGED, on_change)
+
+    model.insert_records_bulk([])
+
+    assert published is False
+    assert model.get_records_in_date_range(date(2026, 1, 1), date(2026, 12, 31)) == []
+
+
+def test_update_record_without_id_raises(db: Database, event_bus: EventBus) -> None:
+    """update_record() requires a persisted id -- a record that was never
+    inserted (id=None) cannot be targeted by an UPDATE ... WHERE id = ?
+    statement, so this is checked explicitly rather than silently updating
+    zero rows."""
+    model = SicknessModel(db, event_bus)
+    rec = SicknessRecord(None, date(2026, 2, 15), 8.0, "Flu")
+
+    with pytest.raises(ValueError, match="Cannot update a record without an ID"):
+        model.update_record(rec)
 
 
 def test_get_dates_in_range_skips_corrupt_date_row_and_logs_warning(

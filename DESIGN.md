@@ -745,7 +745,7 @@ The following were originally deferred but are now in scope for v1. Full specs: 
 - **§21.1 Public Holidays Auto-Import** — `holidays` library populates `work_day_exception` rows per region/year (incl. Israel/Jewish holidays); existing exceptions are never overwritten.
 - **§21.2 Reports (PDF)** — formatted period summary (Month/Quarter/Year), distinct from raw Export §14, via `reportlab`.
 - **§21.3 Overtime Tracking (rate)** — configurable multiplier applied to positive running balance only.
-- **§21.4 Tray Icon** — `pystray` quick clock in/out; silently disabled if dep missing; all actions marshalled to the tkinter thread.
+- **§21.4 Tray Icon** — `pystray` quick clock in/out; a required dependency, imported unconditionally (no fallback if missing); all actions marshalled to the tkinter thread.
 - **§21.5 Break Presets** — quick-set buttons (`15m/30m/45m/1h`) in the time record dialog; view-layer only.
 - **§21.6 Week / Month View Toggle** — segmented control on the Time Clock tab; both views share one `Treeview`.
 - **§21.7 Hebrew Calendar Date Display** — `hdate` is a required dependency; Hebrew date always shown, never a setting.

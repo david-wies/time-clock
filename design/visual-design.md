@@ -4,19 +4,43 @@
 
 Goal: kill the "stock Tk" look. One `theme/style.py` owns all appearance; no view hard-codes colors or fonts.
 
-## 16.1 Theme loading (graceful)
+## 16.1 Theme loading
+
+`sv_ttk` is a required dependency (listed in `requirements.txt`, imported
+unconditionally at the top of `theme/style.py`) — there is no
+`try/except ImportError` fallback to a stock ttk theme.
 
 ```python
 # theme/style.py
-def apply_theme(root, mode="light"):
-    try:
-        import sv_ttk            # modern flat theme
-        sv_ttk.set_theme(mode)
-    except ImportError:
-        from tkinter import ttk
-        ttk.Style().theme_use("clam")   # best stock fallback
-    _configure_named_styles(root)        # custom ttk styles below
+class ThemeMode(StrEnum):
+    """Selectable ttk theme mode: light, dark, or system-following."""
+    LIGHT = "light"
+    DARK = "dark"
+    SYSTEM = "system"
+
+
+def resolve_theme_mode(mode: str | ThemeMode | None) -> ThemeMode:
+    """Resolves a stored theme setting (e.g. from SettingsManager) to a
+    concrete COLORS key. ThemeMode.SYSTEM (no OS dark-mode detection yet),
+    None, and any unrecognized value fall back to ThemeMode.LIGHT."""
+    ...
+
+
+def apply_theme(mode: ThemeMode = ThemeMode.LIGHT) -> ThemeMode:
+    """Applies theme to the default root window. Returns the effective mode."""
+    if mode == ThemeMode.SYSTEM:
+        mode = ThemeMode.LIGHT
+    sv_ttk.set_theme(mode)
+    _configure_named_styles(mode)   # custom ttk styles below
+    return mode
 ```
+
+`apply_theme` takes no `root` parameter — `sv_ttk.set_theme()` operates on
+the default root window implicitly. It returns the effective `ThemeMode`
+(useful when `ThemeMode.SYSTEM` resolves to `LIGHT`). Views that build
+their own tag/foreground colors (treeviews, labels) should call
+`resolve_theme_mode()` rather than hardcoding `COLORS[ThemeMode.LIGHT]`, so
+they honor the active theme mode the same way `apply_theme` does.
 
 ## 16.2 Semantic color tokens
 
@@ -52,4 +76,4 @@ Defined once, referenced by name. Light values shown; dark variants in the same 
 ## 16.5 Dark mode
 
 - Toggle in Settings + respect OS preference where detectable. Persisted in database via the `app_config` table (`"theme": "light"|"dark"|"system"`).
-- All views read tokens, so dark mode is a single `apply_theme(root, "dark")` re-style + Treeview tag refresh.
+- All views read tokens, so dark mode is a single `apply_theme(ThemeMode.DARK)` re-style + Treeview tag refresh.

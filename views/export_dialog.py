@@ -180,7 +180,7 @@ class ExportDialog(tk.Toplevel):
             )
             return
 
-        records = self._fetch_records(from_date, to_date)
+        records, skipped_count = self._fetch_records(from_date, to_date)
 
         fmt = ExportFormat(self._var_fmt.get())
         filetypes, default_ext = self._file_dialog_params(fmt)
@@ -224,29 +224,59 @@ class ExportDialog(tk.Toplevel):
             messagebox.showerror("Export Failed", str(exc), parent=self)
             return
 
-        messagebox.showinfo(
-            "Export Complete", f"Records exported to:\n{path}", parent=self
-        )
+        if skipped_count > 0:
+            messagebox.showwarning(
+                "Export Complete (With Warnings)",
+                f"Records exported to:\n{path}\n\n"
+                f"{skipped_count} record(s) skipped due to data errors.",
+                parent=self,
+            )
+        else:
+            messagebox.showinfo(
+                "Export Complete", f"Records exported to:\n{path}", parent=self
+            )
         self.destroy()
 
     # ─────────────────────────── Data Fetching ───────────────────────────────
 
-    def _fetch_records(self, from_date: date, to_date: date) -> list[_AnyRecord]:
-        """Query the selected model for all records that fall within the date range."""
+    def _fetch_records(
+        self, from_date: date, to_date: date
+    ) -> tuple[list[_AnyRecord], int]:
+        """Query the selected model for all records that fall within the date
+        range.
+
+        Returns `(records, skipped_count)`, where `skipped_count` is the
+        total number of malformed DB rows silently dropped by the
+        underlying model(s) while fetching -- see
+        models/_row_mapping.py:rows_to_records() and each model's
+        `last_skipped_count` attribute. Each per-year fetch call below is
+        immediately followed by reading that model's `last_skipped_count`,
+        before the next iteration's fetch call overwrites it, mirroring the
+        pattern in views/time_clock_tab.py:_refresh_header_and_tree(). This
+        is the more important of the two report/export call sites to get
+        right: the temp-file/rename dance in `_on_export()` exists so a
+        partial export can never be mistaken for a complete payroll/hours
+        record, and a silently-dropped row here would produce exactly that
+        failure mode without this count being surfaced to the caller.
+        """
         tab = ExportTab(self._var_data.get())
         all_records: list[_AnyRecord] = []
+        skipped_count = 0
 
         for year in range(from_date.year, to_date.year + 1):
             if tab == ExportTab.TIME:
                 all_records.extend(self._model_tc.get_records_for_period(year))
+                skipped_count += self._model_tc.last_skipped_count
             elif tab == ExportTab.VACATION:
                 all_records.extend(self._model_vacation.get_records_for_year(year))
+                skipped_count += self._model_vacation.last_skipped_count
             else:  # sickness
                 all_records.extend(self._model_sickness.get_records_for_year(year))
+                skipped_count += self._model_sickness.last_skipped_count
 
         filtered = [r for r in all_records if from_date <= r.date <= to_date]
         filtered.sort(key=lambda r: r.date)
-        return filtered
+        return filtered, skipped_count
 
     # ─────────────────────────── Column / Row Helpers ────────────────────────
 

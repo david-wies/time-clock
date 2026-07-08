@@ -329,6 +329,11 @@ class ReportDialog(tk.Toplevel):
 
         lines.append(f"Period: {data.period_label}")
         lines.append(sep)
+        if data.skipped_record_count > 0:
+            lines.append(
+                f"WARNING: {data.skipped_record_count} record(s) skipped due to "
+                "data errors"
+            )
         lines.append("")
 
         lines.append("TIME CLOCK")
@@ -450,6 +455,14 @@ class ReportDialog(tk.Toplevel):
                 "Export Failed", f"Could not generate PDF:\n{exc}", parent=self
             )
             return
+
+        if data.skipped_record_count > 0:
+            messagebox.showwarning(
+                "Data Warning",
+                f"{data.skipped_record_count} record(s) skipped due to data "
+                "errors.\n\nThe generated report may be incomplete.",
+                parent=self,
+            )
 
         messagebox.showinfo(
             "PDF Exported",

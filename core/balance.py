@@ -121,7 +121,6 @@ def period_balance_from_grouped(
     return PeriodBalance(
         worked_hours=total_worked,
         target_hours=total_target,
-        balance=balance,
         weighted_overtime=weighted_overtime,
         days_in_period=num_days,
     )

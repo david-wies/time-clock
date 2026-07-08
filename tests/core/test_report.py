@@ -462,3 +462,120 @@ def test_period_summary_vac_defaults_with_no_settings(period_models):
     # No sickness settings set → default fallback is 80.0h (10 days × 8h)
     assert data.sick_allowance_hours == pytest.approx(80.0)
     assert data.sick_used_hours == pytest.approx(0.0)
+
+
+# ─────────── skipped_record_count ────────────────────────────────────────────
+
+
+def test_period_summary_no_skipped_records_is_zero(period_models):
+    """The common case: no malformed rows anywhere → skipped_record_count
+    must be exactly 0, not merely falsy, so callers don't spuriously warn."""
+    tc, vac, sick, sm = period_models
+    good = TimeRecord(
+        None, date(2026, 6, 26), time(9, 0), time(17, 0), 30, WorkType.REMOTE
+    )
+    tc.insert_record(good)
+
+    data = period_summary(
+        "month",
+        2026,
+        month=6,
+        quarter=None,
+        model_tc=tc,
+        model_vacation=vac,
+        model_sickness=sick,
+        settings=sm,
+    )
+    assert data.skipped_record_count == 0
+
+
+def test_period_summary_counts_malformed_time_clock_row(period_models):
+    """A malformed time_record row (dropped by TimeClockModel._row_to_record())
+    must be reflected in ReportData.skipped_record_count so report_dialog.py
+    can warn the user instead of silently presenting an incomplete report."""
+    tc, vac, sick, sm = period_models
+    conn = tc.db.get_connection()
+    try:
+        with conn:
+            # break_minutes (600) exceeds the shift length -> fails the
+            # TimeRecord invariant, same technique used in
+            # tests/models/test_time_clock_model.py.
+            conn.execute(
+                "INSERT INTO time_record "
+                "(date, start_time, end_time, break_minutes, work_type) "
+                "VALUES ('2026-06-26', '09:00', '10:00', 600, 'remote');"
+            )
+    finally:
+        conn.close()
+
+    data = period_summary(
+        "month",
+        2026,
+        month=6,
+        quarter=None,
+        model_tc=tc,
+        model_vacation=vac,
+        model_sickness=sick,
+        settings=sm,
+    )
+    assert data.skipped_record_count == 1
+
+
+def test_period_summary_sums_skipped_records_across_all_four_models(
+    period_models, event_bus, db
+):
+    """skipped_record_count must be the sum across time clock, vacation,
+    sickness, *and* miliuim -- a report can pull from all four models, and
+    an earlier model's skip must not be overwritten by a later model's
+    (zero) count."""
+    from models.miliuim_model import MiliuimModel
+
+    tc, vac, sick, sm = period_models
+    miliuim = MiliuimModel(db, event_bus)
+
+    conn = db.get_connection()
+    try:
+        with conn:
+            # time_record: break_minutes exceeds shift length.
+            conn.execute(
+                "INSERT INTO time_record "
+                "(date, start_time, end_time, break_minutes, work_type) "
+                "VALUES ('2026-06-26', '09:00', '10:00', 600, 'remote');"
+            )
+            # vacation_record: note exceeds the 500-char limit.
+            conn.execute(
+                "INSERT INTO vacation_record (date, hours, vtype, note) "
+                "VALUES ('2026-06-01', 4.0, 'annual_leave', ?);",
+                ("x" * 501,),
+            )
+            # sickness_record: note exceeds the 500-char limit.
+            conn.execute(
+                "INSERT INTO sickness_record (date, hours, note) "
+                "VALUES ('2026-06-02', 8.0, ?);",
+                ("x" * 501,),
+            )
+            # miliuim_period: note exceeds the 500-char limit. (end_date <
+            # start_date is rejected by the table's own CHECK constraint
+            # before it ever reaches MiliuimRecord's validation, so an
+            # overlong note is used here instead, mirroring vacation/
+            # sickness above.)
+            conn.execute(
+                "INSERT INTO miliuim_period (start_date, end_date, note) "
+                "VALUES ('2026-06-10', '2026-06-12', ?);",
+                ("x" * 501,),
+            )
+    finally:
+        conn.close()
+
+    data = period_summary(
+        "year",
+        2026,
+        month=None,
+        quarter=None,
+        model_tc=tc,
+        model_vacation=vac,
+        model_sickness=sick,
+        settings=sm,
+        model_miliuim=miliuim,
+    )
+    assert data.skipped_record_count == 4

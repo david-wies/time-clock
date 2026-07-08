@@ -76,6 +76,7 @@ class RecordTabMixin:
                 "Failed to parse year filter combobox value: %r",
                 self._var_year.get(),
             )
+            return
         month_name = self._var_month.get()
         if month_name == "All":
             self._selected_month = 0
@@ -136,6 +137,11 @@ class RecordTabMixin:
                 if self.winfo_exists() and self.winfo_ismapped():
                     fn()
             except tk.TclError:
-                pass
+                logger.debug(
+                    "Ignoring TclError from shortcut handler firing on a "
+                    "widget destroyed between the winfo check and the call "
+                    "(expected race)",
+                    exc_info=True,
+                )
 
         return _handler

@@ -8,8 +8,9 @@ from unittest import mock
 import pytest
 
 from core.events import EventBus
+from core.report import ReportData
 from db.database import Database
-from domain.enums import WorkType
+from domain.enums import PeriodType, WorkType
 from domain.types import SicknessRecord, TimeRecord
 from models.sickness_model import SicknessModel
 from models.time_clock_model import TimeClockModel
@@ -151,3 +152,90 @@ def test_get_report_data_period_summary_failure_is_logged_not_swallowed(
     logged_text = " ".join(record.getMessage() for record in caplog.records)
     assert "month" in logged_text
     assert "2026" in logged_text
+
+
+# ─────────── skipped_record_count surfaced to the user ───────────────────────
+
+
+def _make_report_data(skipped_record_count: int = 0) -> ReportData:
+    """Minimal but fully-populated ReportData for preview/export tests --
+    only skipped_record_count varies between cases."""
+    return ReportData(
+        period_label="June 2026",
+        period_type=PeriodType.MONTH,
+        year=2026,
+        month=6,
+        quarter=None,
+        worked_hours=160.0,
+        target_hours=160.0,
+        time_balance=0.0,
+        weighted_overtime=0.0,
+        overtime_rate=1.0,
+        vac_allowance=0.0,
+        vac_carry_over=0.0,
+        vac_total_pool=0.0,
+        vac_used=0.0,
+        vac_remaining=0.0,
+        sick_allowance_hours=80.0,
+        sick_used_hours=0.0,
+        sick_remaining_hours=80.0,
+        miliuim_period_count=0,
+        miliuim_total_days=0,
+        skipped_record_count=skipped_record_count,
+    )
+
+
+def test_build_preview_text_no_warning_when_nothing_skipped() -> None:
+    dialog = ReportDialog.__new__(ReportDialog)
+    text = dialog._build_preview_text(_make_report_data(skipped_record_count=0))
+    assert "skipped" not in text.lower()
+
+
+def test_build_preview_text_warns_when_records_skipped() -> None:
+    dialog = ReportDialog.__new__(ReportDialog)
+    text = dialog._build_preview_text(_make_report_data(skipped_record_count=2))
+    assert "2 record(s) skipped due to data errors" in text
+
+
+def _make_export_pdf_dialog(data: ReportData) -> ReportDialog:
+    dialog = ReportDialog.__new__(ReportDialog)
+    dialog._get_report_data = lambda: data
+    dialog._generate_pdf = mock.MagicMock()
+    return dialog
+
+
+def test_export_pdf_no_warning_when_nothing_skipped(tmp_path, monkeypatch) -> None:
+    dialog = _make_export_pdf_dialog(_make_report_data(skipped_record_count=0))
+    filepath = str(tmp_path / "report.pdf")
+    monkeypatch.setattr("views.report_dialog.asksaveasfilename", lambda **_kw: filepath)
+    show_warning = mock.MagicMock()
+    show_info = mock.MagicMock()
+    monkeypatch.setattr("views.report_dialog.messagebox.showwarning", show_warning)
+    monkeypatch.setattr("views.report_dialog.messagebox.showinfo", show_info)
+
+    dialog._do_export_pdf()
+
+    dialog._generate_pdf.assert_called_once()
+    show_warning.assert_not_called()
+    show_info.assert_called_once()
+
+
+def test_export_pdf_warns_when_records_skipped(tmp_path, monkeypatch) -> None:
+    """A skipped-record warning must be shown before the "PDF Exported"
+    success dialog, so the user sees the caveat rather than the report
+    silently presenting as complete."""
+    dialog = _make_export_pdf_dialog(_make_report_data(skipped_record_count=5))
+    filepath = str(tmp_path / "report.pdf")
+    monkeypatch.setattr("views.report_dialog.asksaveasfilename", lambda **_kw: filepath)
+    show_warning = mock.MagicMock()
+    show_info = mock.MagicMock()
+    monkeypatch.setattr("views.report_dialog.messagebox.showwarning", show_warning)
+    monkeypatch.setattr("views.report_dialog.messagebox.showinfo", show_info)
+
+    dialog._do_export_pdf()
+
+    dialog._generate_pdf.assert_called_once()
+    show_warning.assert_called_once()
+    warning_text = show_warning.call_args.args[1]
+    assert "5 record(s) skipped due to data errors" in warning_text
+    show_info.assert_called_once()

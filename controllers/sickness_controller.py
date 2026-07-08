@@ -22,9 +22,10 @@ def validate_sick_record(record: SicknessRecord) -> list[str]:
     stays here rather than in SicknessRecord.__post_init__ — only the
     universal non-negative-hours floor and note length are context-free and
     are enforced unconditionally there instead. SicknessController.save_record()
-    re-runs them via sickness_record_invariant_errors() below, since
-    __post_init__ never re-fires for a record fetched from the DB and then
-    mutated in place.
+    still re-runs them via sickness_record_invariant_errors() below as
+    defense-in-depth, even though SicknessRecord is frozen (domain/types.py)
+    and __post_init__ therefore now runs on every possible mutation
+    (`dataclasses.replace()`), not just at initial construction.
     """
     errors = []
 
@@ -73,7 +74,13 @@ class SicknessController:
         with guard:
             if record.id is None:
                 record_id = self.model.insert_record(record)
-                record.id = record_id
+                # SicknessRecord is frozen — object.__setattr__ is the
+                # documented escape hatch (see SicknessRecord's docstring,
+                # mirroring TimeRecord's) for backfilling the DB-generated
+                # id onto the caller's instance. `id` never participates in
+                # any invariant check, so this bypass is inert with respect
+                # to validation.
+                object.__setattr__(record, "id", record_id)
             else:
                 self.model.update_record(record)
             return Result(ok=True, errors=[])

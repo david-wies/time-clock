@@ -267,15 +267,10 @@ class VacationModel:
             )
         )
 
-        total_pool = allowance + carry_over
-        remaining = total_pool - used
-
         return VacationSummary(
             allowance=allowance,
             carry_over=carry_over,
-            total_pool=total_pool,
             used=used,
-            remaining=remaining,
         )
 
     def calculate_carry_over_allowance(self, to_year: int) -> CarryOverAllowance:

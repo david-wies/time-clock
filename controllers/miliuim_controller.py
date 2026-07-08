@@ -17,24 +17,36 @@ class MiliuimController:
     required is enforced by their type annotation (`date`, not `date |
     None`) rather than a runtime check — if a caller bypasses typing and
     passes None anyway, the `end_date < start_date` comparison in
-    miliuim_record_invariant_errors() raises an unhandled TypeError, not a
-    clean ValueError/Result. end_date >= start_date and note length ARE
-    runtime-checked, unconditionally, by MiliuimRecord.__post_init__. Only
-    the overlap check remains here, since it needs other persisted records
-    (context-dependent).
+    miliuim_record_invariant_errors() raises an unhandled TypeError.
+    save_record() below catches that TypeError and converts it to a clean
+    Result, per this codebase's "controllers return Result, never raise for
+    expected validation failures" convention. end_date >= start_date and
+    note length ARE runtime-checked, unconditionally, by
+    MiliuimRecord.__post_init__. Only the overlap check remains here, since
+    it needs other persisted records (context-dependent).
 
-    save_record() re-runs miliuim_record_invariant_errors() below because
-    __post_init__ only fires at construction time — a caller that fetches
-    an existing record and mutates a field (e.g. record.end_date = ...)
-    before calling save_record() would otherwise bypass those invariants
-    entirely."""
+    MiliuimRecord is frozen (domain/types.py), so save_record() re-running
+    miliuim_record_invariant_errors() below is no longer guarding against an
+    in-place mutation bypassing __post_init__ — that path no longer exists
+    (see MiliuimRecord's docstring). It remains as defense-in-depth against
+    a record built or `dataclasses.replace()`-derived somewhere outside this
+    module's control."""
 
     def __init__(self, model: MiliuimModel) -> None:
         self.model = model
 
     def save_record(self, record: MiliuimRecord) -> Result:
         """Validates and saves (inserts or updates) a MiliuimRecord."""
-        errors: list[str] = miliuim_record_invariant_errors(record)
+        try:
+            errors: list[str] = miliuim_record_invariant_errors(record)
+        except TypeError:
+            # start_date/end_date are required, non-Optional fields on
+            # MiliuimRecord, but a caller can still bypass static typing
+            # (e.g. a dynamically constructed record) and hand this method
+            # one with a None date, which makes the `end_date < start_date`
+            # comparison inside miliuim_record_invariant_errors() raise
+            # TypeError instead of producing a clean validation error.
+            return Result(ok=False, errors=["Start date and end date are required."])
         if errors:
             return Result(ok=False, errors=errors)
 
@@ -70,7 +82,13 @@ class MiliuimController:
 
             if record.id is None:
                 record_id = self.model.insert_record(record)
-                record.id = record_id
+                # MiliuimRecord is frozen — object.__setattr__ is the
+                # documented escape hatch (see MiliuimRecord's docstring,
+                # mirroring TimeRecord's) for backfilling the DB-generated
+                # id onto the caller's instance. `id` never participates in
+                # any invariant check, so this bypass is inert with respect
+                # to validation.
+                object.__setattr__(record, "id", record_id)
             else:
                 self.model.update_record(record)
             return Result(ok=True, errors=[])

@@ -63,6 +63,17 @@ class ReportData:
     # Monthly breakdown (for quarter/year reports)
     monthly_rows: list[MonthlyRow] = field(default_factory=list)
 
+    # Count of malformed DB rows silently dropped (across time clock,
+    # vacation, sickness, and miliuim models) while assembling this report.
+    # See models/_row_mapping.py:rows_to_records() and
+    # views/record_tab_common.py:RecordTabMixin._append_skip_notice() for
+    # the underlying mechanism. period_summary() sums each model's
+    # last_skipped_count into this field so callers (report_dialog.py,
+    # export_dialog.py) can surface a data-integrity warning to the user --
+    # unlike the record tabs, this dataclass has no label of its own to
+    # append the notice to.
+    skipped_record_count: int = 0
+
 
 # ──────────────────────────── Internal helpers ────────────────────────────────
 
@@ -146,6 +157,12 @@ def period_summary(
         records = model_tc.get_records_for_period(year, month)
     else:
         records = model_tc.get_records_for_period(year)
+    # get_records_for_period() is the last list-fetch call on model_tc
+    # before this point, so last_skipped_count reflects it here -- captured
+    # before get_work_day_targets()/get_date_exceptions() run (neither of
+    # which goes through _rows_to_records(), so neither overwrites it, but
+    # capturing immediately keeps this correct even if that changes).
+    skipped_record_count = model_tc.last_skipped_count
 
     targets = model_tc.get_work_day_targets()
 
@@ -187,12 +204,19 @@ def period_summary(
                 )
             )
 
-    # Vacation and sickness summaries are always year-level
+    # Vacation and sickness summaries are always year-level. Each call below
+    # fetches its own year's records internally (no `records=` override is
+    # passed here) and so sets that model's last_skipped_count -- captured
+    # immediately after each call, before the next call overwrites it.
     vac = model_vacation.calculate_vacation_summary(year)
+    skipped_record_count += model_vacation.last_skipped_count
     sick = model_sickness.calculate_sickness_summary(year)
+    skipped_record_count += model_sickness.last_skipped_count
     miliuim = (
         model_miliuim.calculate_summary(year) if model_miliuim is not None else None
     )
+    if model_miliuim is not None:
+        skipped_record_count += model_miliuim.last_skipped_count
 
     return ReportData(
         period_label=label,
@@ -216,4 +240,5 @@ def period_summary(
         miliuim_period_count=miliuim.period_count if miliuim is not None else 0,
         miliuim_total_days=miliuim.total_days if miliuim is not None else 0,
         monthly_rows=monthly_rows,
+        skipped_record_count=skipped_record_count,
     )

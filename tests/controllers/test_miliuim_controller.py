@@ -1,3 +1,4 @@
+import dataclasses
 import sqlite3
 from datetime import date
 
@@ -159,7 +160,7 @@ def test_editing_record_does_not_overlap_with_itself(
     controller.save_record(rec)
     assert rec.id is not None
 
-    rec.note = "updated"
+    rec = dataclasses.replace(rec, note="updated")
     res = controller.save_record(rec)
 
     assert res.ok is True
@@ -173,47 +174,95 @@ def test_editing_record_into_overlap_with_another_rejected(
     controller.save_record(other)
     assert other.id is not None
 
-    other.start_date = date(2026, 1, 5)
-    other.end_date = date(2026, 1, 15)
+    other = dataclasses.replace(
+        other, start_date=date(2026, 1, 5), end_date=date(2026, 1, 15)
+    )
     res = controller.save_record(other)
 
     assert res.ok is False
     assert any("overlap" in e.lower() for e in res.errors)
 
 
-# ──────────── Defense-in-depth: mutate-then-save bypasses __post_init__ ─────
+# ──────────── Defense-in-depth: MiliuimRecord is frozen ─────────────────────
 
 
-def test_save_record_rejects_end_before_start_after_mutation(
+def test_replace_into_invalid_end_before_start_raises(
     controller: MiliuimController,
 ) -> None:
-    """MiliuimRecord.__post_init__ only runs at construction time, so
-    mutating a field on an already-saved record and calling save_record()
-    again must still be caught — by MiliuimController.save_record()
-    re-running miliuim_record_invariant_errors(), not by __post_init__."""
+    """MiliuimRecord is frozen (domain/types.py), so mutating an
+    already-saved record requires dataclasses.replace(), which reruns
+    __post_init__ in full — an invalid replacement raises ValueError
+    immediately, rather than producing a record MiliuimController
+    .save_record() would need to catch as a second line of defense."""
     rec = MiliuimRecord(None, date(2026, 6, 1), date(2026, 6, 10))
     assert controller.save_record(rec).ok is True
 
-    rec.end_date = date(2026, 5, 20)  # now before start_date
-    res = controller.save_record(rec)
-
-    assert res.ok is False
-    assert res.errors == ["End date must be on or after start date."]
+    with pytest.raises(ValueError, match="End date must be on or after start date"):
+        dataclasses.replace(rec, end_date=date(2026, 5, 20))  # now before start_date
 
 
-def test_save_record_rejects_note_too_long_after_mutation(
+def test_replace_into_invalid_note_too_long_raises(
     controller: MiliuimController,
 ) -> None:
-    """MiliuimRecord.note is a _ValidatingRecord-validated field (domain/
-    types.py), so mutating it to an invalid value on an already-saved
-    record now raises ValueError immediately — the value can never become
-    invalid in the first place, so MiliuimController.save_record() is no
-    longer needed as a second line of defense for this field."""
+    """Same as above, but for the note-length invariant."""
     rec = MiliuimRecord(None, date(2026, 6, 1), date(2026, 6, 10))
     assert controller.save_record(rec).ok is True
 
     with pytest.raises(ValueError, match="Note is too long"):
-        rec.note = "x" * 501
+        dataclasses.replace(rec, note="x" * 501)
+
+
+# ────────────── None-date defense (§ codebase review item 3) ────────────────
+
+
+def test_save_record_with_none_dates_returns_result_not_typeerror(
+    controller: MiliuimController,
+) -> None:
+    """start_date/end_date are required, non-Optional fields on
+    MiliuimRecord (`date`, not `date | None`), so ordinary construction can
+    never produce an instance with a None date -- __post_init__'s
+    `end_date < record.start_date` comparison would itself raise TypeError
+    before construction ever completed. The only way to reach
+    save_record() with None dates is a caller that bypasses MiliuimRecord's
+    type annotation entirely, e.g. via object.__new__() as done here.
+    save_record() must catch the resulting TypeError and return a Result,
+    per this codebase's "controllers return Result, never raise for
+    expected validation failures" convention -- not let it propagate as an
+    unhandled TypeError."""
+    rec = object.__new__(MiliuimRecord)
+    object.__setattr__(rec, "id", None)
+    object.__setattr__(rec, "start_date", None)
+    object.__setattr__(rec, "end_date", None)
+    object.__setattr__(rec, "note", None)
+    object.__setattr__(rec, "document_path", None)
+
+    res = controller.save_record(rec)
+
+    assert res.ok is False
+    assert res.errors == ["Start date and end date are required."]
+
+
+def test_save_record_defense_in_depth_end_before_start_via_bypass(
+    controller: MiliuimController,
+) -> None:
+    """MiliuimRecord's frozen __post_init__ makes it impossible to construct
+    an invalid record through normal means, but MiliuimController
+    .save_record() still re-checks miliuim_record_invariant_errors() as
+    defense-in-depth for a record obtained by some means outside this
+    module's control. Simulate that with the same object.__setattr__
+    escape hatch __post_init__ itself uses (bypassing the frozen-dataclass
+    guard) to force end_date before start_date after construction -- unlike
+    test_save_record_with_none_dates_returns_result_not_typeerror above,
+    this produces a real (non-TypeError) invariant-error list, exercising
+    the `if errors: return Result(ok=False, errors=errors)` branch instead
+    of the `except TypeError` one."""
+    rec = MiliuimRecord(None, date(2026, 6, 1), date(2026, 6, 10))
+    object.__setattr__(rec, "end_date", date(2026, 5, 20))
+
+    res = controller.save_record(rec)
+
+    assert res.ok is False
+    assert res.errors == ["End date must be on or after start date."]
 
 
 # ────────────────────── Exception narrowing (§ codebase review G2 #1) ───────

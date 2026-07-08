@@ -1,5 +1,8 @@
+import dataclasses
 import logging
 from datetime import date
+
+import pytest
 
 from core.events import Event, EventBus
 from db.database import Database
@@ -25,7 +28,9 @@ def test_miliuim_events(db: Database, event_bus: EventBus) -> None:
     change_called = False
     fetched = model.get_record_by_id(rec_id)
     assert fetched is not None
-    fetched.note = "Updated note"
+    # MiliuimRecord is frozen (domain/types.py) -- dataclasses.replace()
+    # builds a new, revalidated instance instead of mutating in place.
+    fetched = dataclasses.replace(fetched, note="Updated note")
     model.update_record(fetched)
     assert change_called is True
 
@@ -58,8 +63,7 @@ def test_miliuim_record_crud(db: Database, event_bus: EventBus) -> None:
     assert fetched.document_path == "/docs/call_up.pdf"
 
     # Update
-    fetched.end_date = date(2026, 2, 25)
-    fetched.note = "Extended"
+    fetched = dataclasses.replace(fetched, end_date=date(2026, 2, 25), note="Extended")
     model.update_record(fetched)
 
     updated = model.get_record_by_id(rec_id)
@@ -70,6 +74,18 @@ def test_miliuim_record_crud(db: Database, event_bus: EventBus) -> None:
     # Delete
     model.delete_record(rec_id)
     assert model.get_record_by_id(rec_id) is None
+
+
+def test_update_record_without_id_raises(db: Database, event_bus: EventBus) -> None:
+    """update_record() requires a persisted id -- a record that was never
+    inserted (id=None) cannot be targeted by an UPDATE ... WHERE id = ?
+    statement, so this is checked explicitly rather than silently updating
+    zero rows."""
+    model = MiliuimModel(db, event_bus)
+    rec = MiliuimRecord(None, date(2026, 6, 1), date(2026, 6, 10))
+
+    with pytest.raises(ValueError, match="Cannot update a record without an ID"):
+        model.update_record(rec)
 
 
 def test_get_records_for_year_without_month_filter(

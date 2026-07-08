@@ -1,10 +1,11 @@
 import dataclasses
+import logging
 import sqlite3
 from datetime import date, time
 
 import pytest
 
-from controllers.time_clock_controller import TimeClockController
+from controllers.time_clock_controller import DatabaseErrorGuard, TimeClockController
 from core.events import EventBus
 from db.database import Database
 from domain.enums import WorkType
@@ -34,6 +35,26 @@ def test_save_valid_record(controller: TimeClockController) -> None:
     result = controller.save_record(rec)
     assert result.ok is True
     assert rec.id is not None
+
+
+def test_save_record_with_id_updates_existing_record(
+    controller: TimeClockController,
+) -> None:
+    """save_record() with a record.id already set must route through
+    model.update_record() (the `else` branch of `if record.id is None`),
+    distinct from the insert path exercised by test_save_valid_record."""
+    rec = TimeRecord(
+        None, date(2026, 6, 26), time(9, 0), time(17, 0), 30, WorkType.REMOTE
+    )
+    assert controller.save_record(rec).ok is True
+
+    updated = dataclasses.replace(rec, break_minutes=45)
+    res = controller.save_record(updated)
+
+    assert res.ok is True
+    fetched = controller.model.get_record_by_id(rec.id)
+    assert fetched is not None
+    assert fetched.break_minutes == 45
 
 
 def test_save_overlapping_record(controller: TimeClockController) -> None:
@@ -210,6 +231,200 @@ def test_clock_out_multiple_open_records(controller: TimeClockController) -> Non
     assert len(controller.model.get_open_records()) == 1
 
 
+# ──────────── clock_in() work-type resolution and office defaulting ────────
+
+
+def test_clock_in_with_in_site_work_type_defaults_office_from_settings(
+    controller: TimeClockController,
+) -> None:
+    """clock_in(work_type=WorkType.IN_SITE) must default `office` from the
+    live "offices" setting (first configured office) rather than leaving it
+    None -- an IN_SITE TimeRecord with a blank office fails construction
+    (see test_time_record_in_site_without_office_raises in
+    tests/domain/test_types.py), so clock_in() would otherwise never
+    succeed for IN_SITE without the caller separately passing an office."""
+    res = controller.clock_in(work_type=WorkType.IN_SITE)
+
+    assert res.ok is True
+    open_recs = controller.model.get_open_records()
+    assert len(open_recs) == 1
+    assert open_recs[0].work_type == WorkType.IN_SITE
+    # SettingsManager.DEFAULTS["offices"] == ["Office A", "Office B", "Office C"]
+    assert open_recs[0].office == "Office A"
+
+
+def test_clock_in_with_in_site_work_type_falls_back_to_main_office(
+    controller: TimeClockController,
+) -> None:
+    """When the "offices" setting is explicitly configured empty (not just
+    absent -- absent falls back to DEFAULTS, which is never empty), clock_in()
+    must still produce a constructible IN_SITE record by falling back to the
+    literal "Main Office" rather than an empty office."""
+    controller.settings.set("offices", [])
+
+    res = controller.clock_in(work_type=WorkType.IN_SITE)
+
+    assert res.ok is True
+    open_recs = controller.model.get_open_records()
+    assert open_recs[0].office == "Main Office"
+
+
+def test_clock_in_invalid_stored_work_type_falls_back_to_remote_with_warning(
+    controller: TimeClockController, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A corrupted/stale "last_used_work_type" setting value (e.g. from an
+    older app version whose WorkType enum had different members) must not
+    crash clock_in() with an unhandled ValueError from WorkType(last_wt) --
+    it should log a warning and fall back to WorkType.REMOTE."""
+    controller.settings.set("last_used_work_type", "not_a_real_work_type")
+
+    with caplog.at_level(logging.WARNING):
+        res = controller.clock_in()
+
+    assert res.ok is True
+    open_recs = controller.model.get_open_records()
+    assert open_recs[0].work_type == WorkType.REMOTE
+    assert any(
+        record.levelname == "WARNING"
+        and "invalid stored last_used_work_type" in record.message
+        for record in caplog.records
+    )
+
+
+def test_clock_in_construction_error_is_caught_and_returned(
+    controller: TimeClockController,
+) -> None:
+    """The office-defaulting logic (`office = offices[0] if offices else
+    "Main Office"`) only guards against an *empty* "offices" list -- a
+    non-empty list whose first entry is itself a blank string (e.g.
+    "" from a bad import/edit) is still truthy, so `office` ends up "",
+    and TimeRecord's IN_SITE-requires-office invariant then raises
+    ValueError from inside clock_in()'s TimeRecord(...) construction. That
+    must be caught and converted to a Result, not propagate."""
+    controller.settings.set("offices", [""])
+
+    res = controller.clock_in(work_type=WorkType.IN_SITE)
+
+    assert res.ok is False
+    assert "select or enter an office" in res.errors[0]
+    assert controller.model.get_open_records() == []
+
+
+def test_clock_in_blocking_overlap_error_is_not_swallowed(
+    controller: TimeClockController,
+) -> None:
+    """clock_in()'s own overlap check (against closed records already on
+    today's date) must surface as a blocking Result(ok=False, ...) rather
+    than being silently filtered out along with OVERNIGHT_SHIFT_WARNING --
+    fixed_clock pins "now" at 2026-06-26 09:00, so a pre-existing closed
+    record spanning that instant (08:00-10:00) conflicts with the new open
+    record clock_in() is about to create."""
+    conflicting = TimeRecord(
+        None, date(2026, 6, 26), time(8, 0), time(10, 0), 0, WorkType.REMOTE
+    )
+    controller.model.insert_record(conflicting)
+
+    res = controller.clock_in()
+
+    assert res.ok is False
+    assert "overlaps" in res.errors[0]
+    assert controller.model.get_open_records() == []
+
+
+# ──────────────────────────── clock_out() error paths ──────────────────────
+
+
+def test_clock_out_no_active_clock_in_found(
+    controller: TimeClockController,
+) -> None:
+    """clock_out() with zero open records today must return a clean
+    Result(ok=False, ...) rather than raising or targeting nothing."""
+    res = controller.clock_out()
+
+    assert res.ok is False
+    assert res.errors == ["No active clock-in found."]
+
+
+def test_clock_out_specified_record_not_found(
+    controller: TimeClockController,
+) -> None:
+    """An explicit record_id that doesn't match any of today's open records
+    (e.g. a stale UI selection) must be rejected by name, distinctly from
+    the "no open records at all" case above."""
+    controller.clock_in()
+
+    res = controller.clock_out(record_id=999999)
+
+    assert res.ok is False
+    assert res.errors == ["Specified clock-in record not found."]
+    # The real open record must be untouched.
+    assert len(controller.model.get_open_records()) == 1
+
+
+def test_clock_out_rejects_when_overlap_detected_at_clock_out_time(
+    controller: TimeClockController,
+) -> None:
+    """clock_out() re-validates the closed-out record against other closed
+    records on the same date -- a closed record inserted after clock-in
+    (simulating a second record added in the interim) that spans the
+    fixed-clock clock-out instant (09:00) must block the clock-out with a
+    blocking overlap error, not silently succeed."""
+    res_in = controller.clock_in()
+    assert res_in.ok is True
+
+    conflicting = TimeRecord(
+        None, date(2026, 6, 26), time(8, 0), time(10, 0), 0, WorkType.REMOTE
+    )
+    controller.model.insert_record(conflicting)
+
+    res_out = controller.clock_out()
+
+    assert res_out.ok is False
+    assert "overlaps" in res_out.errors[0]
+    # The original record must still be open (clock-out did not persist).
+    assert len(controller.model.get_open_records()) == 1
+
+
+# ──────────── save_record() defense-in-depth (frozen-record bypass) ────────
+
+
+def test_save_record_defense_in_depth_negative_break_via_bypass(
+    controller: TimeClockController,
+) -> None:
+    """TimeRecord.__post_init__ makes it impossible to construct an invalid
+    record through normal means, but TimeClockController.save_record()
+    still re-checks time_record_invariant_errors() as defense-in-depth for
+    a record obtained by some means outside this module's control --
+    simulate that with the same object.__setattr__ escape hatch
+    __post_init__ itself uses (bypassing the frozen-dataclass guard) to
+    force break_minutes negative after construction."""
+    rec = TimeRecord(
+        None, date(2026, 6, 26), time(9, 0), time(17, 0), 30, WorkType.REMOTE
+    )
+    object.__setattr__(rec, "break_minutes", -5)
+
+    res = controller.save_record(rec)
+
+    assert res.ok is False
+    assert "non-negative" in res.errors[0]
+
+
+# ────────────── DatabaseErrorGuard misuse guard (defensive assertion) ──────
+
+
+def test_database_error_guard_unwrap_without_caught_error_raises() -> None:
+    """unwrap() is documented to only be called right after a `with guard:`
+    block that did NOT itself return -- which only happens once a
+    sqlite3.Error was caught and __exit__ populated self.result. Calling it
+    on a guard whose `with` block never raised is a programming error in
+    the caller, and must be reported as a clear RuntimeError rather than
+    returning None or raising an opaque AttributeError."""
+    guard = DatabaseErrorGuard(logging.getLogger(__name__), "unused message")
+
+    with pytest.raises(RuntimeError, match="no error was caught"):
+        guard.unwrap()
+
+
 # ────────────────────── Exception narrowing (§ codebase review G2 #1) ───────
 
 
@@ -296,6 +511,19 @@ def test_clock_out_non_sqlite_error_propagates(
 
     with pytest.raises(ValueError):
         controller.clock_out()
+
+
+def test_delete_record_success(controller: TimeClockController) -> None:
+    """The real (non-monkeypatched) delete_record() success path: a saved
+    record is actually removed and the resulting Result is ok=True."""
+    rec = _valid_record()
+    assert controller.save_record(rec).ok is True
+    assert rec.id is not None
+
+    res = controller.delete_record(rec.id)
+
+    assert res.ok is True
+    assert controller.model.get_record_by_id(rec.id) is None
 
 
 def test_delete_record_sqlite_error_is_caught_and_returned(

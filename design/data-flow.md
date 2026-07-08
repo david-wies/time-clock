@@ -89,11 +89,15 @@ User clicks [■ Clock Out]
 ```text
 On tab load & after any mutation:
   1. Read sickness_settings for current year Y:
-     SELECT days_per_year FROM sickness_settings WHERE year = Y
+     SELECT hours_per_year FROM sickness_settings WHERE year = Y
+     (no row for Y → allowance defaults to 80.0h, i.e. 10 days × 8h)
   2. SELECT SUM(hours) FROM sickness_record
      WHERE date BETWEEN 'Y-01-01' AND 'Y-12-31'
-  3. Convert hours → days: divide by daily_target for each record's day-of-week
-     (fallback 8h if no target set)
-  4. Display "X.X days / Y.Y days used"
-  5. Remaining = days_per_year - used_days
+     (this is used_hours)
+  3. remaining_hours = allowance_hours - used_hours
+  4. Display "X.Xh / Y.Yh used" (SicknessSummary: allowance_hours, used_hours,
+     remaining_hours — see models/sickness_model.py:calculate_sickness_summary())
 ```
+
+Purely hours-based — there is no day-equivalent conversion anywhere in this
+calculation.

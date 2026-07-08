@@ -36,22 +36,14 @@ def _check_note_length(note: str | None, errors: list[str]) -> None:
         errors.append(f"Note is too long (max {_MAX_NOTE_LENGTH} characters).")
 
 
-def _validate_note(value: str | None) -> str | None:
-    """Single-field note-length check, raised immediately rather than
-    collected into an error list. Used as a `_ValidatingRecord` validator
-    (see below) so mutating `.note` on an existing record re-checks the
-    same invariant `_check_note_length` enforces at construction time —
-    reuses that helper rather than duplicating the condition/message."""
-    errors: list[str] = []
-    _check_note_length(value, errors)
-    if errors:
-        raise ValueError(errors[0])
-    return value
-
-
 class _ValidatingRecord:
     """Mixin that re-validates single-field invariants on every assignment,
     not just at construction.
+
+    Used by WorkDayException and CarryOverLogEntry — the two record types in
+    this module that are still mutable. VacationRecord, SicknessRecord,
+    MiliuimRecord, and TimeRecord are frozen instead (see VacationRecord's
+    docstring below for why), so they do not use this mixin.
 
     Plain (non-frozen) dataclasses only run `__post_init__` once, at
     construction — nothing stops later code from doing `record.hours = -5`
@@ -198,10 +190,15 @@ def vacation_record_invariant_errors(record: VacationRecord) -> list[str]:
     stay in controllers.vacation_controller.validate_vacation_record().
     Only the universal non-negative floor and note length are checked here.
 
-    Enforced unconditionally by VacationRecord.__post_init__ at construction
-    time. VacationController.save_record() must call this again before
-    persisting a record that was fetched and mutated rather than freshly
-    constructed, since __post_init__ never re-runs on attribute mutation.
+    Enforced unconditionally by VacationRecord.__post_init__ — both at
+    construction and on every `dataclasses.replace()`, which is the only way
+    to derive a changed VacationRecord now that it is frozen (see
+    controllers.vacation_controller.VacationController.save_record(), which
+    backfills the DB-generated `id` via the `object.__setattr__` escape
+    hatch instead — `id` is not part of this invariant). VacationController
+    .save_record() still calls this function directly as defense-in-depth
+    before persisting, in case a caller was handed an already-validated
+    record from somewhere this module doesn't control.
     """
     errors: list[str] = []
 
@@ -213,21 +210,27 @@ def vacation_record_invariant_errors(record: VacationRecord) -> list[str]:
     return errors
 
 
-@dataclass(slots=True)
-class VacationRecord(_ValidatingRecord):
-    """A single vacation day entry with its type, hours, and note."""
+@dataclass(frozen=True, slots=True)
+class VacationRecord:
+    """A single vacation day entry with its type, hours, and note.
+
+    Frozen rather than a `_ValidatingRecord` subclass — mirrors TimeRecord
+    (domain/types.py): freezing removes in-place mutation entirely, so the
+    only way to change a field on an existing VacationRecord is
+    `dataclasses.replace(record, field=value)`, which builds a new instance
+    and reruns `__post_init__` in full. See
+    controllers.vacation_controller.VacationController.save_record() for the
+    one legitimate post-construction assignment (backfilling the
+    DB-generated `id`), which uses the documented `object.__setattr__`
+    escape hatch instead of ordinary assignment, exactly like TimeRecord's
+    equivalent in TimeClockController.save_record().
+    """
 
     id: int | None
     date: date
     hours: Hours
     vtype: VacationType
     note: str | None = None
-    _constructed: bool = field(default=False, init=False, repr=False, compare=False)
-
-    _VALIDATORS: ClassVar[dict[str, Callable[[Any], Any]]] = {
-        "hours": Hours,
-        "note": _validate_note,
-    }
 
     def __post_init__(self) -> None:
         # NOTE: vtype == VacationType.CARRY_OVER is deliberately NOT rejected
@@ -247,8 +250,11 @@ class VacationRecord(_ValidatingRecord):
         errors = vacation_record_invariant_errors(self)
         if errors:
             raise ValueError("; ".join(errors))
-        self.hours = Hours(self.hours)
-        self._constructed = True
+        # object.__setattr__ bypasses the frozen-dataclass __setattr__ that
+        # would otherwise reject this — the standard pattern for a frozen
+        # dataclass that needs to normalize a field in __post_init__ (see
+        # TimeRecord.__post_init__).
+        object.__setattr__(self, "hours", Hours(self.hours))
 
 
 def sickness_record_invariant_errors(record: SicknessRecord) -> list[str]:
@@ -259,13 +265,17 @@ def sickness_record_invariant_errors(record: SicknessRecord) -> list[str]:
     — only the universal non-negative floor and note length are enforced
     here.
 
-    Enforced unconditionally by SicknessRecord.__post_init__ at construction
-    time. SicknessController.save_record() must call this again before
-    persisting a record that was fetched and mutated rather than freshly
-    constructed, since __post_init__ never re-runs on attribute mutation.
-    save_range() does not need to: it always builds fresh SicknessRecord
-    instances (never fetches-then-mutates), so __post_init__ already fires
-    for every record it saves.
+    Enforced unconditionally by SicknessRecord.__post_init__ — both at
+    construction and on every `dataclasses.replace()`, which is the only way
+    to derive a changed SicknessRecord now that it is frozen (see
+    controllers.sickness_controller.SicknessController.save_record(), which
+    backfills the DB-generated `id` via the `object.__setattr__` escape
+    hatch instead — `id` is not part of this invariant). SicknessController
+    .save_record() still calls this function directly as defense-in-depth
+    before persisting, in case a caller was handed an already-validated
+    record from somewhere this module doesn't control. save_range() does
+    not need to: it always builds fresh SicknessRecord instances, so
+    __post_init__ already fires for every record it saves.
     """
     errors: list[str] = []
 
@@ -277,28 +287,26 @@ def sickness_record_invariant_errors(record: SicknessRecord) -> list[str]:
     return errors
 
 
-@dataclass(slots=True)
-class SicknessRecord(_ValidatingRecord):
-    """A single sick-leave entry for one calendar day."""
+@dataclass(frozen=True, slots=True)
+class SicknessRecord:
+    """A single sick-leave entry for one calendar day.
+
+    Frozen rather than a `_ValidatingRecord` subclass — see VacationRecord's
+    docstring (domain/types.py) for the rationale; SicknessRecord mirrors it
+    exactly.
+    """
 
     id: int | None
     date: date
     hours: Hours
     note: str | None = None
     document_path: str | None = None
-    _constructed: bool = field(default=False, init=False, repr=False, compare=False)
-
-    _VALIDATORS: ClassVar[dict[str, Callable[[Any], Any]]] = {
-        "hours": Hours,
-        "note": _validate_note,
-    }
 
     def __post_init__(self) -> None:
         errors = sickness_record_invariant_errors(self)
         if errors:
             raise ValueError("; ".join(errors))
-        self.hours = Hours(self.hours)
-        self._constructed = True
+        object.__setattr__(self, "hours", Hours(self.hours))
 
 
 @dataclass(slots=True)
@@ -311,8 +319,12 @@ class Result:
     holds the reason(s) a `ok=False` result failed (a caller must be able to
     trust that `not ok` implies `errors` explains why), while `warnings`
     holds non-blocking codes (e.g. `WarningCode.OVERNIGHT_SHIFT`) that may
-    accompany an `ok=True` result. `__post_init__` enforces the half of this
-    contract a type checker can't: a false result must carry a reason.
+    accompany an `ok=True` result. `__post_init__` enforces both halves of
+    this contract that a type checker can't: a false result must carry a
+    reason, and a true result must not carry one — otherwise a caller that
+    only checks `if not result.ok` (the documented, correct way to consume a
+    Result) would silently drop a real error attached to an `ok=True`
+    result.
     """
 
     ok: bool
@@ -322,17 +334,34 @@ class Result:
     def __post_init__(self) -> None:
         if not self.ok and not self.errors:
             raise ValueError("Result(ok=False, ...) must carry at least one error.")
+        if self.ok and self.errors:
+            raise ValueError("Result(ok=True, ...) must not carry any errors.")
 
 
 @dataclass(slots=True)
 class VacationSummary:
-    """A year's vacation balance: allowance, carry-over, usage, and remaining hours."""
+    """A year's vacation balance: allowance, carry-over, usage, and remaining hours.
+
+    `total_pool` and `remaining` are computed properties, not stored fields
+    — VacationModel.calculate_vacation_summary() (their only construction
+    site) always derives them as `allowance + carry_over` and `total_pool -
+    used` respectively, with no conditional branch that ever computes them
+    differently. Storing them as independent fields would let a future
+    caller pass an inconsistent value; computing them here makes that
+    impossible.
+    """
 
     allowance: float
     carry_over: float
-    total_pool: float
     used: float
-    remaining: float
+
+    @property
+    def total_pool(self) -> float:
+        return self.allowance + self.carry_over
+
+    @property
+    def remaining(self) -> float:
+        return self.total_pool - self.used
 
 
 @dataclass(slots=True)
@@ -348,26 +377,20 @@ class CarryOverAllowance:
 
 @dataclass(slots=True)
 class SicknessSummary:
-    """A year's sick-leave balance: allowance, usage, and remaining hours."""
+    """A year's sick-leave balance: allowance, usage, and remaining hours.
+
+    `remaining_hours` is a computed property, not a stored field —
+    SicknessModel.calculate_sickness_summary() (its only construction site)
+    always derives it as `allowance_hours - used_hours`, with no
+    conditional branch that ever computes it differently.
+    """
 
     allowance_hours: float
     used_hours: float
-    remaining_hours: float
 
-
-def _validate_workday_exception_hours(value: float) -> float:
-    """Single-field non-negative check for WorkDayException.hours. Shared
-    by __post_init__ (construction) and _VALIDATORS (post-construction
-    mutation, via _ValidatingRecord) so the logic lives in one place.
-
-    Delegates to `Hours`, which already rejects negative, NaN, and
-    infinite values — reusing that check here instead of duplicating it
-    also fixes NaN silently passing through the old `value < 0` comparison
-    (NaN comparisons are always False in Python)."""
-    try:
-        return Hours(value)
-    except TypeError as e:
-        raise ValueError("Hours must be a non-negative number.") from e
+    @property
+    def remaining_hours(self) -> float:
+        return self.allowance_hours - self.used_hours
 
 
 @dataclass(slots=True)
@@ -376,26 +399,39 @@ class WorkDayException(_ValidatingRecord):
 
     id: int
     date: date
-    hours: float
+    hours: Hours
     label: str | None
     _constructed: bool = field(default=False, init=False, repr=False, compare=False)
 
+    # Reuses Hours (domain/types.py, near the top) instead of hand-rolling a
+    # second non-negative/finite check — Hours already rejects negative,
+    # NaN, and infinite values, so there is nothing left for a wrapper here
+    # to add.
     _VALIDATORS: ClassVar[dict[str, Callable[[Any], Any]]] = {
-        "hours": _validate_workday_exception_hours,
+        "hours": Hours,
     }
 
     def __post_init__(self) -> None:
-        self.hours = _validate_workday_exception_hours(self.hours)
+        self.hours = Hours(self.hours)
         self._constructed = True
 
 
-def _validate_carry_over_hours(value: float) -> float:
-    """Single-field positive check for CarryOverLogEntry.hours. Shared by
-    __post_init__ (construction) and _VALIDATORS (post-construction
-    mutation, via _ValidatingRecord) so the logic lives in one place."""
-    if value <= 0:
+def _positive_hours(value: float) -> Hours:
+    """Single-field strictly-positive check for CarryOverLogEntry.hours.
+    Shared by __post_init__ (construction) and _VALIDATORS (post-
+    construction mutation, via _ValidatingRecord) so the logic lives in one
+    place.
+
+    CarryOverLogEntry.hours must be strictly positive, not merely
+    non-negative like plain `Hours` — this layers that extra requirement on
+    top of `Hours` instead of hand-rolling the non-negative/finite check a
+    second time. Delegating the first half to `Hours` also fixes NaN/inf
+    silently passing through the old bare `value <= 0` comparison (NaN
+    comparisons are always False in Python, and inf > 0 is True)."""
+    hours = Hours(value)
+    if hours <= 0:
         raise ValueError("Hours must be positive.")
-    return value
+    return hours
 
 
 @dataclass(slots=True)
@@ -405,12 +441,12 @@ class CarryOverLogEntry(_ValidatingRecord):
     id: int
     from_year: int
     to_year: int
-    hours: float
+    hours: Hours
     transferred_at: datetime  # UTC
     _constructed: bool = field(default=False, init=False, repr=False, compare=False)
 
     _VALIDATORS: ClassVar[dict[str, Callable[[Any], Any]]] = {
-        "hours": _validate_carry_over_hours,
+        "hours": _positive_hours,
     }
 
     def __post_init__(self) -> None:
@@ -425,17 +461,30 @@ class CarryOverLogEntry(_ValidatingRecord):
         # validator can't see both from_year and to_year together).
         if self.to_year != self.from_year + 1:
             raise ValueError("to_year must be exactly one year after from_year.")
-        self.hours = _validate_carry_over_hours(self.hours)
+        self.hours = _positive_hours(self.hours)
         self._constructed = True
 
 
 def miliuim_record_invariant_errors(record: MiliuimRecord) -> list[str]:
     """Context-free invariants for MiliuimRecord.
 
-    Enforced unconditionally by MiliuimRecord.__post_init__ at construction
-    time. MiliuimController.save_record() must call this again before
-    persisting a record that was fetched and mutated rather than freshly
-    constructed, since __post_init__ never re-runs on attribute mutation.
+    Enforced unconditionally by MiliuimRecord.__post_init__ — both at
+    construction and on every `dataclasses.replace()`, which is the only way
+    to derive a changed MiliuimRecord now that it is frozen (see
+    controllers.miliuim_controller.MiliuimController.save_record(), which
+    backfills the DB-generated `id` via the `object.__setattr__` escape
+    hatch instead — `id` is not part of this invariant). MiliuimController
+    .save_record() still calls this function directly as defense-in-depth
+    before persisting, in case a caller was handed an already-validated
+    record from somewhere this module doesn't control.
+
+    `record.end_date < record.start_date` raises an unhandled TypeError,
+    not a clean ValueError, if either date is None — that can only happen
+    if a caller bypasses the `date` (not `date | None`) type annotation on
+    both fields, since MiliuimRecord itself never allows constructing with a
+    None date. MiliuimController.save_record() catches that TypeError and
+    converts it to a Result, per this codebase's "controllers return
+    Result, never raise for expected validation failures" convention.
     """
     errors: list[str] = []
 
@@ -447,30 +496,30 @@ def miliuim_record_invariant_errors(record: MiliuimRecord) -> list[str]:
     return errors
 
 
-@dataclass(slots=True)
-class MiliuimRecord(_ValidatingRecord):
-    """A single reserve-duty (miliuim) period spanning a start and end date."""
+@dataclass(frozen=True, slots=True)
+class MiliuimRecord:
+    """A single reserve-duty (miliuim) period spanning a start and end date.
+
+    Frozen rather than a `_ValidatingRecord` subclass — see VacationRecord's
+    docstring (domain/types.py) for the rationale. This matters more here
+    than for VacationRecord/SicknessRecord: `end_date >= start_date` is a
+    genuine cross-field invariant that a `_ValidatingRecord`-style
+    per-field `_VALIDATORS` map could never re-check on mutation (it only
+    ever sees the one field being assigned) — freezing is what makes it
+    impossible to violate post-construction, not just conventionally
+    re-checked.
+    """
 
     id: int | None
     start_date: date
     end_date: date
     note: str | None = None
     document_path: str | None = None
-    _constructed: bool = field(default=False, init=False, repr=False, compare=False)
-
-    # end_date/start_date form a cross-field invariant (end >= start) that
-    # a single-field validator can't see both sides of, so it stays
-    # construction-only below. note is single-field and re-checked on
-    # every mutation via _ValidatingRecord.__setattr__.
-    _VALIDATORS: ClassVar[dict[str, Callable[[Any], Any]]] = {
-        "note": _validate_note,
-    }
 
     def __post_init__(self) -> None:
         errors = miliuim_record_invariant_errors(self)
         if errors:
             raise ValueError("; ".join(errors))
-        self._constructed = True
 
 
 @dataclass(slots=True)
@@ -483,10 +532,21 @@ class MiliuimSummary:
 
 @dataclass(slots=True)
 class PeriodBalance:
-    """A period's worked-vs-target hour balance, including weighted overtime."""
+    """A period's worked-vs-target hour balance, including weighted overtime.
+
+    `balance` is a computed property, not a stored field —
+    core.balance.period_balance_from_grouped() (its only construction site)
+    always derives it as `worked_hours - target_hours`, with no conditional
+    branch that ever computes it differently. `weighted_overtime` stays a
+    stored field: it depends on `overtime_rate`, which this dataclass does
+    not retain, so it cannot be recomputed from `balance` alone.
+    """
 
     worked_hours: float
     target_hours: float
-    balance: float
     weighted_overtime: float
     days_in_period: int
+
+    @property
+    def balance(self) -> float:
+        return self.worked_hours - self.target_hours

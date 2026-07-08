@@ -25,10 +25,12 @@ def validate_vacation_record(
     (VacationModel.get_daily_target_for_date()) at save time, so this bound
     is context-dependent and cannot move into VacationRecord.__post_init__.
     The note-length and non-negative-hours checks ARE context-free and are
-    enforced unconditionally by VacationRecord.__post_init__ instead — but
-    VacationController.save_record() re-runs them via
-    vacation_record_invariant_errors() below, since __post_init__ never
-    re-fires for a record fetched from the DB and then mutated in place.
+    enforced unconditionally by VacationRecord.__post_init__ instead —
+    VacationController.save_record() still re-runs them via
+    vacation_record_invariant_errors() below as defense-in-depth, even
+    though VacationRecord is frozen (domain/types.py) and __post_init__
+    therefore now runs on every possible mutation
+    (`dataclasses.replace()`), not just at initial construction.
     """
     errors = []
 
@@ -107,7 +109,13 @@ class VacationController:
         with guard:
             if record.id is None:
                 record_id = self.model.insert_record(record)
-                record.id = record_id
+                # VacationRecord is frozen — object.__setattr__ is the
+                # documented escape hatch (see VacationRecord's docstring,
+                # mirroring TimeRecord's) for backfilling the DB-generated
+                # id onto the caller's instance. `id` never participates in
+                # any invariant check, so this bypass is inert with respect
+                # to validation.
+                object.__setattr__(record, "id", record_id)
             else:
                 self.model.update_record(record)
             return Result(ok=True, errors=[])

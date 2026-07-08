@@ -27,16 +27,19 @@ Tests are a first-class deliverable, run with `pytest`. The layered/typed design
 
 ```python
 @pytest.fixture
-def db():
-    conn = sqlite3.connect(":memory:")
-    apply_schema(conn)            # same DDL as production
-    yield Database(conn)
-    conn.close()
+def db() -> Database:
+    """Fresh in-memory SQLite database with the schema applied."""
+    return Database(db_path=":memory:")
 
 @pytest.fixture
 def fixed_clock():
-    return lambda: datetime(2026, 6, 26, 9, 0)   # deterministic "now"
+    """Deterministic 'now' clock for controller tests."""
+    return lambda: datetime(2026, 6, 26, 9, 0)
 ```
+
+`Database.__init__(self, db_path: str | None = None)` opens the connection
+and applies the full schema (`_init_db()`) itself — passing `":memory:"` is
+enough; there is no separate `apply_schema()` helper for tests to call.
 
 ## 20.4 Layout & example
 
@@ -45,15 +48,34 @@ tests/
 ├── conftest.py
 ├── core/
 │   ├── test_timeutil.py
-│   └── test_balance.py
+│   ├── test_balance.py
+│   ├── test_events.py
+│   ├── test_hebrew_date.py
+│   └── test_report.py
+├── db/
+│   ├── test_database.py
+│   └── test_check_constraints.py
+├── domain/
+│   └── test_types.py
 ├── models/
 │   ├── test_time_clock_model.py
 │   ├── test_vacation_model.py     # incl. carry-over
-│   └── test_sickness_model.py
+│   ├── test_sickness_model.py
+│   └── test_miliuim_model.py
 ├── controllers/
-│   └── test_time_clock_controller.py
-└── validation/
-    └── test_time_record_validation.py
+│   ├── test_time_clock_controller.py
+│   ├── test_vacation_controller.py
+│   ├── test_sickness_controller.py
+│   ├── test_miliuim_controller.py
+│   └── test_times_overlap.py
+├── views/
+│   ├── test_time_clock_tab_pure.py
+│   ├── test_export_dialog_pure.py
+│   ├── test_report_dialog.py
+│   ├── test_settings_dialog_pure.py
+│   └── ...                        # + other pure/dedup view tests
+├── test_integration.py
+└── test_settings.py
 ```
 
 ```python

@@ -1,3 +1,4 @@
+import dataclasses
 import sqlite3
 from datetime import date
 
@@ -105,26 +106,26 @@ def test_save_non_public_holiday_with_zero_hours_fails(
     assert rec.id is None
 
 
-# ──────────── Defense-in-depth: mutate-then-save bypasses __post_init__ ─────
+# ──────────── Defense-in-depth: VacationRecord is frozen ────────────────────
 
 
-def test_save_record_rejects_negative_hours_after_mutation(
+def test_replace_into_invalid_negative_hours_raises(
     controller: VacationController,
 ) -> None:
-    """VacationRecord.hours is a _ValidatingRecord-validated field (domain/
-    types.py), so mutating it to an invalid value on an already-saved
-    record now raises ValueError immediately — the value can never become
-    invalid in the first place, so VacationController.save_record() is no
-    longer needed as a second line of defense for this field."""
+    """VacationRecord is frozen (domain/types.py), so mutating an
+    already-saved record requires dataclasses.replace(), which reruns
+    __post_init__ in full — an invalid replacement raises ValueError
+    immediately, rather than producing a record VacationController
+    .save_record() would need to catch as a second line of defense."""
     controller.model.save_settings(2026, 160.0, 40.0)
     rec = VacationRecord(None, date(2026, 7, 15), 8.0, VacationType.ANNUAL_LEAVE)
     assert controller.save_record(rec).ok is True
 
     with pytest.raises(ValueError, match="Hours must be non-negative"):
-        rec.hours = -1.0
+        dataclasses.replace(rec, hours=-1.0)
 
 
-def test_save_record_rejects_note_too_long_after_mutation(
+def test_replace_into_invalid_note_too_long_raises(
     controller: VacationController,
 ) -> None:
     """Same as above, but for the note-length invariant."""
@@ -133,7 +134,7 @@ def test_save_record_rejects_note_too_long_after_mutation(
     assert controller.save_record(rec).ok is True
 
     with pytest.raises(ValueError, match="Note is too long"):
-        rec.note = "x" * 501
+        dataclasses.replace(rec, note="x" * 501)
 
 
 def test_save_balance_warning_and_override(
@@ -181,7 +182,7 @@ def test_edit_path_over_balance_warning(
     #                      = -4 → warning
     fetched = controller.model.get_record_by_id(rec.id)
     assert fetched is not None
-    fetched.hours = 20.0
+    fetched = dataclasses.replace(fetched, hours=20.0)
 
     res_edit = controller.save_record(fetched)
     assert res_edit.ok is False
@@ -236,8 +237,7 @@ def test_edit_vtype_switch_from_debit_to_non_debit_frees_balance(
     # the balance check.
     fetched = controller.model.get_record_by_id(rec.id)
     assert fetched is not None
-    fetched.vtype = VacationType.UNPAID_LEAVE
-    fetched.hours = 20.0
+    fetched = dataclasses.replace(fetched, vtype=VacationType.UNPAID_LEAVE, hours=20.0)
 
     res_edit = controller.save_record(fetched)
 
@@ -267,8 +267,7 @@ def test_edit_vtype_switch_to_debit_retriggers_balance_check(
     # Edit: switch to a debit type requesting more than the full allowance.
     fetched = controller.model.get_record_by_id(rec.id)
     assert fetched is not None
-    fetched.vtype = VacationType.ANNUAL_LEAVE
-    fetched.hours = 20.0
+    fetched = dataclasses.replace(fetched, vtype=VacationType.ANNUAL_LEAVE, hours=20.0)
 
     res_edit = controller.save_record(fetched)
 
@@ -306,8 +305,7 @@ def test_edit_date_across_year_boundary_retriggers_balance_check(
     # over-request appear to fit.
     fetched = controller.model.get_record_by_id(rec.id)
     assert fetched is not None
-    fetched.date = date(2026, 7, 15)
-    fetched.hours = 20.0
+    fetched = dataclasses.replace(fetched, date=date(2026, 7, 15), hours=20.0)
 
     res_edit = controller.save_record(fetched)
 
@@ -317,6 +315,17 @@ def test_edit_date_across_year_boundary_retriggers_balance_check(
     # Confirming the override still succeeds.
     res_override = controller.save_record(fetched, confirm_over_balance=True)
     assert res_override.ok is True
+
+
+@pytest.mark.parametrize("hours", [0.0, -5.0], ids=["zero", "negative"])
+def test_add_carry_over_rejects_non_positive_hours(
+    controller: VacationController, hours: float
+) -> None:
+    """add_carry_over()'s own guard, ahead of any settings/model lookup."""
+    res = controller.add_carry_over(2025, 2026, hours)
+
+    assert res.ok is False
+    assert res.errors == ["Hours to transfer must be greater than zero."]
 
 
 def test_add_carry_over_validation(controller: VacationController) -> None:
@@ -358,6 +367,70 @@ def test_save_hours_exceed_daily_target(
     rec2 = VacationRecord(None, date(2026, 6, 22), 8.0, VacationType.ANNUAL_LEAVE, None)
     res2 = controller.save_record(rec2)
     assert res2.ok is True
+
+
+def test_save_weekend_zero_target_falls_back_to_eight_hour_cap(
+    controller: VacationController, event_bus: EventBus
+) -> None:
+    """save_record()'s `max_hours` defaults to 8.0 whenever
+    get_daily_target_for_date() returns exactly 0.0 (a configured
+    weekend/day-off with no work hours) -- otherwise max_hours would stay
+    0.0 and no vacation could ever be booked on a day off at all. Saturday
+    2026-06-27 has target 0.0 configured below, so the cap must still allow
+    up to 8.0h and reject anything over it."""
+    tc_model = TimeClockModel(controller.model.db, event_bus)
+    tc_model.save_work_day_targets(
+        {0: 8.0, 1: 8.0, 2: 8.0, 3: 8.0, 4: 8.0, 5: 0.0, 6: 0.0}
+    )
+    controller.model.save_settings(2026, 160.0, 40.0)
+    saturday = date(2026, 6, 27)
+    assert saturday.weekday() == 5
+
+    over_cap = VacationRecord(None, saturday, 9.0, VacationType.ANNUAL_LEAVE)
+    res_over = controller.save_record(over_cap)
+    assert res_over.ok is False
+    assert any("8.0" in e for e in res_over.errors)
+
+    at_cap = VacationRecord(None, saturday, 8.0, VacationType.ANNUAL_LEAVE)
+    res_at_cap = controller.save_record(at_cap)
+    assert res_at_cap.ok is True
+
+
+# ──────────── Defense-in-depth: frozen-record bypass ────────────────────────
+
+
+def test_save_record_defense_in_depth_negative_hours_via_bypass(
+    controller: VacationController,
+) -> None:
+    """VacationRecord.__post_init__ makes it impossible to construct an
+    invalid record through normal means, but VacationController.save_record()
+    still re-checks vacation_record_invariant_errors() as defense-in-depth
+    for a record obtained by some means outside this module's control --
+    simulate that with the same object.__setattr__ escape hatch
+    __post_init__ itself uses (bypassing the frozen-dataclass guard) to
+    force hours negative after construction."""
+    controller.model.save_settings(2026, 160.0, 40.0)
+    rec = VacationRecord(None, date(2026, 7, 15), 8.0, VacationType.ANNUAL_LEAVE)
+    object.__setattr__(rec, "hours", -1.0)
+
+    res = controller.save_record(rec)
+
+    assert res.ok is False
+    assert "non-negative" in res.errors[0]
+
+
+def test_delete_record_success(controller: VacationController) -> None:
+    """The real (non-monkeypatched) delete_record() success path: a saved
+    record is actually removed and the resulting Result is ok=True."""
+    controller.model.save_settings(2026, 160.0, 40.0)
+    rec = VacationRecord(None, date(2026, 7, 15), 8.0, VacationType.ANNUAL_LEAVE)
+    assert controller.save_record(rec).ok is True
+    assert rec.id is not None
+
+    res = controller.delete_record(rec.id)
+
+    assert res.ok is True
+    assert controller.model.get_record_by_id(rec.id) is None
 
 
 # ────────────────────── Exception narrowing (§ codebase review G2 #1) ───────

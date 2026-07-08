@@ -1,3 +1,4 @@
+import dataclasses
 import logging
 from datetime import date, datetime
 
@@ -29,7 +30,9 @@ def test_vacation_events(db: Database, event_bus: EventBus) -> None:
     change_called = False
     fetched = model.get_record_by_id(rec_id)
     assert fetched is not None
-    fetched.hours = 4.0
+    # VacationRecord is frozen (domain/types.py) -- dataclasses.replace()
+    # builds a new, revalidated instance instead of mutating in place.
+    fetched = dataclasses.replace(fetched, hours=4.0)
     model.update_record(fetched)
     assert change_called is True
 
@@ -97,8 +100,7 @@ def test_vacation_record_crud(db: Database, event_bus: EventBus) -> None:
     assert fetched.vtype == VacationType.ANNUAL_LEAVE
 
     # Update
-    fetched.hours = 4.0
-    fetched.vtype = VacationType.SPECIAL_LEAVE
+    fetched = dataclasses.replace(fetched, hours=4.0, vtype=VacationType.SPECIAL_LEAVE)
     model.update_record(fetched)
 
     updated = model.get_record_by_id(rec_id)
@@ -247,6 +249,126 @@ def test_carry_over_history(db: Database, event_bus: EventBus) -> None:
     assert history[0].hours == 15.0
     assert history[0].from_year == 2025
     assert isinstance(history[0].transferred_at, datetime)
+
+
+def test_update_record_without_id_raises(db: Database, event_bus: EventBus) -> None:
+    """update_record() requires a persisted id -- a record that was never
+    inserted (id=None) cannot be targeted by an UPDATE ... WHERE id = ?
+    statement, so this is checked explicitly rather than silently updating
+    zero rows."""
+    model = VacationModel(db, event_bus)
+    rec = VacationRecord(None, date(2026, 7, 15), 8.0, VacationType.ANNUAL_LEAVE)
+
+    with pytest.raises(ValueError, match="Cannot update a record without an ID"):
+        model.update_record(rec)
+
+
+def test_get_carry_over_history_skips_malformed_year_gap_and_logs_warning(
+    db: Database, event_bus: EventBus, caplog
+) -> None:
+    """A carry_over_log row whose from_year/to_year aren't exactly one year
+    apart (e.g. from manual DB editing -- the DB schema has no CHECK
+    constraint tying the two columns together, only `hours > 0`) fails
+    CarryOverLogEntry's own cross-field __post_init__ check. This is a
+    distinct failure mode from the malformed-`transferred_at` case covered
+    by test_get_carry_over_history_skips_malformed_transferred_at_and_logs_warning
+    -- here the row's own timestamp is fine, but the entry construction
+    itself raises ValueError, which must be caught and skipped exactly like
+    every other malformed-row-skip pattern in this model."""
+    model = VacationModel(db, event_bus)
+    model.save_settings(2025, 160.0, 40.0)
+    model.save_settings(2026, 160.0, 40.0)
+    model.add_carry_over(2025, 2026, 15.0)
+
+    conn = db.get_connection()
+    try:
+        with conn:
+            conn.execute(
+                "INSERT INTO carry_over_log (from_year, to_year, hours) "
+                "VALUES (2023, 2026, 5.0);"
+            )
+    finally:
+        conn.close()
+
+    with caplog.at_level(logging.WARNING, logger="models.vacation_model"):
+        history = model.get_carry_over_history(2026)
+
+    assert len(history) == 1
+    assert history[0].hours == 15.0
+    assert any(
+        record.levelname == "WARNING" and "malformed" in record.message.lower()
+        for record in caplog.records
+    )
+
+
+def test_calculate_carry_over_allowance_clamps_negative_prev_surplus_to_zero(
+    db: Database, event_bus: EventBus
+) -> None:
+    """When the previous year's vacation summary is over-drawn (used hours
+    exceed the total pool, e.g. an over-balance save that bypassed
+    VacationController's guard by going straight through the model),
+    `prev_summary.remaining` is negative -- calculate_carry_over_allowance()
+    must clamp the carried-forward `surplus` to 0.0 rather than letting a
+    negative surplus propagate (which would nonsensically reduce the next
+    year's available carry-over below zero before the later clamps even
+    apply)."""
+    model = VacationModel(db, event_bus)
+    model.save_settings(2025, 10.0, 0.0)
+    model.save_settings(2026, 100.0, 100.0)
+
+    over_drawn = VacationRecord(None, date(2025, 6, 1), 15.0, VacationType.ANNUAL_LEAVE)
+    model.insert_record(over_drawn)
+    assert model.calculate_vacation_summary(2025).remaining == -5.0
+
+    allowance = model.calculate_carry_over_allowance(2026)
+
+    assert allowance.prev_surplus == 0.0
+    assert allowance.allowed_transfer == 0.0
+
+
+def test_calculate_carry_over_allowance_clamps_negative_available_surplus_to_zero(
+    db: Database, event_bus: EventBus
+) -> None:
+    """already_transferred can exceed the (non-negative) surplus if a
+    caller logs a carry-over larger than what add_carry_over()'s own model
+    layer allows (VacationController.add_carry_over()'s allowed_max guard
+    lives one layer up, in the controller -- calling model.add_carry_over()
+    directly, as here, bypasses it). available_surplus = surplus -
+    already_transferred then goes negative and must clamp to 0.0."""
+    model = VacationModel(db, event_bus)
+    model.save_settings(2025, 10.0, 0.0)
+    model.save_settings(2026, 100.0, 100.0)  # generous cap: isolates this clamp
+    assert model.calculate_vacation_summary(2025).remaining == 10.0
+
+    model.add_carry_over(2025, 2026, 15.0)  # exceeds the 10h surplus
+
+    allowance = model.calculate_carry_over_allowance(2026)
+
+    assert allowance.prev_surplus == 10.0
+    assert allowance.already_transferred == 15.0
+    assert allowance.available_surplus == 0.0
+    assert allowance.allowed_transfer == 0.0
+
+
+def test_calculate_carry_over_allowance_clamps_negative_allowed_transfer_to_zero(
+    db: Database, event_bus: EventBus
+) -> None:
+    """already_transferred can also exceed max_carry_over alone, while
+    staying within the (larger) surplus -- available_surplus then stays
+    non-negative, isolating the final `allowed_transfer = min(max_carry_over
+    - already_transferred, available_surplus)` clamp from the
+    available_surplus clamp exercised above."""
+    model = VacationModel(db, event_bus)
+    model.save_settings(2025, 60.0, 0.0)
+    model.save_settings(2026, 100.0, 10.0)  # max_carry_over = 10h
+    assert model.calculate_vacation_summary(2025).remaining == 60.0
+
+    model.add_carry_over(2025, 2026, 20.0)  # exceeds the 10h cap, not the 60h surplus
+
+    allowance = model.calculate_carry_over_allowance(2026)
+
+    assert allowance.available_surplus == 40.0  # not clamped: 60 - 20
+    assert allowance.allowed_transfer == 0.0  # clamped: 10 - 20 = -10 -> 0
 
 
 def test_daily_target_falls_back_to_weekday(db: Database, event_bus: EventBus) -> None:

@@ -1,3 +1,4 @@
+import dataclasses
 import sqlite3
 from datetime import date
 
@@ -31,25 +32,25 @@ def test_save_invalid_hours(controller: SicknessController) -> None:
     assert controller.save_record(rec_high).ok is False
 
 
-# ──────────── Defense-in-depth: mutate-then-save bypasses __post_init__ ─────
+# ──────────── Defense-in-depth: SicknessRecord is frozen ────────────────────
 
 
-def test_save_record_rejects_negative_hours_after_mutation(
+def test_replace_into_invalid_negative_hours_raises(
     controller: SicknessController,
 ) -> None:
-    """SicknessRecord.hours is a _ValidatingRecord-validated field (domain/
-    types.py), so mutating it to an invalid value on an already-saved
-    record now raises ValueError immediately — the value can never become
-    invalid in the first place, so SicknessController.save_record() is no
-    longer needed as a second line of defense for this field."""
+    """SicknessRecord is frozen (domain/types.py), so mutating an
+    already-saved record requires dataclasses.replace(), which reruns
+    __post_init__ in full — an invalid replacement raises ValueError
+    immediately, rather than producing a record SicknessController
+    .save_record() would need to catch as a second line of defense."""
     rec = SicknessRecord(None, date(2026, 2, 15), 8.0, "Flu")
     assert controller.save_record(rec).ok is True
 
     with pytest.raises(ValueError, match="Hours must be non-negative"):
-        rec.hours = -1.0
+        dataclasses.replace(rec, hours=-1.0)
 
 
-def test_save_record_rejects_note_too_long_after_mutation(
+def test_replace_into_invalid_note_too_long_raises(
     controller: SicknessController,
 ) -> None:
     """Same as above, but for the note-length invariant."""
@@ -57,7 +58,7 @@ def test_save_record_rejects_note_too_long_after_mutation(
     assert controller.save_record(rec).ok is True
 
     with pytest.raises(ValueError, match="Note is too long"):
-        rec.note = "x" * 501
+        dataclasses.replace(rec, note="x" * 501)
 
 
 def test_save_balance_warning_and_override(controller: SicknessController) -> None:
@@ -92,7 +93,7 @@ def test_edit_path_over_balance_warning(controller: SicknessController) -> None:
     # Raise hours to 24h: projected_used = 16h - 8h + 24h = 32h → remaining = -16h
     fetched = controller.model.get_record_by_id(rec.id)
     assert fetched is not None
-    fetched.hours = 24.0
+    fetched = dataclasses.replace(fetched, hours=24.0)
 
     res_edit = controller.save_record(fetched)
     assert res_edit.ok is False
@@ -121,7 +122,7 @@ def test_edit_across_year_boundary_credits_correct_year(
     # trip the over-balance warning (8h existing + 8h moved-in > 8h allowance).
     fetched = controller.model.get_record_by_id(rec.id)
     assert fetched is not None
-    fetched.date = date(2027, 1, 20)
+    fetched = dataclasses.replace(fetched, date=date(2027, 1, 20))
 
     res_edit = controller.save_record(fetched)
     assert res_edit.ok is False
@@ -173,6 +174,73 @@ def test_save_range_rejects_note_too_long(controller: SicknessController) -> Non
         date(2026, 6, 8), date(2026, 6, 10)
     )
     assert len(records) == 0
+
+
+def test_save_range_rejects_end_date_before_start_date(
+    controller: SicknessController,
+) -> None:
+    """save_range()'s own basic-validation guard, ahead of any DB read or
+    over-balance check."""
+    res = controller.save_range(date(2026, 6, 10), date(2026, 6, 5), 8.0)
+
+    assert res.ok is False
+    assert res.errors == ["End date must be on or after start date."]
+
+
+@pytest.mark.parametrize(
+    "hours",
+    [0.0, 0.4, 24.1, 30.0],
+    ids=["zero", "below-min", "above-max", "far-above-max"],
+)
+def test_save_range_rejects_hours_outside_valid_range(
+    controller: SicknessController, hours: float
+) -> None:
+    """save_range()'s own 0.5-24 bound check, distinct from the identical
+    bound enforced per-record by validate_sick_record() in save_record()."""
+    res = controller.save_range(date(2026, 6, 8), date(2026, 6, 10), hours)
+
+    assert res.ok is False
+    assert res.errors == ["Hours must be between 0.5 and 24."]
+
+    records = controller.model.get_records_in_date_range(
+        date(2026, 6, 8), date(2026, 6, 10)
+    )
+    assert len(records) == 0
+
+
+# ──────────── Defense-in-depth: frozen-record bypass ────────────────────────
+
+
+def test_save_record_defense_in_depth_negative_hours_via_bypass(
+    controller: SicknessController,
+) -> None:
+    """SicknessRecord.__post_init__ makes it impossible to construct an
+    invalid record through normal means, but SicknessController.save_record()
+    still re-checks sickness_record_invariant_errors() as defense-in-depth
+    for a record obtained by some means outside this module's control --
+    simulate that with the same object.__setattr__ escape hatch
+    __post_init__ itself uses (bypassing the frozen-dataclass guard) to
+    force hours negative after construction."""
+    rec = SicknessRecord(None, date(2026, 2, 15), 8.0, "Flu")
+    object.__setattr__(rec, "hours", -1.0)
+
+    res = controller.save_record(rec)
+
+    assert res.ok is False
+    assert "non-negative" in res.errors[0]
+
+
+def test_delete_record_success(controller: SicknessController) -> None:
+    """The real (non-monkeypatched) delete_record() success path: a saved
+    record is actually removed and the resulting Result is ok=True."""
+    rec = SicknessRecord(None, date(2026, 2, 15), 8.0, "Flu")
+    assert controller.save_record(rec).ok is True
+    assert rec.id is not None
+
+    res = controller.delete_record(rec.id)
+
+    assert res.ok is True
+    assert controller.model.get_record_by_id(rec.id) is None
 
 
 def test_save_range_threads_document_path(controller: SicknessController) -> None:

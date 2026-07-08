@@ -240,5 +240,4 @@ class SicknessModel:
         return SicknessSummary(
             allowance_hours=allowance,
             used_hours=used_hours,
-            remaining_hours=allowance - used_hours,
         )

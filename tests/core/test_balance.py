@@ -9,6 +9,7 @@ from core.balance import (
     get_week_range,
     get_year_range,
     group_records_by_date,
+    overtime,
     period_balance_from_grouped,
 )
 from domain.enums import WorkType
@@ -337,6 +338,59 @@ def test_period_balance_from_grouped_two_open_records_same_day_no_double_count()
     # 6.0h. NOT 6.0 + 2.0 = 8.0h (the buggy double-count of both open spans).
     assert result.worked_hours == 6.0
     assert result.balance == pytest.approx(6.0 - 8.0)
+
+
+# ────────────────────────────── overtime() ─────────────────────────────────
+# §21.3's thin (raw_hours, weighted_hours) wrapper around
+# calculate_period_balance() -- distinct from the identically-shaped
+# balance/weighted_overtime pair already covered on PeriodBalance directly
+# by test_calculate_period_balance_overtime_rate above, since overtime()'s
+# own return-value unpacking (`result.balance`, `result.weighted_overtime`)
+# is a separate code path with no coverage of its own.
+
+
+def test_overtime_positive_balance_applies_rate_to_weighted_hours() -> None:
+    targets = {0: 8.0, 1: 8.0, 2: 8.0, 3: 8.0, 4: 8.0, 5: 0.0, 6: 0.0}
+    records = [
+        TimeRecord(
+            1, date(2026, 6, 22), time(8, 0), time(18, 0), 0, WorkType.REMOTE
+        ),  # Worked 10h (target 8h) -> 2h surplus
+    ]
+
+    raw, weighted = overtime(
+        records,
+        start_date=date(2026, 6, 22),
+        end_date=date(2026, 6, 22),
+        targets=targets,
+        exceptions={},
+        rate=1.5,
+        today=date(2026, 6, 26),
+    )
+
+    assert raw == 2.0
+    assert weighted == 3.0  # 2.0 * 1.5
+
+
+def test_overtime_negative_balance_returns_deficit_unweighted() -> None:
+    targets = {0: 8.0, 1: 8.0, 2: 8.0, 3: 8.0, 4: 8.0, 5: 0.0, 6: 0.0}
+    records = [
+        TimeRecord(
+            1, date(2026, 6, 22), time(9, 0), time(15, 0), 0, WorkType.REMOTE
+        ),  # Worked 6h (target 8h) -> 2h deficit
+    ]
+
+    raw, weighted = overtime(
+        records,
+        start_date=date(2026, 6, 22),
+        end_date=date(2026, 6, 22),
+        targets=targets,
+        exceptions={},
+        rate=1.5,
+        today=date(2026, 6, 26),
+    )
+
+    assert raw == -2.0
+    assert weighted == -2.0  # deficit is raw; rate not applied, per docstring
 
 
 def test_get_week_range_crosses_year_boundary() -> None:

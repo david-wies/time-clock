@@ -48,6 +48,21 @@ def test_break_minutes_negative_raises() -> None:
         BreakMinutes(-1)
 
 
+def test_break_minutes_nan_raises() -> None:
+    """Mirrors test_hours_nan_raises above: BreakMinutes.__new__ has its own
+    `isinstance(value, float) and (math.isnan(value) or math.isinf(value))`
+    guard, separate from Hours' -- `int(float("nan"))` would otherwise raise
+    a confusing ValueError from the plain `int()` coercion instead of this
+    class's own "non-negative" message."""
+    with pytest.raises(ValueError, match="non-negative"):
+        BreakMinutes(float("nan"))
+
+
+def test_break_minutes_infinite_raises() -> None:
+    with pytest.raises(ValueError, match="non-negative"):
+        BreakMinutes(float("inf"))
+
+
 def test_hours_behaves_as_plain_float_in_arithmetic() -> None:
     h = Hours(8.5)
     assert isinstance(h, float)
@@ -135,6 +150,26 @@ def test_time_record_break_exceeding_shift_length_raises() -> None:
         _time_record(start_time=time(9, 0), end_time=time(10, 0), break_minutes=75)
 
 
+def test_time_record_overnight_break_exceeding_wrapped_duration_raises() -> None:
+    """time_record_invariant_errors() must check break_minutes against the
+    overnight-*wrapped* duration (core.timeutil.duration(), which adds
+    1440 minutes when end < start), not a naive end-minus-start
+    subtraction. 22:00->06:00 wraps to a 480-minute (8h) shift; naive
+    subtraction would instead see 360-1320 = -960 minutes, under which a
+    500-minute break would nonsensically appear to fit. The wrap-aware
+    duration correctly rejects it as exceeding the real 8h shift."""
+    with pytest.raises(ValueError, match="Break cannot exceed shift length"):
+        _time_record(start_time=time(22, 0), end_time=time(6, 0), break_minutes=500)
+
+
+def test_time_record_overnight_break_within_wrapped_duration_succeeds() -> None:
+    """Same overnight 22:00->06:00 shift (480 wrapped minutes) as above, but
+    with a 400-minute break that fits comfortably within it -- confirms the
+    wrap-aware check isn't simply rejecting every overnight break."""
+    rec = _time_record(start_time=time(22, 0), end_time=time(6, 0), break_minutes=400)
+    assert rec.break_minutes == 400
+
+
 def test_time_record_in_site_without_office_raises() -> None:
     with pytest.raises(ValueError, match="select or enter an office"):
         _time_record(work_type=WorkType.IN_SITE, office=None)
@@ -220,6 +255,24 @@ def test_vacation_record_allows_carry_over_vtype_for_db_readback() -> None:
     assert rec.vtype == VacationType.CARRY_OVER
 
 
+def test_vacation_record_is_frozen() -> None:
+    """VacationRecord is immutable, like TimeRecord — see
+    test_time_record_is_frozen above. Callers must use dataclasses.replace()
+    instead, which reruns __post_init__ in full — see
+    test_vacation_record_replace_reruns_full_validation below."""
+    rec = VacationRecord(None, date(2026, 7, 15), 8.0, VacationType.ANNUAL_LEAVE)
+
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        rec.hours = 4.0  # type: ignore[misc]
+
+
+def test_vacation_record_replace_reruns_full_validation() -> None:
+    rec = VacationRecord(None, date(2026, 7, 15), 8.0, VacationType.ANNUAL_LEAVE)
+
+    with pytest.raises(ValueError, match="non-negative"):
+        dataclasses.replace(rec, hours=-1.0)
+
+
 # ─────────────────────────────── SicknessRecord ──────────────────────────────
 
 
@@ -236,6 +289,22 @@ def test_sickness_record_negative_hours_raises() -> None:
 def test_sickness_record_note_too_long_raises() -> None:
     with pytest.raises(ValueError, match="Note is too long"):
         SicknessRecord(None, date(2026, 2, 15), 8.0, "a" * 501)
+
+
+def test_sickness_record_is_frozen() -> None:
+    """SicknessRecord is immutable, like TimeRecord — see
+    test_time_record_is_frozen above."""
+    rec = SicknessRecord(None, date(2026, 2, 15), 8.0, "Flu")
+
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        rec.hours = 4.0  # type: ignore[misc]
+
+
+def test_sickness_record_replace_reruns_full_validation() -> None:
+    rec = SicknessRecord(None, date(2026, 2, 15), 8.0, "Flu")
+
+    with pytest.raises(ValueError, match="non-negative"):
+        dataclasses.replace(rec, hours=-1.0)
 
 
 # ─────────────────────────────── MiliuimRecord ───────────────────────────────
@@ -259,6 +328,27 @@ def test_miliuim_record_end_before_start_raises() -> None:
 def test_miliuim_record_note_too_long_raises() -> None:
     with pytest.raises(ValueError, match="Note is too long"):
         MiliuimRecord(None, date(2026, 6, 1), date(2026, 6, 5), note="x" * 501)
+
+
+def test_miliuim_record_is_frozen() -> None:
+    """MiliuimRecord is immutable — unlike VacationRecord/SicknessRecord,
+    this matters for a genuine cross-field invariant (end_date >=
+    start_date): freezing is what makes it impossible to construct a
+    MiliuimRecord whose fields are individually fine but jointly invalid
+    (e.g. changing only end_date without re-checking it against
+    start_date). See test_miliuim_record_replace_reruns_full_validation
+    below and MiliuimRecord's docstring (domain/types.py)."""
+    rec = MiliuimRecord(None, date(2026, 6, 1), date(2026, 6, 10))
+
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        rec.end_date = date(2026, 6, 20)  # type: ignore[misc]
+
+
+def test_miliuim_record_replace_reruns_full_validation() -> None:
+    rec = MiliuimRecord(None, date(2026, 6, 1), date(2026, 6, 10))
+
+    with pytest.raises(ValueError, match="End date must be on or after start date"):
+        dataclasses.replace(rec, end_date=date(2026, 5, 20))
 
 
 # ────────────────────────────── WorkDayException ─────────────────────────────
@@ -317,21 +407,33 @@ def test_carry_over_log_entry_rejects_non_positive_hours_after_mutation() -> Non
     """CarryOverLogEntry.hours is a _ValidatingRecord-validated field
     (domain/types.py), so mutating it to an invalid value on an
     already-constructed instance raises ValueError immediately, same as at
-    construction time — see test_carry_over_log_entry_non_positive_hours_raises."""
+    construction time — see test_carry_over_log_entry_non_positive_hours_raises.
+
+    Uses 0.0 rather than a negative value: _positive_hours() (domain/
+    types.py) now delegates the finite/non-negative check to Hours first,
+    so a negative value like -1.0 raises Hours' "non-negative" message
+    before reaching the positivity check below it. 0.0 is non-negative (so
+    it passes Hours) but not positive, so it is the value that specifically
+    exercises CarryOverLogEntry's stricter-than-Hours "must be positive"
+    requirement — matching test_carry_over_log_entry_non_positive_hours_raises
+    at construction time."""
     entry = CarryOverLogEntry(1, 2025, 2026, 5.0, datetime(2026, 1, 1))
 
     with pytest.raises(ValueError, match="positive"):
-        entry.hours = -1.0
+        entry.hours = 0.0
 
 
 # ─────────────────────────────── PeriodBalance ───────────────────────────────
 
 
 def test_period_balance_fields() -> None:
+    """balance is a computed property (domain/types.py), not a constructor
+    argument -- it is always worked_hours - target_hours, so it is derived
+    rather than passed in. See test_period_balance_balance_is_computed
+    below for the property itself."""
     pb = PeriodBalance(
         worked_hours=16.5,
         target_hours=16.0,
-        balance=0.5,
         weighted_overtime=0.5,
         days_in_period=2,
     )
@@ -340,6 +442,41 @@ def test_period_balance_fields() -> None:
     assert pb.balance == 0.5
     assert pb.weighted_overtime == 0.5
     assert pb.days_in_period == 2
+
+
+def test_period_balance_balance_is_computed() -> None:
+    pb = PeriodBalance(
+        worked_hours=10.0,
+        target_hours=16.0,
+        weighted_overtime=-6.0,
+        days_in_period=2,
+    )
+    assert pb.balance == -6.0
+
+
+# ────────────────────────────────── Result ───────────────────────────────────
+
+
+def test_result_ok_false_without_errors_raises() -> None:
+    with pytest.raises(ValueError, match="must carry at least one error"):
+        Result(ok=False)
+
+
+def test_result_ok_true_with_errors_raises() -> None:
+    """The mirror case of test_result_ok_false_without_errors_raises: an
+    ok=True Result must not carry errors either, or a caller that only
+    checks `if not result.ok` (this codebase's documented pattern) would
+    silently drop a real error. See Result's docstring (domain/types.py)."""
+    with pytest.raises(ValueError, match="must not carry any errors"):
+        Result(ok=True, errors=["should not be constructible"])
+
+
+def test_result_ok_true_with_warnings_succeeds() -> None:
+    """Only errors are constrained by the ok/errors invariant -- warnings
+    are allowed (and expected) alongside ok=True."""
+    result = Result(ok=True, warnings=["OVERNIGHT_SHIFT_WARNING"])
+    assert result.ok is True
+    assert result.warnings == ["OVERNIGHT_SHIFT_WARNING"]
 
 
 # ────────────────────── Dialog-style construction guard ─────────────────────

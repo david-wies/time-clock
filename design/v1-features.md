@@ -5,7 +5,7 @@
 ## 21.1 Public Holidays Auto-Import
 
 - Settings → Time Clock gains a **Country/Region** selector (default: none) and an **"Import holidays for year"** button.
-- Uses the `holidays` library (optional dep; button disabled with hint if missing) to enumerate public holidays for the chosen region + year.
+- Uses the `holidays` library — a required dependency, listed in `requirements.txt` and imported unconditionally at the top of `views/settings_dialog.py` (no `try/except ImportError` guard; see CLAUDE.md's import conventions) — to enumerate public holidays for the chosen region + year.
 - Each holiday becomes a `work_day_exception` row with `hours = 0` and `label = <holiday name>` — reusing the existing exception mechanism (see [data-model.md](data-model.md) §3, DESIGN.md §5.4). No new table.
 - Conflict handling: respects `UNIQUE(date)` — existing exception on a date is **kept**, import skips it and reports "N added, M skipped (already set)".
 - Holidays therefore flow automatically into the daily-target logic (0h target ⇒ "Day off") and into the sickness day-equivalent rules.
@@ -17,7 +17,7 @@
 - New **`File → Reports`** menu (distinct from raw Export, DESIGN.md §14): generates a formatted summary PDF, not a data dump.
 - Period selector: **Month / Quarter / Year** + year picker.
 - Content: worked vs target totals, running overtime balance (see [time-and-balance.md](time-and-balance.md) §18.3), vacation used/remaining + carry-over, sickness used/remaining, per-month breakdown table.
-- Engine: `reportlab` (same optional dep as PDF export); shares table-styling helpers with §14. Graceful "install reportlab" prompt if absent.
+- Engine: `reportlab` — a required dependency (listed in `requirements.txt`, imported unconditionally in `views/report_dialog.py` and `views/export_dialog.py`, same as PDF export §14); shares table-styling helpers with §14. No fallback if the package is somehow missing — it is a hard runtime dependency, not an optional feature.
 - Implemented in `views/report_dialog.py` + `core/report.py` (pure data assembly → testable without PDF rendering).
 
 ## 21.3 Overtime Tracking (configurable rate)
@@ -30,12 +30,12 @@
 
 ## 21.4 Tray Icon + Quick Clock-In/Out
 
-- Optional dep `pystray` (+ `Pillow`); if missing, feature silently disabled, app runs normally.
+- `pystray` (+ `Pillow`) — required dependencies, listed in `requirements.txt` and imported unconditionally in `views/tray.py` (no `try/except ImportError` guard). Per CLAUDE.md's "Key Gotchas", the graceful-fallback pattern described elsewhere in this doc set is for distribution packaging only, not the source tree — the tray module always assumes the deps are present.
 - Tray icon reflects clock state via color (uses `success`/`fg.muted` tokens, [visual-design.md](visual-design.md) §16.2): active = green, idle = grey.
 - Right-click menu: **Clock In**, **Clock Out**, **Open**, **Quit**. Menu items call the same `TimeClockController.clock_in/clock_out` (DESIGN.md §19) — no logic duplication.
 - Tray actions publish `CLOCK_STATE_CHANGED` (DESIGN.md §17) so the main window stays in sync if open.
 - Setting: **"Minimize to tray"** (default off) — window close → hide to tray instead of exit when enabled.
-- Lives in `tray.py`, started from `main.py` only when the deps + setting allow.
+- Lives in `views/tray.py`, started from `main.py` guarded only by the "Minimize to tray" setting (the deps are always present, not conditionally checked).
 - **Thread Safety & DB Concurrency**: Because the system tray run-loop executes on a separate thread, all actions that invoke controller methods or touch the database must be marshalled back to the main tkinter thread (e.g., using `root.after()` or `root.event_generate()`) to avoid SQLite concurrency violations. Database connections should utilize WAL mode.
 
 ## 21.5 Break Presets
