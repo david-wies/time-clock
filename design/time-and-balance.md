@@ -14,13 +14,12 @@ Centralizes every "what time is it / how long was that" decision so it is testab
 
 - Duration uses **wall-clock minute arithmetic**, not absolute timestamps, so it is unaffected by DST shifts on normal same-day shifts: `mins(end) - mins(start) - break`.
 - Overnight (`end < start`): `(1440 - mins(start)) + mins(end) - break`.
-- **DST caveat**: on "spring forward" day (23h) a wall-clock shift e.g. 08:00–17:00 with 1h break reports **7h** (not 8h) because the wall-clock day is only 23h long. On "fall back" day (25h) the same shift reports **9h**. v1 accepts this — single user, rare, documented in `timeutil.duration()` unit test pinning the behavior. Future v2 should use UTC for diff and convert to local for display.
+- **DST caveat**: wall-clock minute arithmetic is unaffected by DST — `duration("08:00", "17:00", 60)` always returns **8.0h** (540 min − 60 = 480 min = 8.0h). This means the reported duration matches wall-clock deltas, not real elapsed time (which would be 7h on spring-forward / 9h on fall-back). v1 accepts this — single user, rare, documented in `timeutil.duration()` unit test pinning the behavior. Future v2 should use UTC for diff and convert to local for display.
 
 ## 18.3 Running overtime balance (new capability)
 
 Per-day "remaining" (DESIGN.md §5.4) is good but users care about the cumulative balance. Add:
-
-```
+```text
 period_balance(period) = Σ over days in period of (worked − target)
 ```
 

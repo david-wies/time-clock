@@ -4,7 +4,7 @@
 
 ## 10.1 Time Clock — Add Record
 
-```
+```text
 User clicks [+ Add Record]
   → TimeRecordDialog opens (pre-filled with today, now)
   → User fills form, clicks Save
@@ -19,7 +19,7 @@ User clicks [+ Add Record]
 
 ## 10.2 Vacation Usage Calculation
 
-```
+```text
 On tab load & after any mutation:
   1. Read vacation_settings for current year Y:
      SELECT hours_per_year FROM vacation_settings WHERE year = Y
@@ -38,14 +38,15 @@ On tab load & after any mutation:
      a. prev_year_allowance = SELECT hours_per_year FROM vacation_settings WHERE year = Y-1
      b. prev_year_carry_over = SELECT SUM(hours) FROM vacation_record WHERE date LIKE 'Y-1-%' AND vtype = 'carry_over'
      c. prev_year_used = SELECT SUM(hours) FROM vacation_record WHERE date LIKE 'Y-1-%' AND vtype IN ('annual_leave', 'public_holiday', 'special_leave')
-     d. surplus = prev_year_allowance + prev_year_carry_over - prev_year_used
-     e. already_transferred = SUM(hours) FROM carry_over_log WHERE from_year = Y-1, to_year = Y
-     f. available = MIN(max_carry_over_for_Y, surplus - already_transferred)
+      d. surplus = max(0, prev_year_allowance + prev_year_carry_over - prev_year_used)   # clamped to 0
+      e. already_transferred = SUM(hours) FROM carry_over_log WHERE from_year = Y-1, to_year = Y
+      f. surplus_after_transfer = max(0, surplus - already_transferred)                   # clamped to 0
+      g. available = max(0, MIN(max_carry_over_for_Y, surplus_after_transfer))            # clamped to 0
 ```
 
 ## 10.3 Vacation — Add Carry-Over
 
-```
+```text
 User clicks [+ Add Carry-Over Hours]
   → CarryOverDialog opens
   → Dialog queries DB for prev year surplus and already_transferred
@@ -59,7 +60,7 @@ User clicks [+ Add Carry-Over Hours]
 
 ## 10.4 Clock-In
 
-```
+```text
 User clicks [▶ Clock In]
   → If open record exists: prompt "Open record exists. Clock out first or start new?"
     → User chooses "Start new" → proceed
@@ -72,7 +73,7 @@ User clicks [▶ Clock In]
 
 ## 10.5 Clock-Out
 
-```
+```text
 User clicks [■ Clock Out]
   → Model finds today's record(s) WHERE end_time IS NULL
   → If multiple: prompt user to select which record to close
@@ -85,7 +86,7 @@ User clicks [■ Clock Out]
 
 ## 10.6 Sickness Usage Calculation
 
-```
+```text
 On tab load & after any mutation:
   1. Read sickness_settings for current year Y:
      SELECT days_per_year FROM sickness_settings WHERE year = Y

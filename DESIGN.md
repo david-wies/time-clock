@@ -108,7 +108,7 @@ This is the main design document — architecture, UI layout, and contracts betw
 
 ### 3.1 Duration Calculation
 
-```
+```text
 net_duration = (end_time - start_time) - break_minutes
 ```
 
@@ -517,7 +517,7 @@ High-level mutation flow: View → Controller (validation, orchestration) → Mo
 
 ## 11. File Structure
 
-```
+```text
 time-clock/
 ├── main.py                     # Entry point: wires Database → Models → Controllers → Views
 ├── DESIGN.md                   # Main design document (this file)

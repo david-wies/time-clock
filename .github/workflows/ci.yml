@@ -104,3 +104,4 @@ jobs:
           --cov=domain --cov=core --cov=controllers --cov=db
           --cov=models --cov=settings --cov=theme --cov=views
           --cov-report=term-missing
+          --cov-fail-under=90

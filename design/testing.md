@@ -40,7 +40,7 @@ def fixed_clock():
 
 ## 20.4 Layout & example
 
-```
+```text
 tests/
 ├── conftest.py
 ├── core/

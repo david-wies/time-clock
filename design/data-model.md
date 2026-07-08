@@ -34,7 +34,8 @@ CREATE TABLE time_record (
     office        TEXT,               -- office name when work_type = 'in_site'
     note          TEXT,
     created_at    TEXT    NOT NULL DEFAULT (datetime('now')),
-    updated_at    TEXT    NOT NULL DEFAULT (datetime('now'))
+    updated_at    TEXT    NOT NULL DEFAULT (datetime('now')),
+    document_path TEXT                -- optional file attachment (PDF, image, etc.)
 );
 
 CREATE INDEX idx_time_record_date ON time_record(date);
@@ -97,7 +98,7 @@ CREATE TABLE app_config (
 
 ### 3.1 Duration Calculation
 
-```
+```text
 net_duration = (end_time - start_time) - break_minutes
 
 Example:
@@ -115,19 +116,31 @@ A single typed source of truth for every record, shared by models, controllers, 
 
 Declared in `domain/enums.py` and `domain/types.py`:
 
-```
+```text
 Enums:
   WorkType      = IN_SITE | ROAD | REMOTE                                               (str enum → DB text)
   VacationType  = ANNUAL_LEAVE | PUBLIC_HOLIDAY | UNPAID_LEAVE | SPECIAL_LEAVE | CARRY_OVER (str enum → DB text)
   Weekday       = MON..SUN (0..6)                                                       (int enum → DB int)
 
 Dataclasses (slots=True):
-  TimeRecord:      id, date, start, end | None, break_minutes, work_type, office?, note?
-                   .is_open → bool (end is None)
+  TimeRecord:         id, date, start, end | None, break_minutes, work_type, office?, note?, document_path?
+                      .is_open → bool (end is None)
 
-  VacationRecord:  id, date, hours, vtype, note?
+  VacationRecord:     id, date, hours, vtype, note?
 
-  SicknessRecord:  id, date, hours, note?
+  SicknessRecord:     id, date, hours, note?, document_path?
+
+  WorkDayException:   id, date, hours, label?
+
+  CarryOverLogEntry:  id, from_year, to_year, hours, transferred_at
+
+  MiliuimRecord:      id, start_date, end_date, note?, document_path?
+  MiliuimSummary:     period_count, total_days
+
+  PeriodBalance:      worked_hours, target_hours, balance, weighted_overtime, days_in_period
+  VacationSummary:    allowance, carry_over, used, remaining, total_pool
+  CarryOverAllowance: available, max_carry_over, already_transferred
+  SicknessSummary:    used, total_pool, remaining
 ```
 
 - `(str, Enum)` / `(int, Enum)` values serialize straight to DB columns and round-trip cleanly.

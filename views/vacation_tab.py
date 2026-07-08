@@ -61,6 +61,7 @@ class VacationTab(RecordTabMixin, ttk.Frame):
         self._selected_year: int = today.year
         self._selected_month: int = 0  # 0 = All months
         self._unsubs: list[Callable] = []
+        self._legend_labels: list[ttk.Label] = []
 
         self._cbo_year: ttk.Combobox
         self._cbo_month: ttk.Combobox
@@ -124,13 +125,16 @@ class VacationTab(RecordTabMixin, ttk.Frame):
             ("● Employer (Holiday)", c["success"], "normal"),
             ("● Unpaid", c["fg.muted"], "normal"),
         ]
+        self._legend_labels.clear()
         for text, color, style_modifier in items:
-            ttk.Label(
+            label = ttk.Label(
                 legend_frame,
                 text=text,
                 foreground=color,
                 font=("Helvetica", 8, style_modifier),
-            ).pack(side="left", padx=(0, 12))
+            )
+            label.pack(side="left", padx=(0, 12))
+            self._legend_labels.append(label)
 
     def _build_treeview(self) -> None:
         frame = ttk.Frame(self)
@@ -316,10 +320,17 @@ class VacationTab(RecordTabMixin, ttk.Frame):
         self._append_skip_notice(self._lbl_breakdown, self.model.last_skipped_count)
         self._update_button_states()
 
+    def _refresh_legend(self) -> None:
+        c = COLORS.get(self._theme_mode, COLORS[ThemeMode.LIGHT])
+        colors = [c["fg.default"], c["accent"], c["success"], c["fg.muted"]]
+        for label, color in zip(self._legend_labels, colors):
+            label.configure(foreground=color)
+
     def _on_event(self, **_kw) -> None:
         # Recompute theme mode in case the theme setting changed while this
         # tab was open — otherwise row colors stay stale until rebuilt.
         self._theme_mode = resolve_theme_mode(self.settings.get("theme"))
+        self._refresh_legend()
         self._refresh()
 
     # ─────────────────────────── Button State ───────────────────────────────
