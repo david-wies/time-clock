@@ -11,7 +11,7 @@ from controllers.miliuim_controller import MiliuimController
 from domain.types import MiliuimRecord
 from models.miliuim_model import MiliuimModel
 from views.date_picker import make_date_picker
-from views.dialog_common import setup_modal_window
+from views.dialog_common import setup_modal_window, validate_note_length
 from views.document_attachment import make_document_picker
 
 logger = logging.getLogger(__name__)
@@ -117,7 +117,7 @@ class MiliuimRecordDialog(tk.Toplevel):
         self._set_doc_path(doc)
 
     def _validate_note(self, proposed: str) -> bool:
-        return len(proposed) <= 500
+        return validate_note_length(proposed)
 
     def _on_save(self) -> None:
         self._lbl_error.config(text="")

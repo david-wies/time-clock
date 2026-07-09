@@ -16,6 +16,7 @@ from core.report import (
 )
 from domain.enums import WorkType
 from domain.types import TimeRecord
+from models.miliuim_model import MiliuimModel
 from models.sickness_model import SicknessModel
 from models.time_clock_model import TimeClockModel
 from models.vacation_model import VacationModel
@@ -528,8 +529,6 @@ def test_period_summary_sums_skipped_records_across_all_four_models(
     sickness, *and* miliuim -- a report can pull from all four models, and
     an earlier model's skip must not be overwritten by a later model's
     (zero) count."""
-    from models.miliuim_model import MiliuimModel
-
     tc, vac, sick, sm = period_models
     miliuim = MiliuimModel(db, event_bus)
 

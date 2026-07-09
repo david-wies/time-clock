@@ -13,7 +13,7 @@ from domain.enums import WorkType
 from domain.types import TimeRecord
 from settings import SettingsManager
 from views.date_picker import make_date_picker
-from views.dialog_common import setup_modal_window
+from views.dialog_common import setup_modal_window, validate_note_length
 from views.document_attachment import make_document_picker
 
 logger = logging.getLogger(__name__)
@@ -258,7 +258,7 @@ class TimeRecordDialog(tk.Toplevel):
     # ─────────────────────────── Widget Callbacks ────────────────────────────
 
     def _validate_note(self, proposed: str) -> bool:
-        return len(proposed) <= 500
+        return validate_note_length(proposed)
 
     def _apply_break_preset(self, minutes: int) -> None:
         self._var_break.set(_minutes_to_hhmm(minutes))

@@ -13,7 +13,7 @@ from domain.enums import VacationType, WarningCode
 from domain.types import VacationRecord
 from models.vacation_model import VacationModel
 from views.date_picker import make_date_picker
-from views.dialog_common import setup_modal_window
+from views.dialog_common import setup_modal_window, validate_note_length
 
 logger = logging.getLogger(__name__)
 
@@ -182,7 +182,7 @@ class VacationRecordDialog(tk.Toplevel):
     # ─────────────────────────── Validation ─────────────────────────────────
 
     def _validate_note(self, proposed: str) -> bool:
-        return len(proposed) <= 500
+        return validate_note_length(proposed)
 
     # ─────────────────────────── Save ────────────────────────────────────────
 

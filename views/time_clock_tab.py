@@ -28,6 +28,7 @@ from theme.style import COLORS, ThemeMode, resolve_theme_mode
 from views.dialog_common import setup_modal_window
 from views.enums import ViewMode
 from views.record_tab_common import RecordTabMixin
+from views.tab_widgets import build_action_bar, build_add_edit_remove_buttons
 from views.time_record_dialog import TimeRecordDialog
 
 logger = logging.getLogger(__name__)
@@ -307,13 +308,7 @@ class TimeClockTab(RecordTabMixin, ttk.Frame):
         self._tree.bind("<<TreeviewSelect>>", self._on_tree_select)
 
     def _build_action_bar(self) -> None:
-        action_bar = ttk.Frame(self)
-        action_bar.pack(fill="x", padx=4, pady=(0, 6))
-
-        ttk.Separator(action_bar, orient="horizontal").pack(fill="x", pady=(0, 6))
-
-        inner = ttk.Frame(action_bar)
-        inner.pack(fill="x")
+        inner = build_action_bar(self)
 
         self._btn_clock_in = ttk.Button(
             inner,
@@ -337,22 +332,9 @@ class TimeClockTab(RecordTabMixin, ttk.Frame):
             side="left", fill="y", padx=10, pady=2
         )
 
-        self._btn_add = ttk.Button(inner, text="+ Add", command=self._do_add, width=10)
-        self._btn_add.pack(side="left", padx=(0, 4))
-
-        self._btn_edit = ttk.Button(
-            inner, text="✏ Edit", command=self._do_edit, width=10
+        self._btn_add, self._btn_edit, self._btn_delete = build_add_edit_remove_buttons(
+            inner, self._do_add, self._do_edit, self._do_delete
         )
-        self._btn_edit.pack(side="left", padx=(0, 4))
-
-        self._btn_delete = ttk.Button(
-            inner,
-            text="🗑 Delete",
-            style="Danger.TButton",
-            command=self._do_delete,
-            width=10,
-        )
-        self._btn_delete.pack(side="left")
 
     def _bind_shortcuts(self) -> None:
         self.root.bind_all("<Control-n>", self._guard_visible(self._do_add), add=True)
