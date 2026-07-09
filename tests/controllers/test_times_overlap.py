@@ -72,7 +72,7 @@ def test_overnight_shift_does_not_overlap_earlier_same_day_record() -> None:
     assert times_overlap(time(22, 0), time(2, 0), time(8, 0), time(9, 0)) is False
 
 
-def test_overnight_shift_back_to_back_with_next_evening_shift_is_not_overlap() -> None:
+def test_overnight_shift_starting_before_prior_wrapped_end_is_overlap() -> None:
     """Boundary case combining both semantics: an overnight shift wrapped
     to end at 1440, immediately followed (same calendar date) by another
     interval starting exactly at a time equal to the wrapped end (24:00 /

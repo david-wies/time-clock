@@ -162,7 +162,7 @@ class MiliuimModel:
             raise ValueError("Cannot update a record without an ID.")
         with self.db.connection() as conn:
             with conn:
-                conn.execute(
+                cursor = conn.execute(
                     "UPDATE miliuim_period SET start_date = ?, end_date = ?, note = ?,"
                     " document_path = ?, updated_at = datetime('now') WHERE id = ?;",
                     (
@@ -173,6 +173,10 @@ class MiliuimModel:
                         record.id,
                     ),
                 )
+                if cursor.rowcount == 0:
+                    raise sqlite3.DatabaseError(
+                        f"No Miliuim record with id={record.id} exists to update"
+                    )
             self.bus.publish(Event.MILIUIM_CHANGED)
 
     def delete_record(self, record_id: int) -> None:

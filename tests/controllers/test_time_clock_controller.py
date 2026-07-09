@@ -459,6 +459,33 @@ def test_save_record_non_sqlite_error_propagates(
         controller.save_record(_valid_record())
 
 
+def test_save_record_swallows_settings_sqlite_error_and_logs_warning(
+    controller: TimeClockController,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """The record is already persisted by the time save_record() tries to
+    remember last_used_work_type -- a sqlite3.Error from that best-effort
+    write (time_clock_controller.py's `except sqlite3.Error` block) must not
+    turn an already-successful save into a reported failure; it should log
+    a warning and still return ok=True."""
+
+    def _boom(_key: str, _value: object) -> None:
+        raise sqlite3.OperationalError("database is locked")
+
+    monkeypatch.setattr(controller.settings, "set", _boom)
+
+    with caplog.at_level(logging.WARNING):
+        res = controller.save_record(_valid_record())
+
+    assert res.ok is True
+    assert any(
+        record.levelname == "WARNING"
+        and "Failed to persist last_used_work_type setting" in record.message
+        for record in caplog.records
+    )
+
+
 def test_clock_in_sqlite_error_is_caught_and_returned(
     controller: TimeClockController, monkeypatch: pytest.MonkeyPatch
 ) -> None:

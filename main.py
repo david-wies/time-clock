@@ -12,6 +12,7 @@ from controllers.sickness_controller import SicknessController
 from controllers.time_clock_controller import TimeClockController
 from controllers.vacation_controller import VacationController
 from core.events import EventBus
+from core.timeutil import to_display_date
 from db.database import Database, get_app_data_dir
 from models.miliuim_model import MiliuimModel
 from models.sickness_model import SicknessModel
@@ -91,63 +92,75 @@ def main() -> None:
         )
         return
 
-    root = tk.Tk()
-    root.title("Time Clock")
+    root: tk.Tk | None = None
+    try:
+        root = tk.Tk()
+        root.title("Time Clock")
 
-    mode: ThemeMode = resolve_theme_mode(settings.get("theme"))
-    apply_theme(mode)
+        mode: ThemeMode = resolve_theme_mode(settings.get("theme"))
+        apply_theme(mode)
 
-    window = MainWindow(
-        root,
-        bus,
-        settings=settings,
-        model_tc=time_model,
-        model_vacation=vacation_model,
-        model_sickness=sickness_model,
-        model_miliuim=miliuim_model,
-    )
-    settings.on_error = window.notify_settings_error
+        window = MainWindow(
+            root,
+            bus,
+            settings=settings,
+            model_tc=time_model,
+            model_vacation=vacation_model,
+            model_sickness=sickness_model,
+            model_miliuim=miliuim_model,
+        )
+        settings.on_error = window.notify_settings_error
 
-    TimeClockTab(
-        window.time_clock_frame,
-        controller=time_ctrl,
-        model=time_model,
-        settings=settings,
-        bus=bus,
-        root=root,
-    )
+        TimeClockTab(
+            window.time_clock_frame,
+            controller=time_ctrl,
+            model=time_model,
+            settings=settings,
+            bus=bus,
+            root=root,
+        )
 
-    VacationTab(
-        window.vacation_frame,
-        controller=vacation_ctrl,
-        model=vacation_model,
-        settings=settings,
-        bus=bus,
-        root=root,
-    )
+        VacationTab(
+            window.vacation_frame,
+            controller=vacation_ctrl,
+            model=vacation_model,
+            settings=settings,
+            bus=bus,
+            root=root,
+        )
 
-    SicknessTab(
-        window.sickness_frame,
-        controller=sickness_ctrl,
-        model=sickness_model,
-        settings=settings,
-        bus=bus,
-        root=root,
-    )
+        SicknessTab(
+            window.sickness_frame,
+            controller=sickness_ctrl,
+            model=sickness_model,
+            settings=settings,
+            bus=bus,
+            root=root,
+        )
 
-    MiliuimTab(
-        window.miliuim_frame,
-        controller=miliuim_ctrl,
-        model=miliuim_model,
-        settings=settings,
-        bus=bus,
-        root=root,
-    )
+        MiliuimTab(
+            window.miliuim_frame,
+            controller=miliuim_ctrl,
+            model=miliuim_model,
+            settings=settings,
+            bus=bus,
+            root=root,
+        )
 
-    _boot_checks(time_model, time_ctrl)
+        _boot_checks(time_model, time_ctrl)
 
-    tray = SystemTray(root, time_ctrl, time_model, settings, bus)
-    tray.start()
+        tray = SystemTray(root, time_ctrl, time_model, settings, bus)
+        tray.start()
+    except Exception:
+        logger.critical("Fatal error during startup", exc_info=True)
+        messagebox.showerror(
+            "Time Clock — Startup Failed",
+            "The application could not start due to an unexpected error.\n"
+            "Details were written to the log file.",
+        )
+        if root is not None:
+            root.destroy()
+        return
 
     root.mainloop()
 
@@ -159,7 +172,7 @@ def _boot_checks(model: TimeClockModel, ctrl: TimeClockController) -> None:
     stale = [r for r in open_records if r.date < today]
     if stale:
         names = "\n".join(
-            f"  {r.date.isoformat()}  {r.start_time.strftime('%H:%M')}–open"
+            f"  {to_display_date(r.date)}  {r.start_time.strftime('%H:%M')}–open"
             for r in stale
         )
         choice = messagebox.askyesno(
@@ -176,7 +189,7 @@ def _boot_checks(model: TimeClockModel, ctrl: TimeClockController) -> None:
                 if not result.ok:
                     messagebox.showwarning(
                         "Delete Failed",
-                        f"Could not delete record from {r.date.isoformat()}: "
+                        f"Could not delete record from {to_display_date(r.date)}: "
                         + "; ".join(result.errors),
                     )
 

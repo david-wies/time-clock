@@ -67,9 +67,12 @@ def period_bounds(year: int, month: int | None = None) -> tuple[str, str]:
     """Returns (start_date, end_date) ISO-8601 strings bounding the given
     year, or a single month of that year if `month` is given.
 
-    The end-of-month bound always comes from `calendar.monthrange`, never a
-    hardcoded "-31" (a bug that previously slipped into three near-identical
-    copies of this computation across the model layer independently)."""
+    When `month` is given, the end-of-month bound comes from
+    `calendar.monthrange`, never a hardcoded "-31" (a bug that previously
+    slipped into three near-identical copies of this computation across the
+    model layer independently). The year-only path hardcodes "12-31" for
+    the end of December, which is always correct and not an instance of
+    that bug."""
     if month is not None:
         last_day = calendar.monthrange(year, month)[1]
         return f"{year:04d}-{month:02d}-01", f"{year:04d}-{month:02d}-{last_day:02d}"

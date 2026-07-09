@@ -21,7 +21,7 @@ import math
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import date, datetime, time
-from typing import Any, ClassVar
+from typing import Any, ClassVar, Protocol
 
 from core.timeutil import duration
 from domain.enums import VacationType, WorkType
@@ -107,6 +107,21 @@ class BreakMinutes(int):
         return super().__new__(cls, v)
 
 
+class _HasId(Protocol):
+    """Structural type for `set_generated_id()` — any record with an
+    `id: int | None` attribute, without committing to a specific record
+    class. Narrower than `Any`: it still lets mypy reject a call passing an
+    object with no `id` attribute at all. A read-only `@property` (not a
+    plain attribute) because every record type is a frozen dataclass —
+    `id` itself is never reassigned through ordinary attribute access;
+    `set_generated_id()` only ever backfills it via the documented
+    `object.__setattr__` escape hatch, which structural Protocol matching
+    doesn't see."""
+
+    @property
+    def id(self) -> int | None: ...
+
+
 def time_record_invariant_errors(record: TimeRecord) -> list[str]:
     """Context-free invariants for TimeRecord — checks that need only the
     record's own fields, not other DB records (overlap) or live settings.
@@ -121,8 +136,10 @@ def time_record_invariant_errors(record: TimeRecord) -> list[str]:
     """
     errors: list[str] = []
 
-    if record.break_minutes < 0:
-        errors.append("Break minutes must be non-negative.")
+    try:
+        BreakMinutes(record.break_minutes)
+    except ValueError as e:
+        errors.append(str(e))
 
     if record.end_time is not None:
         raw_duration = duration(record.start_time, record.end_time, 0)
@@ -155,6 +172,8 @@ class TimeRecord:
     re-checking `break_minutes` against the new shift length). See
     controllers.time_clock_controller.TimeClockController.clock_out().
     """
+
+    __hash__ = None  # type: ignore[assignment]
 
     id: int | None
     date: date
@@ -204,8 +223,10 @@ def vacation_record_invariant_errors(record: VacationRecord) -> list[str]:
     """
     errors: list[str] = []
 
-    if record.hours < 0:
-        errors.append("Hours must be non-negative.")
+    try:
+        Hours(record.hours)
+    except ValueError as e:
+        errors.append(str(e))
 
     _check_note_length(record.note, errors)
 
@@ -227,6 +248,8 @@ class VacationRecord:
     escape hatch instead of ordinary assignment, exactly like TimeRecord's
     equivalent in TimeClockController.save_record().
     """
+
+    __hash__ = None  # type: ignore[assignment]
 
     id: int | None
     date: date
@@ -281,8 +304,10 @@ def sickness_record_invariant_errors(record: SicknessRecord) -> list[str]:
     """
     errors: list[str] = []
 
-    if record.hours < 0:
-        errors.append("Hours must be non-negative.")
+    try:
+        Hours(record.hours)
+    except ValueError as e:
+        errors.append(str(e))
 
     _check_note_length(record.note, errors)
 
@@ -297,6 +322,8 @@ class SicknessRecord:
     docstring (domain/types.py) for the rationale; SicknessRecord mirrors it
     exactly.
     """
+
+    __hash__ = None  # type: ignore[assignment]
 
     id: int | None
     date: date
@@ -467,6 +494,8 @@ class CarryOverLogEntry:
     construction time.
     """
 
+    __hash__ = None  # type: ignore[assignment]
+
     id: int
     from_year: int
     to_year: int
@@ -535,6 +564,8 @@ class MiliuimRecord:
     re-checked.
     """
 
+    __hash__ = None  # type: ignore[assignment]
+
     id: int | None
     start_date: date
     end_date: date
@@ -547,7 +578,7 @@ class MiliuimRecord:
             raise ValueError("; ".join(errors))
 
 
-def set_generated_id(record: Any, record_id: int) -> None:
+def set_generated_id(record: _HasId, record_id: int) -> None:
     """Backfills a DB-generated id onto a frozen record instance via the
     object.__setattr__ escape hatch. id never participates in any record's
     invariant checks, so this bypass is inert with respect to validation.

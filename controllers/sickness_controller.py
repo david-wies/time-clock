@@ -59,25 +59,29 @@ class SicknessController:
         if errors:
             return Result(ok=False, errors=tuple(errors))
 
-        year = record.date.year
-        summary = self.model.calculate_sickness_summary(year)
-
-        old_hours = 0.0
-        if record.id is not None:
-            old_rec = self.model.get_record_by_id(record.id)
-            if old_rec and old_rec.date.year == year:
-                old_hours = old_rec.hours
-
-        projected_used = summary.used_hours - old_hours + record.hours
-        projected_remaining = summary.allowance_hours - projected_used
-
-        if projected_remaining < 0 and not confirm_over_balance:
-            return Result(ok=False, errors=(WarningCode.OVER_BALANCE.value,))
-
+        # The summary/old-record reads and the insert/update are all wrapped
+        # by the same guard below: a sqlite3.Error raised by any of them
+        # (e.g. a locked DB during a read) must turn into a Result, never
+        # propagate past this method.
         guard = DatabaseErrorGuard(
             logger, "Database error while saving sick record %r", record
         )
         with guard:
+            year = record.date.year
+            summary = self.model.calculate_sickness_summary(year)
+
+            old_hours = 0.0
+            if record.id is not None:
+                old_rec = self.model.get_record_by_id(record.id)
+                if old_rec and old_rec.date.year == year:
+                    old_hours = old_rec.hours
+
+            projected_used = summary.used_hours - old_hours + record.hours
+            projected_remaining = summary.allowance_hours - projected_used
+
+            if projected_remaining < 0 and not confirm_over_balance:
+                return Result(ok=False, errors=(WarningCode.OVER_BALANCE.value,))
+
             if record.id is None:
                 record_id = self.model.insert_record(record)
                 # Backfill the DB-generated id onto the frozen record.
@@ -114,57 +118,10 @@ class SicknessController:
         if hours < _MIN_SICK_HOURS or hours > _MAX_SICK_HOURS:
             return Result(ok=False, errors=("Hours must be between 0.5 and 24.",))
 
-        # Uses a lightweight raw-SQL read (id, date only) instead of
-        # get_records_in_date_range(), which goes through SicknessRecord
-        # construction and silently drops any row that fails validation
-        # (see SicknessModel._row_to_record()). A dropped row here would
-        # make a genuinely conflicting sick day invisible to this check and
-        # let a duplicate/overlapping record be saved anyway.
-        existing = self.model.get_dates_in_range(start_date, end_date)
-        if existing:
-            conflict_dates = ", ".join(
-                to_display_date(d) for d in sorted(d for _, d in existing)
-            )
-            return Result(
-                ok=False,
-                errors=(f"A sick record already exists for: {conflict_dates}.",),
-            )
-
-        dates: list[date] = []
-        cur = start_date
-        while cur <= end_date:
-            dates.append(cur)
-            cur += timedelta(days=1)
-
-        if not confirm_over_balance:
-            year_date_counts: dict[int, int] = {}
-            for d in dates:
-                year_date_counts[d.year] = year_date_counts.get(d.year, 0) + 1
-            for yr, count in year_date_counts.items():
-                summary = self.model.calculate_sickness_summary(yr)
-                if summary.remaining_hours - hours * count < 0:
-                    return Result(ok=False, errors=(WarningCode.OVER_BALANCE.value,))
-
-        # Note-length (and non-negative-hours) validity is a context-free
-        # invariant enforced unconditionally by SicknessRecord.__post_init__
-        # (domain/types.py) — construction raises ValueError instead of
-        # silently accepting an invalid note, so it's caught here and
-        # converted to a Result per this codebase's "controllers return
-        # Result, never raise for expected validation failures" convention.
-        try:
-            records = [
-                SicknessRecord(
-                    id=None,
-                    date=d,
-                    hours=Hours(hours),
-                    note=note,
-                    document_path=document_path,
-                )
-                for d in dates
-            ]
-        except ValueError as e:
-            return Result(ok=False, errors=(str(e),))
-
+        # The date-range/summary reads and the bulk insert are all wrapped by
+        # the same guard below: a sqlite3.Error raised by any of them (e.g.
+        # a locked DB during a read) must turn into a Result, never
+        # propagate past this method.
         guard = DatabaseErrorGuard(
             logger,
             "Database error while saving sick record range %s..%s",
@@ -172,6 +129,62 @@ class SicknessController:
             end_date,
         )
         with guard:
+            # Uses a lightweight raw-SQL read (id, date only) instead of
+            # get_records_in_date_range(), which goes through SicknessRecord
+            # construction and silently drops any row that fails validation
+            # (see SicknessModel._row_to_record()). A dropped row here would
+            # make a genuinely conflicting sick day invisible to this check
+            # and let a duplicate/overlapping record be saved anyway.
+            existing = self.model.get_dates_in_range(start_date, end_date)
+            if existing:
+                conflict_dates = ", ".join(
+                    to_display_date(d) for d in sorted(d for _, d in existing)
+                )
+                return Result(
+                    ok=False,
+                    errors=(
+                        f"A sick record already exists for: {conflict_dates}.",
+                    ),
+                )
+
+            dates: list[date] = []
+            cur = start_date
+            while cur <= end_date:
+                dates.append(cur)
+                cur += timedelta(days=1)
+
+            if not confirm_over_balance:
+                year_date_counts: dict[int, int] = {}
+                for d in dates:
+                    year_date_counts[d.year] = year_date_counts.get(d.year, 0) + 1
+                for yr, count in year_date_counts.items():
+                    summary = self.model.calculate_sickness_summary(yr)
+                    if summary.remaining_hours - hours * count < 0:
+                        return Result(
+                            ok=False, errors=(WarningCode.OVER_BALANCE.value,)
+                        )
+
+            # Note-length (and non-negative-hours) validity is a
+            # context-free invariant enforced unconditionally by
+            # SicknessRecord.__post_init__ (domain/types.py) — construction
+            # raises ValueError instead of silently accepting an invalid
+            # note, so it's caught here and converted to a Result per this
+            # codebase's "controllers return Result, never raise for
+            # expected validation failures" convention.
+            try:
+                records = [
+                    SicknessRecord(
+                        id=None,
+                        date=d,
+                        hours=Hours(hours),
+                        note=note,
+                        document_path=document_path,
+                    )
+                    for d in dates
+                ]
+            except ValueError as e:
+                return Result(ok=False, errors=(str(e),))
+
             self.model.insert_records_bulk(records)
             return Result(ok=True, errors=())
         return guard.unwrap()

@@ -111,7 +111,7 @@ class VacationModel:
             raise ValueError("Cannot update a record without an ID.")
         with self.db.connection() as conn:
             with conn:
-                conn.execute(
+                cursor = conn.execute(
                     """
                     UPDATE vacation_record
                     SET date = ?, hours = ?, vtype = ?, note = ?,
@@ -126,6 +126,10 @@ class VacationModel:
                         record.id,
                     ),
                 )
+                if cursor.rowcount == 0:
+                    raise sqlite3.DatabaseError(
+                        f"No vacation record with id={record.id} exists to update"
+                    )
             self.bus.publish(Event.VACATION_CHANGED)
 
     def delete_record(self, record_id: int) -> None:

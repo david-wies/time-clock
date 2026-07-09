@@ -225,7 +225,7 @@ class TimeClockModel:
             raise ValueError("Cannot update a record without an ID.")
         with self.db.connection() as conn:
             with conn:
-                conn.execute(
+                cursor = conn.execute(
                     """
                     UPDATE time_record
                     SET date = ?, start_time = ?, end_time = ?, break_minutes = ?,
@@ -245,6 +245,10 @@ class TimeClockModel:
                         record.id,
                     ),
                 )
+                if cursor.rowcount == 0:
+                    raise sqlite3.DatabaseError(
+                        f"No time record with id={record.id} exists to update"
+                    )
             self.bus.publish(Event.TIME_RECORDS_CHANGED)
 
     def delete_record(self, record_id: int) -> None:

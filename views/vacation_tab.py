@@ -352,6 +352,12 @@ class VacationTab(RecordTabMixin, ttk.Frame):
     def _do_edit(self) -> None:
         rec = self._get_selected_record()
         if rec is None:
+            messagebox.showwarning(
+                "Record Not Found",
+                "This record could no longer be loaded — it may have been "
+                "deleted or is corrupted. See the application log for details.",
+                parent=self,
+            )
             return
         VacationRecordDialog(
             self,

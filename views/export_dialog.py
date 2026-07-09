@@ -167,6 +167,7 @@ class ExportDialog(tk.Toplevel):
         except Exception as exc:  # pylint: disable=broad-exception-caught
             # date-entry widgets (tkcalendar/manual parsing) can raise
             # ValueError, tkinter errors, etc.; surfaced to the user below.
+            logger.warning("Could not read export date range", exc_info=True)
             messagebox.showerror(
                 "Invalid Date", f"Could not read date: {exc}", parent=self
             )

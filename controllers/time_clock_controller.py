@@ -48,6 +48,19 @@ class DatabaseErrorGuard(AbstractContextManager[None]):
             self.model.insert_record(record)
             return Result(ok=True, errors=[])
         return guard.unwrap()
+
+    A variant seen in TimeClockController.save_record() below does not
+    `return` inside the `with` block (it needs to run more code — the
+    settings write — after the guarded section, on the success path only).
+    There, check `guard.result is not None` right after the `with` block
+    instead of unconditionally calling `.unwrap()`:
+
+        guard = DatabaseErrorGuard(logger, "Database error while X %r", record)
+        with guard:
+            self.model.insert_record(record)
+        if guard.result is not None:
+            return guard.unwrap()
+        # success path continues here
     """
 
     def __init__(self, log: logging.Logger, message: str, *args: object) -> None:
@@ -128,7 +141,6 @@ def validate_time_record(
             # Overnight shift — warn, not error (§5.7)
             errors.append(WarningCode.OVERNIGHT_SHIFT.value)
 
-    # overlap check
     for existing_id, existing_start, existing_end in existing_records:
         if existing_id == record.id:
             continue

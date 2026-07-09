@@ -77,42 +77,49 @@ class VacationController:
         if invariant_errors:
             return Result(ok=False, errors=tuple(invariant_errors))
 
-        max_hours = self.model.get_daily_target_for_date(record.date)
-        if max_hours == 0.0:
-            max_hours = 8.0  # weekend/day-off: use 8h as reference cap
-
-        errors = validate_vacation_record(record, max_hours)
-        if errors:
-            return Result(ok=False, errors=tuple(errors))
-
-        # Check balance if this is a debit record (not carry-over or unpaid leave)
-        is_debit = record.vtype in _DEBIT_VACATION_TYPES
-
-        if is_debit:
-            year = record.date.year
-            summary = self.model.calculate_vacation_summary(year)
-
-            # If editing, subtract old record hours from used to calculate
-            # projected remaining
-            old_hours = 0.0
-            if record.id is not None:
-                old_rec = self.model.get_record_by_id(record.id)
-                if (
-                    old_rec
-                    and old_rec.vtype in _DEBIT_VACATION_TYPES
-                    and old_rec.date.year == year
-                ):
-                    old_hours = old_rec.hours
-
-            projected_remaining = summary.remaining + old_hours - record.hours
-
-            if projected_remaining < 0 and not confirm_over_balance:
-                return Result(ok=False, errors=(WarningCode.OVER_BALANCE.value,))
-
+        # The daily-target/summary/old-record reads and the insert/update are
+        # all wrapped by the same guard below: a sqlite3.Error raised by any
+        # of them (e.g. a locked DB during a read) must turn into a Result,
+        # never propagate past this method.
         guard = DatabaseErrorGuard(
             logger, "Database error while saving vacation record %r", record
         )
         with guard:
+            max_hours = self.model.get_daily_target_for_date(record.date)
+            if max_hours == 0.0:
+                max_hours = 8.0  # weekend/day-off: use 8h as reference cap
+
+            errors = validate_vacation_record(record, max_hours)
+            if errors:
+                return Result(ok=False, errors=tuple(errors))
+
+            # Check balance if this is a debit record (not carry-over or
+            # unpaid leave)
+            is_debit = record.vtype in _DEBIT_VACATION_TYPES
+
+            if is_debit:
+                year = record.date.year
+                summary = self.model.calculate_vacation_summary(year)
+
+                # If editing, subtract old record hours from used to
+                # calculate projected remaining
+                old_hours = 0.0
+                if record.id is not None:
+                    old_rec = self.model.get_record_by_id(record.id)
+                    if (
+                        old_rec
+                        and old_rec.vtype in _DEBIT_VACATION_TYPES
+                        and old_rec.date.year == year
+                    ):
+                        old_hours = old_rec.hours
+
+                projected_remaining = summary.remaining + old_hours - record.hours
+
+                if projected_remaining < 0 and not confirm_over_balance:
+                    return Result(
+                        ok=False, errors=(WarningCode.OVER_BALANCE.value,)
+                    )
+
             if record.id is None:
                 record_id = self.model.insert_record(record)
                 # Backfill the DB-generated id onto the frozen record.
@@ -129,18 +136,6 @@ class VacationController:
                 ok=False, errors=("Hours to transfer must be greater than zero.",)
             )
 
-        allowance = self.model.calculate_carry_over_allowance(to_year)
-        allowed_max = allowance.allowed_transfer
-
-        if hours > allowed_max:
-            return Result(
-                ok=False,
-                errors=(
-                    f"Cannot transfer {hours:.1f} hours. "
-                    f"Max allowed is {allowed_max:.1f} hours.",
-                ),
-            )
-
         guard = DatabaseErrorGuard(
             logger,
             "Database error while adding carry-over from_year=%s to_year=%s",
@@ -148,6 +143,18 @@ class VacationController:
             to_year,
         )
         with guard:
+            allowance = self.model.calculate_carry_over_allowance(to_year)
+            allowed_max = allowance.allowed_transfer
+
+            if hours > allowed_max:
+                return Result(
+                    ok=False,
+                    errors=(
+                        f"Cannot transfer {hours:.1f} hours. "
+                        f"Max allowed is {allowed_max:.1f} hours.",
+                    ),
+                )
+
             self.model.add_carry_over(from_year, to_year, hours)
             return Result(ok=True, errors=())
         return guard.unwrap()

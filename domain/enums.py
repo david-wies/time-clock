@@ -43,12 +43,24 @@ class Weekday(IntEnum):
 
 
 class WarningCode(StrEnum):
-    """A code identifying a non-fatal warning condition surfaced to the UI."""
+    """A code identifying a non-fatal warning condition surfaced to the UI.
 
-    OVERNIGHT_SHIFT = "OVERNIGHT_SHIFT_WARNING"
-    OPEN_RECORD_EXISTS = "OPEN_RECORD_EXISTS"
-    MULTIPLE_OPEN_RECORDS = "MULTIPLE_OPEN_RECORDS"
-    OVER_BALANCE = "OVER_BALANCE_WARNING"
+    `blocking` marks whether this code requires a `force`/`confirm_*`
+    re-call to bypass (and therefore belongs in `Result.errors`), or is
+    purely informational (and belongs in `Result.warnings`)."""
+
+    blocking: bool
+
+    def __new__(cls, value: str, blocking: bool) -> "WarningCode":
+        obj = str.__new__(cls, value)
+        obj._value_ = value
+        obj.blocking = blocking
+        return obj
+
+    OVERNIGHT_SHIFT = ("OVERNIGHT_SHIFT_WARNING", False)
+    OPEN_RECORD_EXISTS = ("OPEN_RECORD_EXISTS", True)
+    MULTIPLE_OPEN_RECORDS = ("MULTIPLE_OPEN_RECORDS", True)
+    OVER_BALANCE = ("OVER_BALANCE_WARNING", True)
 
 
 class PeriodType(StrEnum):
