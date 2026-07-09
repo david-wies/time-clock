@@ -1,9 +1,12 @@
 """Semantic ttk style system with graceful sv-ttk fallback."""
 
+import logging
 from enum import StrEnum
 from tkinter import ttk
 
 import sv_ttk
+
+logger = logging.getLogger(__name__)
 
 __all__ = ["ThemeMode", "COLORS", "resolve_theme_mode", "apply_theme"]
 
@@ -59,6 +62,11 @@ def resolve_theme_mode(mode: str | ThemeMode | None) -> ThemeMode:
     try:
         candidate = ThemeMode(mode)
     except ValueError:
+        logger.warning(
+            "resolve_theme_mode: unrecognized stored theme mode %r, falling back"
+            " to LIGHT",
+            mode,
+        )
         return ThemeMode.LIGHT
     return candidate if candidate in COLORS else ThemeMode.LIGHT
 

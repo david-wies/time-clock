@@ -9,7 +9,13 @@ from datetime import datetime, time
 from types import TracebackType
 
 from domain.enums import WarningCode, WorkType
-from domain.types import BreakMinutes, Result, TimeRecord, time_record_invariant_errors
+from domain.types import (
+    BreakMinutes,
+    Result,
+    TimeRecord,
+    set_generated_id,
+    time_record_invariant_errors,
+)
 from models.time_clock_model import TimeClockModel
 from settings import SettingsManager
 
@@ -58,7 +64,7 @@ class DatabaseErrorGuard(AbstractContextManager[None]):
     ) -> bool:
         if exc_type is not None and issubclass(exc_type, sqlite3.Error):
             self._log.exception(self._message, *self._args)
-            self.result = Result(ok=False, errors=[f"Database error: {exc}"])
+            self.result = Result(ok=False, errors=(f"Database error: {exc}",))
             return True
         return False
 
@@ -161,7 +167,7 @@ class TimeClockController:
         # this module's control.
         invariant_errors = time_record_invariant_errors(record)
         if invariant_errors:
-            return Result(ok=False, errors=invariant_errors)
+            return Result(ok=False, errors=tuple(invariant_errors))
 
         # Uses a lightweight raw-SQL read (id, start_time, end_time only)
         # instead of get_records_by_date(), which goes through TimeRecord
@@ -176,7 +182,7 @@ class TimeClockController:
         # before blocking
         blocking = [e for e in errors if e != WarningCode.OVERNIGHT_SHIFT.value]
         if blocking:
-            return Result(ok=False, errors=blocking)
+            return Result(ok=False, errors=tuple(blocking))
 
         guard = DatabaseErrorGuard(
             logger, "Database error while saving time record %r", record
@@ -184,23 +190,30 @@ class TimeClockController:
         with guard:
             if record.id is None:
                 record_id = self.model.insert_record(record)
-                # TimeRecord is frozen — object.__setattr__ is the
-                # documented escape hatch (see TimeRecord's docstring) for
-                # backfilling the DB-generated id onto the caller's
-                # instance, mirroring what the non-frozen record types do
-                # with a plain `record.id = record_id`. `id` never
-                # participates in any invariant check, so this bypass is
-                # inert with respect to validation.
-                object.__setattr__(record, "id", record_id)
+                # Backfill the DB-generated id onto the frozen record.
+                set_generated_id(record, record_id)
             else:
                 self.model.update_record(record)
+        if guard.result is not None:
+            return guard.unwrap()
 
+        # The record is already safely persisted at this point — a failure
+        # here is "remember last work type for next time", not critical
+        # data, so it must not turn an already-successful save into a
+        # reported failure (which could cause the caller to retry and
+        # insert a duplicate record).
+        try:
             self.settings.set("last_used_work_type", record.work_type.value)
-            # errors may contain OVERNIGHT_SHIFT_WARNING here (blocking
-            # codes were already filtered out above) — non-blocking, so it
-            # belongs in warnings, not errors, on this ok=True result.
-            return Result(ok=True, warnings=errors)
-        return guard.unwrap()
+        except sqlite3.Error:
+            logger.warning(
+                "Failed to persist last_used_work_type setting after save",
+                exc_info=True,
+            )
+
+        # errors may contain OVERNIGHT_SHIFT_WARNING here (blocking
+        # codes were already filtered out above) — non-blocking, so it
+        # belongs in warnings, not errors, on this ok=True result.
+        return Result(ok=True, warnings=tuple(errors))
 
     def clock_in(
         self, work_type: WorkType | None = None, force: bool = False
@@ -212,7 +225,7 @@ class TimeClockController:
         """
         open_today = self.model.get_open_records_for_date(self._clock().date())
         if open_today and not force:
-            return Result(ok=False, errors=[WarningCode.OPEN_RECORD_EXISTS.value])
+            return Result(ok=False, errors=(WarningCode.OPEN_RECORD_EXISTS.value,))
 
         if work_type is None:
             last_wt = self.settings.get("last_used_work_type")
@@ -247,7 +260,7 @@ class TimeClockController:
                 note="",
             )
         except ValueError as e:
-            return Result(ok=False, errors=[str(e)])
+            return Result(ok=False, errors=(str(e),))
 
         # See save_record() above for why get_time_ranges_by_date() is used
         # here instead of get_records_by_date().
@@ -256,12 +269,12 @@ class TimeClockController:
         errors = validate_time_record(record, existing_for_validation)
         blocking = [e for e in errors if e != WarningCode.OVERNIGHT_SHIFT.value]
         if blocking:
-            return Result(ok=False, errors=blocking)
+            return Result(ok=False, errors=tuple(blocking))
 
         guard = DatabaseErrorGuard(logger, "Database error while clocking in")
         with guard:
             self.model.insert_record(record)
-            return Result(ok=True, errors=[])
+            return Result(ok=True, errors=())
         return guard.unwrap()
 
     def clock_out(self, record_id: int | None = None) -> Result:
@@ -272,7 +285,7 @@ class TimeClockController:
         """
         open_today = self.model.get_open_records_for_date(self._clock().date())
         if not open_today:
-            return Result(ok=False, errors=["No active clock-in found."])
+            return Result(ok=False, errors=("No active clock-in found.",))
 
         target_record = None
         if record_id is not None:
@@ -281,11 +294,13 @@ class TimeClockController:
                     target_record = rec
                     break
             if not target_record:
-                return Result(ok=False, errors=["Specified clock-in record not found."])
+                return Result(
+                    ok=False, errors=("Specified clock-in record not found.",)
+                )
         else:
             if len(open_today) > 1:
                 return Result(
-                    ok=False, errors=[WarningCode.MULTIPLE_OPEN_RECORDS.value]
+                    ok=False, errors=(WarningCode.MULTIPLE_OPEN_RECORDS.value,)
                 )
             target_record = open_today[0]
 
@@ -301,7 +316,7 @@ class TimeClockController:
                 target_record, end_time=now.time().replace(second=0, microsecond=0)
             )
         except ValueError as e:
-            return Result(ok=False, errors=[str(e)])
+            return Result(ok=False, errors=(str(e),))
 
         # See save_record() above for why get_time_ranges_by_date() is used
         # here instead of get_records_by_date().
@@ -312,7 +327,7 @@ class TimeClockController:
         errors = validate_time_record(target_record, existing_for_validation)
         blocking = [e for e in errors if e != WarningCode.OVERNIGHT_SHIFT.value]
         if blocking:
-            return Result(ok=False, errors=blocking)
+            return Result(ok=False, errors=tuple(blocking))
 
         guard = DatabaseErrorGuard(
             logger, "Database error while clocking out record id=%s", target_record.id
@@ -322,7 +337,7 @@ class TimeClockController:
             # errors may contain OVERNIGHT_SHIFT_WARNING here (blocking
             # codes were already filtered out above) — non-blocking, so it
             # belongs in warnings, not errors, on this ok=True result.
-            return Result(ok=True, warnings=errors)
+            return Result(ok=True, warnings=tuple(errors))
         return guard.unwrap()
 
     def delete_record(self, record_id: int) -> Result:
@@ -332,5 +347,5 @@ class TimeClockController:
         )
         with guard:
             self.model.delete_record(record_id)
-            return Result(ok=True, errors=[])
+            return Result(ok=True, errors=())
         return guard.unwrap()

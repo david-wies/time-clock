@@ -130,7 +130,7 @@ def test_clock_out_rejects_break_exceeding_shift_length_after_mutation(
     res = controller.clock_out()
 
     assert res.ok is False
-    assert res.errors == ["Break cannot exceed shift length."]
+    assert res.errors == ("Break cannot exceed shift length.",)
 
 
 def test_clock_in_out_flow(controller: TimeClockController) -> None:
@@ -342,7 +342,7 @@ def test_clock_out_no_active_clock_in_found(
     res = controller.clock_out()
 
     assert res.ok is False
-    assert res.errors == ["No active clock-in found."]
+    assert res.errors == ("No active clock-in found.",)
 
 
 def test_clock_out_specified_record_not_found(
@@ -356,7 +356,7 @@ def test_clock_out_specified_record_not_found(
     res = controller.clock_out(record_id=999999)
 
     assert res.ok is False
-    assert res.errors == ["Specified clock-in record not found."]
+    assert res.errors == ("Specified clock-in record not found.",)
     # The real open record must be untouched.
     assert len(controller.model.get_open_records()) == 1
 

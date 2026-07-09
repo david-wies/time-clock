@@ -4,6 +4,7 @@ import copy
 import json
 import logging
 import sqlite3
+from collections.abc import Callable
 from typing import Any
 
 from db.database import Database
@@ -30,6 +31,7 @@ class SettingsManager:
 
     def __init__(self, db: Database) -> None:
         self.db = db
+        self.on_error: Callable[[str, str], None] | None = None
 
     def get(self, key: str, default: Any = None) -> Any:
         """Retrieves a configuration value. Falls back to default if not set."""
@@ -48,6 +50,8 @@ class SettingsManager:
             )
         except sqlite3.Error as exc:
             logger.warning("SettingsManager: DB read failed for key %r: %s", key, exc)
+            if self.on_error is not None:
+                self.on_error(key, str(exc))
         finally:
             conn.close()
 

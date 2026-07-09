@@ -4,7 +4,12 @@ import logging
 
 from controllers.time_clock_controller import DatabaseErrorGuard
 from core.timeutil import to_display_date
-from domain.types import MiliuimRecord, Result, miliuim_record_invariant_errors
+from domain.types import (
+    MiliuimRecord,
+    Result,
+    miliuim_record_invariant_errors,
+    set_generated_id,
+)
 from models.miliuim_model import MiliuimModel
 
 logger = logging.getLogger(__name__)
@@ -46,9 +51,9 @@ class MiliuimController:
             # one with a None date, which makes the `end_date < start_date`
             # comparison inside miliuim_record_invariant_errors() raise
             # TypeError instead of producing a clean validation error.
-            return Result(ok=False, errors=["Start date and end date are required."])
+            return Result(ok=False, errors=("Start date and end date are required.",))
         if errors:
-            return Result(ok=False, errors=errors)
+            return Result(ok=False, errors=tuple(errors))
 
         # The overlap-check read and the insert/update are both wrapped by
         # the same guard below: a sqlite3.Error raised by either one (e.g.
@@ -74,24 +79,19 @@ class MiliuimController:
                 other_end_str = to_display_date(other_end)
                 return Result(
                     ok=False,
-                    errors=[
+                    errors=(
                         "Period overlaps with an existing Miliuim period "
-                        f"({other_start_str} – {other_end_str})."
-                    ],
+                        f"({other_start_str} – {other_end_str}).",
+                    ),
                 )
 
             if record.id is None:
                 record_id = self.model.insert_record(record)
-                # MiliuimRecord is frozen — object.__setattr__ is the
-                # documented escape hatch (see MiliuimRecord's docstring,
-                # mirroring TimeRecord's) for backfilling the DB-generated
-                # id onto the caller's instance. `id` never participates in
-                # any invariant check, so this bypass is inert with respect
-                # to validation.
-                object.__setattr__(record, "id", record_id)
+                # Backfill the DB-generated id onto the frozen record.
+                set_generated_id(record, record_id)
             else:
                 self.model.update_record(record)
-            return Result(ok=True, errors=[])
+            return Result(ok=True, errors=())
         return guard.unwrap()
 
     def delete_record(self, record_id: int) -> Result:
@@ -101,5 +101,5 @@ class MiliuimController:
         )
         with guard:
             self.model.delete_record(record_id)
-            return Result(ok=True, errors=[])
+            return Result(ok=True, errors=())
         return guard.unwrap()

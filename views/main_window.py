@@ -290,6 +290,21 @@ class MainWindow(ttk.Frame):
         self._last_error_shown_at[key] = now
         messagebox.showerror(title, message, parent=self.root)
 
+    def notify_settings_error(self, key: str, detail: str) -> None:
+        """SettingsManager.on_error hook: a settings read hit a DB error and
+        fell back to a default value. Deferred via root.after for the same
+        reason as `_on_bus_handler_error` — may be invoked from a call stack
+        that shouldn't block on a modal's nested event loop."""
+        self.root.after(
+            0,
+            lambda: self._show_error_deduped(
+                f"settings:{key}",
+                "Settings Warning",
+                f"Could not read the '{key}' setting from the database; using "
+                f"the default value instead.\n\nDetails were written to the log.",
+            ),
+        )
+
     def _on_bus_handler_error(self, message: str) -> None:
         """EventBus.on_handler_error hook: a subscriber raised. The bus has
         already logged the full traceback; let the user know something went

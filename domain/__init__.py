@@ -10,6 +10,7 @@ from domain.types import (
     VacationRecord,
     VacationSummary,
     WorkDayException,
+    set_generated_id,
 )
 
 __all__ = [
@@ -22,4 +23,5 @@ __all__ = [
     "SicknessSummary",
     "WorkDayException",
     "CarryOverLogEntry",
+    "set_generated_id",
 ]

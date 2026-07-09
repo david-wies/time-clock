@@ -628,12 +628,30 @@ class ReportDialog(tk.Toplevel):
         # ── Attached Documents (images) ───────────────────────────────────────
         image_docs, pdf_docs = self._collect_documents(data)
 
+        failed_images: list[str] = []
         if image_docs:
             story.append(Spacer(1, 0.5 * cm))
             story.append(HRFlowable(width="100%", thickness=1, color=colors.grey))
             story.append(Spacer(1, 0.4 * cm))
             story.append(Paragraph("Attached Documents", styles["Heading1"]))
             for type_label, rec_date, doc_path in image_docs:
+                try:
+                    img = RLImage(
+                        doc_path, width=15 * cm, height=20 * cm, kind="proportional"
+                    )
+                except Exception as exc:  # pylint: disable=broad-exception-caught
+                    # A single corrupt/unreadable attachment shouldn't abort the
+                    # whole report; log it and surface a warning after export.
+                    logger.exception(
+                        "Failed to load image attachment %s (%s dated %s) for "
+                        "report %s",
+                        doc_path,
+                        type_label,
+                        rec_date,
+                        filepath,
+                    )
+                    failed_images.append(f"{os.path.basename(doc_path)}: {exc}")
+                    continue
                 story.append(Spacer(1, 0.3 * cm))
                 doc_label = (
                     f"{type_label} — {to_display_date(rec_date)} — "
@@ -646,12 +664,17 @@ class ReportDialog(tk.Toplevel):
                     )
                 )
                 story.append(Spacer(1, 0.2 * cm))
-                img = RLImage(
-                    doc_path, width=15 * cm, height=20 * cm, kind="proportional"
-                )
                 story.append(img)
 
         doc.build(story)
+
+        if failed_images:
+            messagebox.showwarning(
+                "Attachment Warning",
+                "Some attached images could not be included:\n"
+                + "\n".join(failed_images),
+                parent=self,
+            )
 
         # ── Attached Documents (PDF pages appended) ───────────────────────────
         if pdf_docs:

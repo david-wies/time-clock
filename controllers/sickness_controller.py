@@ -6,7 +6,13 @@ from datetime import date, timedelta
 from controllers.time_clock_controller import DatabaseErrorGuard
 from core.timeutil import to_display_date
 from domain.enums import WarningCode
-from domain.types import Hours, Result, SicknessRecord, sickness_record_invariant_errors
+from domain.types import (
+    Hours,
+    Result,
+    SicknessRecord,
+    set_generated_id,
+    sickness_record_invariant_errors,
+)
 from models.sickness_model import SicknessModel
 
 logger = logging.getLogger(__name__)
@@ -47,11 +53,11 @@ class SicknessController:
         """Validates and saves a SicknessRecord."""
         invariant_errors = sickness_record_invariant_errors(record)
         if invariant_errors:
-            return Result(ok=False, errors=invariant_errors)
+            return Result(ok=False, errors=tuple(invariant_errors))
 
         errors = validate_sick_record(record)
         if errors:
-            return Result(ok=False, errors=errors)
+            return Result(ok=False, errors=tuple(errors))
 
         year = record.date.year
         summary = self.model.calculate_sickness_summary(year)
@@ -66,7 +72,7 @@ class SicknessController:
         projected_remaining = summary.allowance_hours - projected_used
 
         if projected_remaining < 0 and not confirm_over_balance:
-            return Result(ok=False, errors=[WarningCode.OVER_BALANCE.value])
+            return Result(ok=False, errors=(WarningCode.OVER_BALANCE.value,))
 
         guard = DatabaseErrorGuard(
             logger, "Database error while saving sick record %r", record
@@ -74,16 +80,11 @@ class SicknessController:
         with guard:
             if record.id is None:
                 record_id = self.model.insert_record(record)
-                # SicknessRecord is frozen — object.__setattr__ is the
-                # documented escape hatch (see SicknessRecord's docstring,
-                # mirroring TimeRecord's) for backfilling the DB-generated
-                # id onto the caller's instance. `id` never participates in
-                # any invariant check, so this bypass is inert with respect
-                # to validation.
-                object.__setattr__(record, "id", record_id)
+                # Backfill the DB-generated id onto the frozen record.
+                set_generated_id(record, record_id)
             else:
                 self.model.update_record(record)
-            return Result(ok=True, errors=[])
+            return Result(ok=True, errors=())
         return guard.unwrap()
 
     def delete_record(self, record_id: int) -> Result:
@@ -93,7 +94,7 @@ class SicknessController:
         )
         with guard:
             self.model.delete_record(record_id)
-            return Result(ok=True, errors=[])
+            return Result(ok=True, errors=())
         return guard.unwrap()
 
     def save_range(
@@ -107,9 +108,11 @@ class SicknessController:
     ) -> Result:
         """Insert sick records for every day in [start_date, end_date] inclusive."""
         if end_date < start_date:
-            return Result(ok=False, errors=["End date must be on or after start date."])
+            return Result(
+                ok=False, errors=("End date must be on or after start date.",)
+            )
         if hours < _MIN_SICK_HOURS or hours > _MAX_SICK_HOURS:
-            return Result(ok=False, errors=["Hours must be between 0.5 and 24."])
+            return Result(ok=False, errors=("Hours must be between 0.5 and 24.",))
 
         # Uses a lightweight raw-SQL read (id, date only) instead of
         # get_records_in_date_range(), which goes through SicknessRecord
@@ -124,7 +127,7 @@ class SicknessController:
             )
             return Result(
                 ok=False,
-                errors=[f"A sick record already exists for: {conflict_dates}."],
+                errors=(f"A sick record already exists for: {conflict_dates}.",),
             )
 
         dates: list[date] = []
@@ -140,7 +143,7 @@ class SicknessController:
             for yr, count in year_date_counts.items():
                 summary = self.model.calculate_sickness_summary(yr)
                 if summary.remaining_hours - hours * count < 0:
-                    return Result(ok=False, errors=[WarningCode.OVER_BALANCE.value])
+                    return Result(ok=False, errors=(WarningCode.OVER_BALANCE.value,))
 
         # Note-length (and non-negative-hours) validity is a context-free
         # invariant enforced unconditionally by SicknessRecord.__post_init__
@@ -160,7 +163,7 @@ class SicknessController:
                 for d in dates
             ]
         except ValueError as e:
-            return Result(ok=False, errors=[str(e)])
+            return Result(ok=False, errors=(str(e),))
 
         guard = DatabaseErrorGuard(
             logger,
@@ -170,5 +173,5 @@ class SicknessController:
         )
         with guard:
             self.model.insert_records_bulk(records)
-            return Result(ok=True, errors=[])
+            return Result(ok=True, errors=())
         return guard.unwrap()

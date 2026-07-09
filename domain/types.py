@@ -10,6 +10,7 @@ __all__ = [
     "MiliuimSummary",
     "Result",
     "PeriodBalance",
+    "set_generated_id",
     "time_record_invariant_errors",
     "vacation_record_invariant_errors",
     "sickness_record_invariant_errors",
@@ -40,10 +41,11 @@ class _ValidatingRecord:
     """Mixin that re-validates single-field invariants on every assignment,
     not just at construction.
 
-    Used by WorkDayException and CarryOverLogEntry — the two record types in
-    this module that are still mutable. VacationRecord, SicknessRecord,
-    MiliuimRecord, and TimeRecord are frozen instead (see VacationRecord's
-    docstring below for why), so they do not use this mixin.
+    Used by WorkDayException — the one record type in this module that is
+    still mutable, because `date`/`id`/`label` have no invariant to enforce
+    today. VacationRecord, SicknessRecord, MiliuimRecord, TimeRecord, and
+    CarryOverLogEntry are frozen instead (see VacationRecord's docstring
+    below for why), so they do not use this mixin.
 
     Plain (non-frozen) dataclasses only run `__post_init__` once, at
     construction — nothing stops later code from doing `record.hours = -5`
@@ -309,7 +311,7 @@ class SicknessRecord:
         object.__setattr__(self, "hours", Hours(self.hours))
 
 
-@dataclass(slots=True)
+@dataclass(frozen=True, slots=True)
 class Result:
     """Outcome of a controller operation: success flag, blocking errors, and
     non-blocking warnings.
@@ -325,17 +327,29 @@ class Result:
     only checks `if not result.ok` (the documented, correct way to consume a
     Result) would silently drop a real error attached to an `ok=True`
     result.
+
+    Frozen, with `errors`/`warnings` stored as `tuple[str, ...]` rather than
+    `list[str]` — nothing but `__post_init__` should ever be able to touch
+    these fields after construction, otherwise `result.errors.append(...)`
+    could silently corrupt the `ok=False ⟺ errors non-empty` invariant this
+    class exists to guarantee. Construction still accepts any iterable
+    (callers overwhelmingly pass a `list[str]` literal, e.g.
+    `Result(ok=False, errors=["msg"])`) — `__post_init__` converts it into a
+    real tuple via the `object.__setattr__` escape hatch, the same pattern
+    used by every other frozen record in this module to normalize a field.
     """
 
     ok: bool
-    errors: list[str] = field(default_factory=list)
-    warnings: list[str] = field(default_factory=list)
+    errors: tuple[str, ...] = field(default_factory=tuple)
+    warnings: tuple[str, ...] = field(default_factory=tuple)
 
     def __post_init__(self) -> None:
         if not self.ok and not self.errors:
             raise ValueError("Result(ok=False, ...) must carry at least one error.")
         if self.ok and self.errors:
             raise ValueError("Result(ok=True, ...) must not carry any errors.")
+        object.__setattr__(self, "errors", tuple(self.errors))
+        object.__setattr__(self, "warnings", tuple(self.warnings))
 
 
 @dataclass(slots=True)
@@ -434,20 +448,30 @@ def _positive_hours(value: float) -> Hours:
     return hours
 
 
-@dataclass(slots=True)
-class CarryOverLogEntry(_ValidatingRecord):
-    """A historical record of a vacation carry-over transfer between two years."""
+@dataclass(frozen=True, slots=True)
+class CarryOverLogEntry:
+    """A historical record of a vacation carry-over transfer between two years.
+
+    Frozen rather than a `_ValidatingRecord` subclass — see MiliuimRecord's
+    docstring (domain/types.py) for the rationale, which applies here
+    identically: `to_year == from_year + 1` is a genuine cross-field
+    invariant that a `_ValidatingRecord`-style per-field `_VALIDATORS` map
+    could never re-check on mutation (it only ever sees the one field being
+    assigned, e.g. `entry.from_year = 1900` would silently succeed even
+    though it violates the invariant against the still-unchanged `to_year`).
+    Freezing is what makes it impossible to violate post-construction, not
+    just conventionally re-checked. Unlike TimeRecord/VacationRecord/
+    SicknessRecord/MiliuimRecord, CarryOverLogEntry never needs the
+    `object.__setattr__` id-backfill pattern — its only construction sites
+    (models/vacation_model.py) already know the DB-generated `id` at
+    construction time.
+    """
 
     id: int
     from_year: int
     to_year: int
     hours: Hours
     transferred_at: datetime  # UTC
-    _constructed: bool = field(default=False, init=False, repr=False, compare=False)
-
-    _VALIDATORS: ClassVar[dict[str, Callable[[Any], Any]]] = {
-        "hours": _positive_hours,
-    }
 
     def __post_init__(self) -> None:
         # Carry-over always moves surplus from the immediately preceding
@@ -456,13 +480,14 @@ class CarryOverLogEntry(_ValidatingRecord):
         # caller, views/carry_over_dialog.py, hardcodes
         # self._from_year = to_year - 1). from_year < to_year alone would be
         # too weak to catch a caller accidentally skipping or reversing a
-        # year, so the exact one-year gap is enforced instead — this
-        # cross-field check stays construction-only (a single-field
-        # validator can't see both from_year and to_year together).
+        # year, so the exact one-year gap is enforced instead.
         if self.to_year != self.from_year + 1:
             raise ValueError("to_year must be exactly one year after from_year.")
-        self.hours = _positive_hours(self.hours)
-        self._constructed = True
+        # object.__setattr__ bypasses the frozen-dataclass __setattr__ that
+        # would otherwise reject this — the standard pattern for a frozen
+        # dataclass that needs to normalize a field in __post_init__ (see
+        # TimeRecord.__post_init__).
+        object.__setattr__(self, "hours", _positive_hours(self.hours))
 
 
 def miliuim_record_invariant_errors(record: MiliuimRecord) -> list[str]:
@@ -522,6 +547,20 @@ class MiliuimRecord:
             raise ValueError("; ".join(errors))
 
 
+def set_generated_id(record: Any, record_id: int) -> None:
+    """Backfills a DB-generated id onto a frozen record instance via the
+    object.__setattr__ escape hatch. id never participates in any record's
+    invariant checks, so this bypass is inert with respect to validation.
+
+    Factored out of the four controllers (time_clock_controller.py,
+    vacation_controller.py, sickness_controller.py, miliuim_controller.py)
+    that each duplicated this exact `object.__setattr__(record, "id", ...)`
+    line after inserting a frozen TimeRecord/VacationRecord/SicknessRecord/
+    MiliuimRecord and getting back the DB-generated primary key.
+    """
+    object.__setattr__(record, "id", record_id)
+
+
 @dataclass(slots=True)
 class MiliuimSummary:
     """A year's aggregate reserve-duty (miliuim) totals: period count and total days."""
@@ -534,19 +573,28 @@ class MiliuimSummary:
 class PeriodBalance:
     """A period's worked-vs-target hour balance, including weighted overtime.
 
-    `balance` is a computed property, not a stored field —
-    core.balance.period_balance_from_grouped() (its only construction site)
-    always derives it as `worked_hours - target_hours`, with no conditional
-    branch that ever computes it differently. `weighted_overtime` stays a
-    stored field: it depends on `overtime_rate`, which this dataclass does
-    not retain, so it cannot be recomputed from `balance` alone.
+    `balance` and `weighted_overtime` are both computed properties, not
+    stored fields — core.balance.period_balance_from_grouped() (this
+    dataclass's only construction site) always derives `balance` as
+    `worked_hours - target_hours`, and `weighted_overtime` as `balance *
+    overtime_rate` when `balance` is positive (surplus) or plain `balance`
+    otherwise (deficit is never rate-adjusted), with no conditional branch
+    that ever computes either differently. `overtime_rate` is retained as a
+    stored field precisely so `weighted_overtime` can be recomputed from
+    `balance` alone instead of being passed in pre-computed.
     """
 
     worked_hours: float
     target_hours: float
-    weighted_overtime: float
+    overtime_rate: float
     days_in_period: int
 
     @property
     def balance(self) -> float:
         return self.worked_hours - self.target_hours
+
+    @property
+    def weighted_overtime(self) -> float:
+        if self.balance > 0:
+            return self.balance * self.overtime_rate
+        return self.balance

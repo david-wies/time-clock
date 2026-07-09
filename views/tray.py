@@ -19,7 +19,7 @@ from settings import SettingsManager
 logger = logging.getLogger(__name__)
 
 _ICON_SIZE = 64
-_BADGE_COLOR = (22, 163, 74, 255)  # success green
+_BADGE_COLOR = (22, 163, 74, 255)
 _PNG_PATH = Path(__file__).parent.parent / "resources" / "time-clock.png"
 
 
@@ -167,7 +167,7 @@ class SystemTray:
     def _do_clock_in(self) -> None:
         result = self._controller.clock_in()
         if not result.ok:
-            if result.errors == [WarningCode.OPEN_RECORD_EXISTS.value]:
+            if result.errors == (WarningCode.OPEN_RECORD_EXISTS.value,):
                 # The tray menu's "Clock In" item is enabled based on
                 # self._clocked_in_cache, which is only refreshed on
                 # CLOCK_STATE_CHANGED/TIME_RECORDS_CHANGED events (see
@@ -197,7 +197,7 @@ class SystemTray:
     def _do_clock_out(self) -> None:
         result = self._controller.clock_out()
         if not result.ok:
-            if result.errors == [WarningCode.MULTIPLE_OPEN_RECORDS.value]:
+            if result.errors == (WarningCode.MULTIPLE_OPEN_RECORDS.value,):
                 self._root.after(
                     0,
                     lambda: messagebox.showinfo(

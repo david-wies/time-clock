@@ -4,7 +4,12 @@ import logging
 
 from controllers.time_clock_controller import DatabaseErrorGuard
 from domain.enums import VacationType, WarningCode
-from domain.types import Result, VacationRecord, vacation_record_invariant_errors
+from domain.types import (
+    Result,
+    VacationRecord,
+    set_generated_id,
+    vacation_record_invariant_errors,
+)
 from models.vacation_model import VacationModel
 
 logger = logging.getLogger(__name__)
@@ -64,12 +69,13 @@ class VacationController:
         # add_carry_over().
         if record.vtype == VacationType.CARRY_OVER:
             return Result(
-                ok=False, errors=["Use add_carry_over() to record carry-over hours."]
+                ok=False,
+                errors=("Use add_carry_over() to record carry-over hours.",),
             )
 
         invariant_errors = vacation_record_invariant_errors(record)
         if invariant_errors:
-            return Result(ok=False, errors=invariant_errors)
+            return Result(ok=False, errors=tuple(invariant_errors))
 
         max_hours = self.model.get_daily_target_for_date(record.date)
         if max_hours == 0.0:
@@ -77,7 +83,7 @@ class VacationController:
 
         errors = validate_vacation_record(record, max_hours)
         if errors:
-            return Result(ok=False, errors=errors)
+            return Result(ok=False, errors=tuple(errors))
 
         # Check balance if this is a debit record (not carry-over or unpaid leave)
         is_debit = record.vtype in _DEBIT_VACATION_TYPES
@@ -101,7 +107,7 @@ class VacationController:
             projected_remaining = summary.remaining + old_hours - record.hours
 
             if projected_remaining < 0 and not confirm_over_balance:
-                return Result(ok=False, errors=[WarningCode.OVER_BALANCE.value])
+                return Result(ok=False, errors=(WarningCode.OVER_BALANCE.value,))
 
         guard = DatabaseErrorGuard(
             logger, "Database error while saving vacation record %r", record
@@ -109,23 +115,18 @@ class VacationController:
         with guard:
             if record.id is None:
                 record_id = self.model.insert_record(record)
-                # VacationRecord is frozen — object.__setattr__ is the
-                # documented escape hatch (see VacationRecord's docstring,
-                # mirroring TimeRecord's) for backfilling the DB-generated
-                # id onto the caller's instance. `id` never participates in
-                # any invariant check, so this bypass is inert with respect
-                # to validation.
-                object.__setattr__(record, "id", record_id)
+                # Backfill the DB-generated id onto the frozen record.
+                set_generated_id(record, record_id)
             else:
                 self.model.update_record(record)
-            return Result(ok=True, errors=[])
+            return Result(ok=True, errors=())
         return guard.unwrap()
 
     def add_carry_over(self, from_year: int, to_year: int, hours: float) -> Result:
         """Validates and records a carry-over allocation."""
         if hours <= 0:
             return Result(
-                ok=False, errors=["Hours to transfer must be greater than zero."]
+                ok=False, errors=("Hours to transfer must be greater than zero.",)
             )
 
         allowance = self.model.calculate_carry_over_allowance(to_year)
@@ -134,10 +135,10 @@ class VacationController:
         if hours > allowed_max:
             return Result(
                 ok=False,
-                errors=[
+                errors=(
                     f"Cannot transfer {hours:.1f} hours. "
-                    f"Max allowed is {allowed_max:.1f} hours."
-                ],
+                    f"Max allowed is {allowed_max:.1f} hours.",
+                ),
             )
 
         guard = DatabaseErrorGuard(
@@ -148,7 +149,7 @@ class VacationController:
         )
         with guard:
             self.model.add_carry_over(from_year, to_year, hours)
-            return Result(ok=True, errors=[])
+            return Result(ok=True, errors=())
         return guard.unwrap()
 
     def delete_record(self, record_id: int) -> Result:
@@ -158,5 +159,5 @@ class VacationController:
         )
         with guard:
             self.model.delete_record(record_id)
-            return Result(ok=True, errors=[])
+            return Result(ok=True, errors=())
         return guard.unwrap()

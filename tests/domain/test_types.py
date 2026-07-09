@@ -403,24 +403,18 @@ def test_carry_over_log_entry_non_consecutive_years_raises() -> None:
         CarryOverLogEntry(1, 2024, 2026, 5.0, datetime(2026, 1, 1))
 
 
-def test_carry_over_log_entry_rejects_non_positive_hours_after_mutation() -> None:
-    """CarryOverLogEntry.hours is a _ValidatingRecord-validated field
-    (domain/types.py), so mutating it to an invalid value on an
-    already-constructed instance raises ValueError immediately, same as at
-    construction time — see test_carry_over_log_entry_non_positive_hours_raises.
-
-    Uses 0.0 rather than a negative value: _positive_hours() (domain/
-    types.py) now delegates the finite/non-negative check to Hours first,
-    so a negative value like -1.0 raises Hours' "non-negative" message
-    before reaching the positivity check below it. 0.0 is non-negative (so
-    it passes Hours) but not positive, so it is the value that specifically
-    exercises CarryOverLogEntry's stricter-than-Hours "must be positive"
-    requirement — matching test_carry_over_log_entry_non_positive_hours_raises
-    at construction time."""
+def test_carry_over_log_entry_is_frozen() -> None:
+    """CarryOverLogEntry is immutable — like MiliuimRecord
+    (test_miliuim_record_is_frozen above), this matters for a genuine
+    cross-field invariant (to_year == from_year + 1): freezing is what
+    makes it impossible to end up with an instance whose fields are
+    individually fine but jointly invalid (e.g. changing only from_year
+    without re-checking it against to_year). See CarryOverLogEntry's
+    docstring (domain/types.py)."""
     entry = CarryOverLogEntry(1, 2025, 2026, 5.0, datetime(2026, 1, 1))
 
-    with pytest.raises(ValueError, match="positive"):
-        entry.hours = 0.0
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        entry.hours = 0.0  # type: ignore[misc]
 
 
 # ─────────────────────────────── PeriodBalance ───────────────────────────────
@@ -434,7 +428,7 @@ def test_period_balance_fields() -> None:
     pb = PeriodBalance(
         worked_hours=16.5,
         target_hours=16.0,
-        weighted_overtime=0.5,
+        overtime_rate=1.0,
         days_in_period=2,
     )
     assert pb.worked_hours == 16.5
@@ -448,7 +442,7 @@ def test_period_balance_balance_is_computed() -> None:
     pb = PeriodBalance(
         worked_hours=10.0,
         target_hours=16.0,
-        weighted_overtime=-6.0,
+        overtime_rate=1.0,
         days_in_period=2,
     )
     assert pb.balance == -6.0
@@ -474,9 +468,9 @@ def test_result_ok_true_with_errors_raises() -> None:
 def test_result_ok_true_with_warnings_succeeds() -> None:
     """Only errors are constrained by the ok/errors invariant -- warnings
     are allowed (and expected) alongside ok=True."""
-    result = Result(ok=True, warnings=["OVERNIGHT_SHIFT_WARNING"])
+    result = Result(ok=True, warnings=(("OVERNIGHT_SHIFT_WARNING",)))
     assert result.ok is True
-    assert result.warnings == ["OVERNIGHT_SHIFT_WARNING"]
+    assert result.warnings == ("OVERNIGHT_SHIFT_WARNING",)
 
 
 # ────────────────────── Dialog-style construction guard ─────────────────────

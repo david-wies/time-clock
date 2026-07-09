@@ -40,8 +40,8 @@ class ReportData:
     # Time clock
     worked_hours: float
     target_hours: float
-    time_balance: float  # worked - target
-    weighted_overtime: float  # time_balance * rate if positive
+    time_balance: float
+    weighted_overtime: float
     overtime_rate: float
 
     # Vacation
@@ -207,7 +207,9 @@ def period_summary(
     # Vacation and sickness summaries are always year-level. Each call below
     # fetches its own year's records internally (no `records=` override is
     # passed here) and so sets that model's last_skipped_count -- captured
-    # immediately after each call, before the next call overwrites it.
+    # immediately after each call for defense-in-depth consistency with the
+    # pattern above, though these are separate model instances so there's no
+    # actual cross-call overwrite risk here.
     vac = model_vacation.calculate_vacation_summary(year)
     skipped_record_count += model_vacation.last_skipped_count
     sick = model_sickness.calculate_sickness_summary(year)

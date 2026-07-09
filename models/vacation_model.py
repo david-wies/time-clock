@@ -184,6 +184,7 @@ class VacationModel:
             )
             rows = cursor.fetchall()
             entries = []
+            skipped_count = 0
             for row in rows:
                 try:
                     transferred_at = datetime.fromisoformat(row["transferred_at"])
@@ -194,6 +195,7 @@ class VacationModel:
                         row["id"],
                         row["transferred_at"],
                     )
+                    skipped_count += 1
                     continue
                 try:
                     entries.append(
@@ -214,6 +216,8 @@ class VacationModel:
                         row["to_year"],
                         row["hours"],
                     )
+                    skipped_count += 1
+            self.last_skipped_count = skipped_count
             return entries
 
     def get_already_transferred(self, from_year: int, to_year: int) -> float:

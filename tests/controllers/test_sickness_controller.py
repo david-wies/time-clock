@@ -184,7 +184,7 @@ def test_save_range_rejects_end_date_before_start_date(
     res = controller.save_range(date(2026, 6, 10), date(2026, 6, 5), 8.0)
 
     assert res.ok is False
-    assert res.errors == ["End date must be on or after start date."]
+    assert res.errors == ("End date must be on or after start date.",)
 
 
 @pytest.mark.parametrize(
@@ -200,7 +200,7 @@ def test_save_range_rejects_hours_outside_valid_range(
     res = controller.save_range(date(2026, 6, 8), date(2026, 6, 10), hours)
 
     assert res.ok is False
-    assert res.errors == ["Hours must be between 0.5 and 24."]
+    assert res.errors == ("Hours must be between 0.5 and 24.",)
 
     records = controller.model.get_records_in_date_range(
         date(2026, 6, 8), date(2026, 6, 10)
@@ -271,7 +271,7 @@ def test_save_range_rejects_over_balance_and_confirms_override(
 
     res = controller.save_range(date(2026, 6, 1), date(2026, 6, 3), 8.0, "Sick")
     assert res.ok is False
-    assert res.errors == ["OVER_BALANCE_WARNING"]
+    assert res.errors == ("OVER_BALANCE_WARNING",)
 
     # The rejected attempt must not have inserted any records.
     records = controller.model.get_records_in_date_range(
@@ -306,7 +306,7 @@ def test_save_range_year_boundary_splits_day_counts_per_year(
     res = controller.save_range(date(2026, 12, 31), date(2027, 1, 2), 8.0, "Sick")
 
     assert res.ok is False
-    assert res.errors == ["OVER_BALANCE_WARNING"]
+    assert res.errors == ("OVER_BALANCE_WARNING",)
 
     records = controller.model.get_records_in_date_range(
         date(2026, 12, 31), date(2027, 1, 2)

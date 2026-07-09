@@ -325,7 +325,7 @@ def test_add_carry_over_rejects_non_positive_hours(
     res = controller.add_carry_over(2025, 2026, hours)
 
     assert res.ok is False
-    assert res.errors == ["Hours to transfer must be greater than zero."]
+    assert res.errors == ("Hours to transfer must be greater than zero.",)
 
 
 def test_add_carry_over_validation(controller: VacationController) -> None:

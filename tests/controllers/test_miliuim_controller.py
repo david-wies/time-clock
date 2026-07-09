@@ -239,7 +239,7 @@ def test_save_record_with_none_dates_returns_result_not_typeerror(
     res = controller.save_record(rec)
 
     assert res.ok is False
-    assert res.errors == ["Start date and end date are required."]
+    assert res.errors == ("Start date and end date are required.",)
 
 
 def test_save_record_defense_in_depth_end_before_start_via_bypass(
@@ -262,7 +262,7 @@ def test_save_record_defense_in_depth_end_before_start_via_bypass(
     res = controller.save_record(rec)
 
     assert res.ok is False
-    assert res.errors == ["End date must be on or after start date."]
+    assert res.errors == ("End date must be on or after start date.",)
 
 
 # ────────────────────── Exception narrowing (§ codebase review G2 #1) ───────

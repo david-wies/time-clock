@@ -1,5 +1,6 @@
 """Help viewer — opens documentation in the default browser."""
 
+import logging
 import re
 import tkinter as tk
 import webbrowser
@@ -9,6 +10,8 @@ from tkinter import messagebox, ttk
 from urllib.parse import urlencode
 
 from version import __version__ as _APP_VERSION
+
+logger = logging.getLogger(__name__)
 
 _REPO_URL = "https://github.com/david-wies/time-clock"
 
@@ -115,10 +118,17 @@ def show_about(parent=None) -> None:
         font=("TkDefaultFont", 9, "underline"),
     )
     link.pack(anchor="w")
-    link.bind(
-        "<Button-1>",
-        lambda _event: webbrowser.open("https://github.com/david-wies/time-clock"),
-    )
+
+    def _open_github_link(_event: object) -> None:
+        try:
+            opened = webbrowser.open("https://github.com/david-wies/time-clock")
+        except webbrowser.Error, OSError:
+            logger.warning("Could not open GitHub link in browser", exc_info=True)
+            return
+        if not opened:
+            logger.warning("Could not open a web browser for the GitHub link.")
+
+    link.bind("<Button-1>", _open_github_link)
 
     ttk.Label(container, text="").pack(anchor="w")
     ttk.Label(container, text="Built with Python & tkinter.").pack(anchor="w")

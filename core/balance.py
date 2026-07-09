@@ -110,18 +110,10 @@ def period_balance_from_grouped(
         day_records = records_by_date.get(current_date, [])
         total_worked += sum_day_worked(day_records, today, now_time)
 
-    balance = total_worked - total_target
-
-    # Overtime rate only applies to positive balances (surplus)
-    if balance > 0:
-        weighted_overtime = balance * overtime_rate
-    else:
-        weighted_overtime = balance
-
     return PeriodBalance(
         worked_hours=total_worked,
         target_hours=total_target,
-        weighted_overtime=weighted_overtime,
+        overtime_rate=overtime_rate,
         days_in_period=num_days,
     )
 

@@ -26,6 +26,8 @@ from views.time_clock_tab import TimeClockTab
 from views.tray import SystemTray
 from views.vacation_tab import VacationTab
 
+logger = logging.getLogger(__name__)
+
 _LOG_FORMAT = "%(asctime)s %(levelname)s %(name)s: %(message)s"
 
 
@@ -66,19 +68,28 @@ def main() -> None:
     """Wire Database → Models → Controllers → Views and start the app."""
     _configure_logging()
 
-    db = Database()
-    settings = SettingsManager(db)
-    bus = EventBus()
+    try:
+        db = Database()
+        settings = SettingsManager(db)
+        bus = EventBus()
 
-    time_model = TimeClockModel(db, bus)
-    vacation_model = VacationModel(db, bus)
-    sickness_model = SicknessModel(db, bus)
-    miliuim_model = MiliuimModel(db, bus)
+        time_model = TimeClockModel(db, bus)
+        vacation_model = VacationModel(db, bus)
+        sickness_model = SicknessModel(db, bus)
+        miliuim_model = MiliuimModel(db, bus)
 
-    time_ctrl = TimeClockController(time_model, settings)
-    vacation_ctrl = VacationController(vacation_model)
-    sickness_ctrl = SicknessController(sickness_model)
-    miliuim_ctrl = MiliuimController(miliuim_model)
+        time_ctrl = TimeClockController(time_model, settings)
+        vacation_ctrl = VacationController(vacation_model)
+        sickness_ctrl = SicknessController(sickness_model)
+        miliuim_ctrl = MiliuimController(miliuim_model)
+    except Exception:
+        logger.critical("Fatal error during startup", exc_info=True)
+        messagebox.showerror(
+            "Time Clock — Startup Failed",
+            "The application could not start due to an unexpected error.\n"
+            "Details were written to the log file.",
+        )
+        return
 
     root = tk.Tk()
     root.title("Time Clock")
@@ -95,6 +106,7 @@ def main() -> None:
         model_sickness=sickness_model,
         model_miliuim=miliuim_model,
     )
+    settings.on_error = window.notify_settings_error
 
     TimeClockTab(
         window.time_clock_frame,
