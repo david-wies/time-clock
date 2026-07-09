@@ -158,7 +158,8 @@ Dataclasses (slots=True):
   MiliuimRecord:      id, start_date, end_date, note?, document_path?
   MiliuimSummary:     period_count, total_days
 
-  PeriodBalance:      worked_hours, target_hours, balance, weighted_overtime, days_in_period
+  PeriodBalance:      worked_hours, target_hours, overtime_rate, days_in_period
+                      .balance / .weighted_overtime → computed properties
   VacationSummary:    allowance, carry_over, used, remaining, total_pool
   CarryOverAllowance: available, max_carry_over, already_transferred
   SicknessSummary:    used, total_pool, remaining

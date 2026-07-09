@@ -729,7 +729,7 @@ SicknessController:
 ```
 
 - `validate_*` functions live beside each controller and are **pure** (record + context → error list) so §5.6 / §6.5 / §7.3 tables are enforced in one tested place, independent of any dialog.
-- `Result` is a small `@dataclass(ok: bool, errors: list[str])` — no exceptions for expected validation failures; exceptions reserved for true faults (DB error).
+- `Result` is a small `@dataclass(frozen=True)(ok: bool, errors: tuple[str, ...], warnings: tuple[str, ...])` — no exceptions for expected validation failures; exceptions reserved for true faults (DB error). Frozen so the `ok=False ⟺ errors non-empty` invariant can't be broken post-construction.
 - Views render `Result.errors`; they never re-implement validation.
 
 ## 20. Testing
