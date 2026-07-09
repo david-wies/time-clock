@@ -52,7 +52,7 @@ class TimeClockModel:
                 note=row["note"],
                 document_path=row["document_path"],
             )
-        except ValueError, TypeError:
+        except (ValueError, TypeError):  # fmt: skip
             logger.warning(
                 "Skipping malformed time_record row: id=%r date=%r",
                 row["id"],
@@ -117,7 +117,7 @@ class TimeClockModel:
                 try:
                     start = str_to_time(row["start_time"])
                     end = str_to_time(row["end_time"]) if row["end_time"] else None
-                except ValueError, TypeError:
+                except (ValueError, TypeError):  # fmt: skip
                     logger.warning(
                         "Skipping time_record row with unparseable time:"
                         " id=%r start_time=%r end_time=%r",
@@ -255,7 +255,13 @@ class TimeClockModel:
         """Deletes the time record with the given id."""
         with self.db.connection() as conn:
             with conn:
-                conn.execute("DELETE FROM time_record WHERE id = ?;", (record_id,))
+                cursor = conn.execute(
+                    "DELETE FROM time_record WHERE id = ?;", (record_id,)
+                )
+                if cursor.rowcount == 0:
+                    raise sqlite3.DatabaseError(
+                        f"No time_record with id={record_id} exists to delete"
+                    )
             self.bus.publish(Event.TIME_RECORDS_CHANGED)
 
     # --- Target Hours & Exceptions Queries ---
@@ -304,7 +310,7 @@ class TimeClockModel:
             for row in rows:
                 try:
                     exc_date = date.fromisoformat(row["date"])
-                except ValueError, TypeError:
+                except (ValueError, TypeError):  # fmt: skip
                     logger.warning(
                         "Skipping malformed work-day exception row "
                         "(falls back to the regular weekly target for that "
@@ -320,7 +326,7 @@ class TimeClockModel:
                         hours=row["hours"],
                         label=row["label"],
                     )
-                except ValueError, TypeError:
+                except (ValueError, TypeError):  # fmt: skip
                     logger.warning(
                         "Skipping malformed work-day exception row "
                         "(falls back to the regular weekly target for that "

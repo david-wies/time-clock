@@ -138,7 +138,7 @@ def time_record_invariant_errors(record: TimeRecord) -> list[str]:
 
     try:
         BreakMinutes(record.break_minutes)
-    except ValueError as e:
+    except (ValueError, TypeError) as e:
         errors.append(str(e))
 
     if record.end_time is not None:
@@ -225,7 +225,7 @@ def vacation_record_invariant_errors(record: VacationRecord) -> list[str]:
 
     try:
         Hours(record.hours)
-    except ValueError as e:
+    except (ValueError, TypeError) as e:
         errors.append(str(e))
 
     _check_note_length(record.note, errors)
@@ -306,7 +306,7 @@ def sickness_record_invariant_errors(record: SicknessRecord) -> list[str]:
 
     try:
         Hours(record.hours)
-    except ValueError as e:
+    except (ValueError, TypeError) as e:
         errors.append(str(e))
 
     _check_note_length(record.note, errors)
@@ -407,13 +407,34 @@ class VacationSummary:
 
 @dataclass(slots=True)
 class CarryOverAllowance:
-    """The surplus vacation hours eligible to carry over into the next year."""
+    """The surplus vacation hours eligible to carry over into the next year.
+
+    `available_surplus` and `allowed_transfer` are both computed properties,
+    not stored fields — VacationModel.calculate_carry_over_allowance() (this
+    dataclass's only construction site) always derives `available_surplus`
+    as `max(0, prev_surplus - already_transferred)`, and `allowed_transfer`
+    as `max(0, min(max_carry_over - already_transferred,
+    available_surplus))`, with no conditional branch that ever computes
+    either differently. Storing them as independent fields would let a
+    future caller pass an inconsistent value; computing them here makes
+    that impossible, mirroring VacationSummary/SicknessSummary/PeriodBalance
+    above.
+    """
 
     prev_surplus: float
     max_carry_over: float
     already_transferred: float
-    available_surplus: float
-    allowed_transfer: float
+
+    @property
+    def available_surplus(self) -> float:
+        return max(0.0, self.prev_surplus - self.already_transferred)
+
+    @property
+    def allowed_transfer(self) -> float:
+        return max(
+            0.0,
+            min(self.max_carry_over - self.already_transferred, self.available_surplus),
+        )
 
 
 @dataclass(slots=True)

@@ -19,7 +19,7 @@ This is the main design document — architecture, UI layout, and contracts betw
 |---|---|---|
 | Language | Python 3.14+ | User requirement |
 | GUI Framework | tkinter + ttk (stdlib) + tkcalendar | Stdlib, no deps for core UI; tkcalendar for date picker |
-| Theme | `sv-ttk` (optional, bundled fallback) | Modern flat light/dark ttk theme; degrades to stock `clam` if absent (see [visual-design.md](design/visual-design.md)) |
+| Theme | `sv-ttk` (required) | Modern flat light/dark ttk theme (see [visual-design.md](design/visual-design.md)) |
 | Data Persistence | SQLite via sqlite3 (stdlib) | Local, single-file, no setup |
 | Domain Layer | `@dataclass` + `enum.Enum` (stdlib) | Typed records, no ORM; one source of truth for fields (see [data-model.md](design/data-model.md)) |
 | UI Pattern | MVC + Observer event bus | View ↔ Controller ↔ Model; Model change broadcasts via event bus (§17) since tkinter has no native signals |
@@ -424,9 +424,7 @@ If `end_time < start_time` (e.g., 22:00 → 06:00):
 ### 7.4 Sick Day Balance Rules
 
 - Sick days reset each year (no carry-over — distinct from vacation)
-- Display both hours and day-equivalent: "20.0h (2.5 days)"
-- Day-equivalent uses `daily_target` from `work_day_target` for the day's day-of-week; fallback to 8h if no target set
-- If `daily_target` = 0 (e.g., Saturday off), cap sick day-equivalent at 1 day max (full day sick regardless of target)
+- Balance is purely hours-based: `used_hours = SUM(hours)` for the year, `remaining_hours = allowance_hours - used_hours` — no day-equivalent conversion (see [data-flow.md §10.6](design/data-flow.md))
 - No distinction between types — single pool for all illness
 
 ## 8. Settings Dialog
@@ -513,7 +511,7 @@ High-level mutation flow: View → Controller (validation, orchestration) → Mo
 - **§10.3 Vacation — Add Carry-Over**: dialog computes available transfer, writes both a `carry_over_log` row and a `vacation_record`.
 - **§10.4 Clock-In**: warns on an already-open record, inserts a new open `time_record`, starts the 60s auto-refresh.
 - **§10.5 Clock-Out**: closes the open record (prompts if more than one), stops auto-refresh once none remain.
-- **§10.6 Sickness Usage Calculation**: sums hours for the year, converts to day-equivalents per day-of-week target.
+- **§10.6 Sickness Usage Calculation**: sums hours for the year against the yearly allowance (purely hours-based, no day conversion).
 
 ## 11. File Structure
 
@@ -679,7 +677,7 @@ Full enum values, dataclass fields: [design/data-model.md](design/data-model.md)
 
 ## 16. Visual Design System
 
-One `theme/style.py` owns all appearance — no view hard-codes colors or fonts. `sv_ttk` provides the modern flat theme with a `clam` fallback if absent. Status is always communicated via semantic color tokens (`success`/`warning`/`danger`/`overtime`/`inprogress`) **paired with a text label or icon**, never color alone (accessibility). Typography and spacing pull from a fixed scale; the grouped record list is a single `ttk.Treeview` with per-state tags rather than ad-hoc frames. Dark mode is a single re-style call, persisted in `app_config`.
+One `theme/style.py` owns all appearance — no view hard-codes colors or fonts. `sv_ttk` is a required dependency, imported unconditionally, providing the modern flat theme with no fallback. Status is always communicated via semantic color tokens (`success`/`warning`/`danger`/`overtime`/`inprogress`) **paired with a text label or icon**, never color alone (accessibility). Typography and spacing pull from a fixed scale; the grouped record list is a single `ttk.Treeview` with per-state tags rather than ad-hoc frames. Dark mode is a single re-style call, persisted in `app_config`.
 
 Full token table, theme-loading code, typography scale, dark-mode details: [design/visual-design.md](design/visual-design.md).
 

@@ -2,6 +2,7 @@
 
 import logging
 import logging.handlers
+import sys
 import tkinter as tk
 from datetime import date
 from pathlib import Path
@@ -67,7 +68,20 @@ def _configure_logging(log_dir: Path | None = None) -> None:
 
 def main() -> None:
     """Wire Database → Models → Controllers → Views and start the app."""
-    _configure_logging()
+    try:
+        _configure_logging()
+    except Exception:
+        # Logging isn't up yet -- nothing to log here, so just tell the
+        # user and exit rather than letting this propagate as an
+        # unhandled traceback with zero diagnostic trail (invisible in a
+        # packaged, windowed/no-console build).
+        messagebox.showerror(
+            "Time Clock — Startup Failed",
+            "The application could not start because logging could not be "
+            "initialized (e.g. the application data directory is not "
+            "writable, or the log file is locked by another process).",
+        )
+        sys.exit(1)
 
     try:
         db = Database()
@@ -146,11 +160,6 @@ def main() -> None:
             bus=bus,
             root=root,
         )
-
-        _boot_checks(time_model, time_ctrl)
-
-        tray = SystemTray(root, time_ctrl, time_model, settings, bus)
-        tray.start()
     except Exception:
         logger.critical("Fatal error during startup", exc_info=True)
         messagebox.showerror(
@@ -161,6 +170,26 @@ def main() -> None:
         if root is not None:
             root.destroy()
         return
+
+    try:
+        _boot_checks(time_model, time_ctrl)
+        tray = SystemTray(root, time_ctrl, time_model, settings, bus)
+        tray.start()
+    except Exception:
+        # Boot checks and the tray icon are non-essential -- the main
+        # window is already fully built and usable, so a failure here
+        # should not tear down the whole app the way a core
+        # window/tab-construction failure does above.
+        logger.warning(
+            "Non-fatal error during boot checks or tray icon startup; "
+            "continuing without it.",
+            exc_info=True,
+        )
+        messagebox.showwarning(
+            "Time Clock — Startup Warning",
+            "A non-critical startup step (boot checks or the system tray "
+            "icon) failed. The application will continue without it.",
+        )
 
     root.mainloop()
 

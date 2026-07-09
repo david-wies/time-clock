@@ -277,7 +277,7 @@ class ReportDialog(tk.Toplevel):
             q_str = self._var_quarter.get()
             try:
                 quarter = int(q_str[1])
-            except IndexError, ValueError:
+            except (IndexError, ValueError):  # fmt: skip
                 messagebox.showerror(
                     "Invalid Input", "Please select a valid quarter.", parent=self
                 )

@@ -57,6 +57,33 @@ def test_save_record_with_id_updates_existing_record(
     assert fetched.break_minutes == 45
 
 
+def test_save_record_on_since_deleted_record_returns_error_result(
+    controller: TimeClockController,
+) -> None:
+    """save_record() with a record.id already set routes through
+    model.update_record() (see test_save_record_with_id_updates_existing_record
+    above). If the underlying row was deleted out from under the caller
+    (e.g. a stale UI selection), model.update_record() now raises
+    sqlite3.DatabaseError on the zero-rowcount UPDATE -- this must surface
+    as Result(ok=False, ...) via DatabaseErrorGuard, not propagate or
+    silently report success. Exercises the real rowcount-based mechanism
+    end-to-end (a real row is inserted then really deleted), rather than
+    mocking model.update_record() to raise a generic exception."""
+    rec = TimeRecord(
+        None, date(2026, 6, 26), time(9, 0), time(17, 0), 30, WorkType.REMOTE
+    )
+    assert controller.save_record(rec).ok is True
+    assert rec.id is not None
+
+    controller.model.delete_record(rec.id)
+
+    stale = dataclasses.replace(rec, break_minutes=45)
+    res = controller.save_record(stale)
+
+    assert res.ok is False
+    assert "Database error" in res.errors[0]
+
+
 def test_save_overlapping_record(controller: TimeClockController) -> None:
     # Save first record: 09:00 - 17:00
     r1 = TimeRecord(

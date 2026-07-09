@@ -1,4 +1,4 @@
-"""Semantic ttk style system with graceful sv-ttk fallback."""
+"""Semantic ttk style system built on sv-ttk."""
 
 import logging
 from enum import StrEnum

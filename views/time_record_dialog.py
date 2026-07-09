@@ -305,7 +305,7 @@ class TimeRecordDialog(tk.Toplevel):
                 t_end = time(now.hour, now.minute)
             hours = duration(t_start, t_end, break_m)
             self._lbl_duration.config(text=f"Net: {hours:.1f}h")
-        except ValueError, TypeError:
+        except (ValueError, TypeError):  # fmt: skip
             self._lbl_duration.config(text="Net: --")
 
     # ─────────────────────────── Save ────────────────────────────────────────

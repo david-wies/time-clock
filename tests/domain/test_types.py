@@ -14,6 +14,7 @@ import pytest
 from domain.enums import VacationType, WorkType
 from domain.types import (
     BreakMinutes,
+    CarryOverAllowance,
     CarryOverLogEntry,
     Hours,
     MiliuimRecord,
@@ -144,6 +145,19 @@ def test_time_record_negative_break_minutes_raises() -> None:
         _time_record(break_minutes=-1)
 
 
+def test_time_record_none_break_minutes_raises_value_error() -> None:
+    """BreakMinutes(None) raises TypeError (from int(None)) before its own
+    sign check ever runs -- time_record_invariant_errors() must catch that
+    TypeError alongside ValueError so a None break_minutes still surfaces as
+    a clean joined ValueError from __post_init__, not an unhandled
+    TypeError escaping construction. end_time=None so the (unrelated)
+    break-vs-shift-length check downstream, which would itself raise an
+    uncaught TypeError on `None / 60.0`, never runs."""
+    with pytest.raises(ValueError) as exc_info:
+        _time_record(break_minutes=None, end_time=None)
+    assert exc_info.value.args[0]
+
+
 def test_time_record_break_exceeding_shift_length_raises() -> None:
     # 09:00-10:00 is 60 minutes; a 75-minute break exceeds it.
     with pytest.raises(ValueError, match="Break cannot exceed shift length"):
@@ -229,6 +243,17 @@ def test_vacation_record_negative_hours_raises() -> None:
         VacationRecord(None, date(2026, 7, 15), -1.0, VacationType.ANNUAL_LEAVE)
 
 
+def test_vacation_record_none_hours_raises_value_error() -> None:
+    """Hours(None) raises TypeError (from float(None)) before its own sign
+    check ever runs -- vacation_record_invariant_errors() must catch that
+    TypeError alongside ValueError so a None hours still surfaces as a
+    clean joined ValueError from __post_init__, not an unhandled TypeError
+    escaping construction."""
+    with pytest.raises(ValueError) as exc_info:
+        VacationRecord(None, date(2026, 7, 15), None, VacationType.ANNUAL_LEAVE)
+    assert exc_info.value.args[0]
+
+
 def test_vacation_record_note_too_long_raises() -> None:
     with pytest.raises(ValueError, match="Note is too long"):
         VacationRecord(
@@ -284,6 +309,17 @@ def test_sickness_record_valid_construction_succeeds() -> None:
 def test_sickness_record_negative_hours_raises() -> None:
     with pytest.raises(ValueError, match="non-negative"):
         SicknessRecord(None, date(2026, 2, 15), -0.5, "Flu")
+
+
+def test_sickness_record_none_hours_raises_value_error() -> None:
+    """Hours(None) raises TypeError (from float(None)) before its own sign
+    check ever runs -- sickness_record_invariant_errors() must catch that
+    TypeError alongside ValueError so a None hours still surfaces as a
+    clean joined ValueError from __post_init__, not an unhandled TypeError
+    escaping construction."""
+    with pytest.raises(ValueError) as exc_info:
+        SicknessRecord(None, date(2026, 2, 15), None, "Flu")
+    assert exc_info.value.args[0]
 
 
 def test_sickness_record_note_too_long_raises() -> None:
@@ -446,6 +482,31 @@ def test_period_balance_balance_is_computed() -> None:
         days_in_period=2,
     )
     assert pb.balance == -6.0
+
+
+# ───────────────────────────── CarryOverAllowance ────────────────────────────
+
+
+def test_carry_over_allowance_computes_available_surplus_and_allowed_transfer() -> None:
+    """available_surplus and allowed_transfer are computed properties
+    (domain/types.py), not constructor arguments -- available_surplus is
+    max(0, prev_surplus - already_transferred), and allowed_transfer is
+    max(0, min(max_carry_over - already_transferred, available_surplus))."""
+    allowance = CarryOverAllowance(
+        prev_surplus=60.0, max_carry_over=40.0, already_transferred=10.0
+    )
+    assert allowance.available_surplus == 50.0  # 60 - 10
+    assert allowance.allowed_transfer == 30.0  # min(40 - 10, 50) = 30
+
+
+def test_carry_over_allowance_clamps_negative_available_surplus_to_zero() -> None:
+    """already_transferred exceeding prev_surplus would otherwise make
+    available_surplus negative -- the max(0, ...) clamp keeps it at zero."""
+    allowance = CarryOverAllowance(
+        prev_surplus=10.0, max_carry_over=40.0, already_transferred=20.0
+    )
+    assert allowance.available_surplus == 0.0  # max(0, 10 - 20)
+    assert allowance.allowed_transfer == 0.0  # min(40 - 20, 0) = 0
 
 
 # ────────────────────────────────── Result ───────────────────────────────────

@@ -95,6 +95,22 @@ class DatabaseErrorGuard(AbstractContextManager[None]):
         return self.result
 
 
+def _is_blocking(code: str) -> bool:
+    """Whether a validation code belongs in Result.errors (True, blocking)
+    or Result.warnings (False, non-blocking).
+
+    Consults `WarningCode.blocking` for any string that is a recognized
+    WarningCode value. Any other string (e.g. the free-text
+    "Record overlaps with an existing time record." from
+    validate_time_record()) is treated as blocking by default — only
+    recognized WarningCode members are ever non-blocking.
+    """
+    for member in WarningCode:
+        if member.value == code:
+            return member.blocking
+    return True
+
+
 def times_overlap(s1: time, e1: time | None, s2: time, e2: time | None) -> bool:
     """Checks if two time intervals on the same day overlap."""
     start1 = s1.hour * 60 + s1.minute
@@ -190,9 +206,9 @@ class TimeClockController:
         existing = self.model.get_time_ranges_by_date(record.date)
         errors = validate_time_record(record, existing)
 
-        # OVERNIGHT_SHIFT_WARNING is not a blocking error — filter it out
-        # before blocking
-        blocking = [e for e in errors if e != WarningCode.OVERNIGHT_SHIFT.value]
+        # Non-blocking codes (per WarningCode.blocking, e.g.
+        # OVERNIGHT_SHIFT_WARNING) are filtered out before blocking.
+        blocking = [e for e in errors if _is_blocking(e)]
         if blocking:
             return Result(ok=False, errors=tuple(blocking))
 
@@ -279,7 +295,7 @@ class TimeClockController:
         existing = self.model.get_time_ranges_by_date(record.date)
         existing_for_validation = [t for t in existing if t[2] is not None]
         errors = validate_time_record(record, existing_for_validation)
-        blocking = [e for e in errors if e != WarningCode.OVERNIGHT_SHIFT.value]
+        blocking = [e for e in errors if _is_blocking(e)]
         if blocking:
             return Result(ok=False, errors=tuple(blocking))
 
@@ -337,7 +353,7 @@ class TimeClockController:
             t for t in existing if t[0] == target_record.id or t[2] is not None
         ]
         errors = validate_time_record(target_record, existing_for_validation)
-        blocking = [e for e in errors if e != WarningCode.OVERNIGHT_SHIFT.value]
+        blocking = [e for e in errors if _is_blocking(e)]
         if blocking:
             return Result(ok=False, errors=tuple(blocking))
 

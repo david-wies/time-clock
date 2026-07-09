@@ -1,5 +1,6 @@
 import dataclasses
 import logging
+import sqlite3
 from datetime import date, time
 
 import pytest
@@ -197,6 +198,61 @@ def test_update_record_without_id_raises(db: Database, event_bus: EventBus) -> N
 
     with pytest.raises(ValueError, match="Cannot update a record without an ID"):
         model.update_record(rec)
+
+
+def test_delete_record_nonexistent_id_raises_and_publishes_no_event(
+    db: Database, event_bus: EventBus
+) -> None:
+    """delete_record() must check cursor.rowcount after the DELETE, exactly
+    like update_record() already does -- otherwise deleting an id that
+    doesn't exist (or was already deleted) silently "succeeds" and still
+    publishes TIME_RECORDS_CHANGED, even though nothing changed."""
+    model = TimeClockModel(db, event_bus)
+
+    change_called = False
+
+    def on_change() -> None:
+        nonlocal change_called
+        change_called = True
+
+    event_bus.subscribe(Event.TIME_RECORDS_CHANGED, on_change)
+
+    with pytest.raises(sqlite3.DatabaseError, match="No time_record with id=999999"):
+        model.delete_record(999999)
+
+    assert change_called is False
+
+
+def test_update_record_on_since_deleted_record_raises_and_publishes_no_event(
+    db: Database, event_bus: EventBus
+) -> None:
+    """A record fetched/held before another caller (or the same caller)
+    deletes it underneath -- e.g. a stale UI selection -- must not silently
+    no-op on update_record(). The UPDATE ... WHERE id = ? affects zero rows,
+    which update_record() must detect via cursor.rowcount and raise on,
+    rather than publishing TIME_RECORDS_CHANGED for a no-op write."""
+    model = TimeClockModel(db, event_bus)
+    rec = TimeRecord(
+        None, date(2026, 6, 26), time(9, 0), time(17, 0), 30, WorkType.REMOTE
+    )
+    rec_id = model.insert_record(rec)
+    stored = model.get_record_by_id(rec_id)
+    assert stored is not None
+
+    model.delete_record(rec_id)
+
+    change_called = False
+
+    def on_change() -> None:
+        nonlocal change_called
+        change_called = True
+
+    event_bus.subscribe(Event.TIME_RECORDS_CHANGED, on_change)
+
+    with pytest.raises(sqlite3.DatabaseError, match=f"No time record with id={rec_id}"):
+        model.update_record(stored)
+
+    assert change_called is False
 
 
 def test_get_open_records_for_today_returns_only_todays_open_records(

@@ -48,7 +48,7 @@ class VacationModel:
                 vtype=VacationType(row["vtype"]),
                 note=row["note"],
             )
-        except ValueError, TypeError:
+        except (ValueError, TypeError):  # fmt: skip
             logger.warning(
                 "Skipping malformed vacation_record row: id=%r date=%r",
                 row["id"],
@@ -136,7 +136,13 @@ class VacationModel:
         """Deletes the vacation record with the given id."""
         with self.db.connection() as conn:
             with conn:
-                conn.execute("DELETE FROM vacation_record WHERE id = ?;", (record_id,))
+                cursor = conn.execute(
+                    "DELETE FROM vacation_record WHERE id = ?;", (record_id,)
+                )
+                if cursor.rowcount == 0:
+                    raise sqlite3.DatabaseError(
+                        f"No vacation_record with id={record_id} exists to delete"
+                    )
             self.bus.publish(Event.VACATION_CHANGED)
 
     # --- Vacation Settings Queries ---
@@ -192,7 +198,7 @@ class VacationModel:
             for row in rows:
                 try:
                     transferred_at = datetime.fromisoformat(row["transferred_at"])
-                except ValueError, TypeError:
+                except (ValueError, TypeError):  # fmt: skip
                     logger.warning(
                         "Skipping malformed carry_over_log row: "
                         "id=%r transferred_at=%r",
@@ -211,7 +217,7 @@ class VacationModel:
                             transferred_at=transferred_at,
                         )
                     )
-                except ValueError, TypeError:
+                except (ValueError, TypeError):  # fmt: skip
                     logger.warning(
                         "Skipping malformed carry_over_log row: id=%r "
                         "from_year=%r to_year=%r hours=%r",
@@ -302,20 +308,11 @@ class VacationModel:
         max_carry_over = settings["max_carry_over"] if settings else 0.0
 
         already_transferred = self.get_already_transferred(prev_year, to_year)
-        available_surplus = surplus - already_transferred
-        if available_surplus < 0:
-            available_surplus = 0.0
-
-        allowed_transfer = min(max_carry_over - already_transferred, available_surplus)
-        if allowed_transfer < 0:
-            allowed_transfer = 0.0
 
         return CarryOverAllowance(
             prev_surplus=surplus,
             max_carry_over=max_carry_over,
             already_transferred=already_transferred,
-            available_surplus=available_surplus,
-            allowed_transfer=allowed_transfer,
         )
 
     def get_work_day_targets(self) -> dict[int, float]:

@@ -122,7 +122,7 @@ def show_about(parent=None) -> None:
     def _open_github_link(_event: object) -> None:
         try:
             opened = webbrowser.open("https://github.com/david-wies/time-clock")
-        except webbrowser.Error, OSError:
+        except (webbrowser.Error, OSError):  # fmt: skip
             logger.warning("Could not open GitHub link in browser", exc_info=True)
             return
         if not opened:

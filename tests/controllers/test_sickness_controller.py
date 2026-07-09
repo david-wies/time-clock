@@ -396,6 +396,31 @@ def test_delete_record_non_sqlite_error_propagates(
         controller.delete_record(1)
 
 
+def test_save_record_update_on_since_deleted_record_returns_error_result(
+    controller: SicknessController,
+) -> None:
+    """End-to-end exercise of the model's rowcount-based staleness check
+    (not a monkeypatched generic exception): a record is saved, deleted via
+    the model directly (simulating a concurrent delete from another view),
+    and then re-saved through the controller's update path. update_record()
+    matches zero rows, raises sqlite3.DatabaseError, and DatabaseErrorGuard
+    must convert that into an ok=False Result rather than letting it
+    propagate.
+
+    Hours stay low (8h) against the default 80h allowance so this exercises
+    only the rowcount failure, not the over-balance path."""
+    rec = SicknessRecord(None, date(2026, 2, 15), 8.0, "Flu")
+    assert controller.save_record(rec).ok is True
+    assert rec.id is not None
+
+    controller.model.delete_record(rec.id)
+
+    res = controller.save_record(rec)
+
+    assert res.ok is False
+    assert "Database error" in res.errors[0]
+
+
 def test_save_range_sqlite_error_is_caught_and_returned(
     controller: SicknessController, monkeypatch: pytest.MonkeyPatch
 ) -> None:

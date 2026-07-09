@@ -42,7 +42,7 @@ class MiliuimModel:
                 note=row["note"],
                 document_path=row["document_path"],
             )
-        except ValueError, TypeError:
+        except (ValueError, TypeError):  # fmt: skip
             logger.warning(
                 "Skipping malformed miliuim_period row: id=%r start_date=%r",
                 row["id"],
@@ -126,7 +126,7 @@ class MiliuimModel:
                             iso_to_date(row["end_date"]),
                         )
                     )
-                except ValueError, TypeError:
+                except (ValueError, TypeError):  # fmt: skip
                     logger.warning(
                         "Skipping miliuim_period row with unparseable date:"
                         " id=%r start_date=%r end_date=%r",
@@ -183,7 +183,13 @@ class MiliuimModel:
         """Deletes the Miliuim period record with the given id."""
         with self.db.connection() as conn:
             with conn:
-                conn.execute("DELETE FROM miliuim_period WHERE id = ?;", (record_id,))
+                cursor = conn.execute(
+                    "DELETE FROM miliuim_period WHERE id = ?;", (record_id,)
+                )
+                if cursor.rowcount == 0:
+                    raise sqlite3.DatabaseError(
+                        f"No Miliuim record with id={record_id} exists to delete"
+                    )
             self.bus.publish(Event.MILIUIM_CHANGED)
 
     @staticmethod

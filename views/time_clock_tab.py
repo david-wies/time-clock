@@ -68,7 +68,7 @@ def _build_exc_dict(raw: list[WorkDayException]) -> dict[date, float]:
     for exc in raw:
         try:
             result[exc.date] = float(exc.hours)
-        except ValueError, TypeError:
+        except (ValueError, TypeError):  # fmt: skip
             logger.warning(
                 "Skipping malformed work-day exception (falls back to the "
                 "regular weekly target for that date): %r",
@@ -153,7 +153,7 @@ class TimeClockTab(RecordTabMixin, ttk.Frame):
         raw = self.settings.get("week_first_day", 0)
         try:
             return Weekday(int(raw))
-        except TypeError, ValueError:
+        except (TypeError, ValueError):  # fmt: skip
             logger.warning(
                 "Invalid stored week_first_day setting %r, falling back to MON",
                 raw,

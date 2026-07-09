@@ -1,5 +1,6 @@
 import dataclasses
 import logging
+import sqlite3
 from datetime import date
 
 import pytest
@@ -86,6 +87,62 @@ def test_update_record_without_id_raises(db: Database, event_bus: EventBus) -> N
 
     with pytest.raises(ValueError, match="Cannot update a record without an ID"):
         model.update_record(rec)
+
+
+def test_delete_record_nonexistent_id_raises(db: Database, event_bus: EventBus) -> None:
+    """delete_record() must check cursor.rowcount, mirroring
+    update_record() above -- otherwise deleting an id that doesn't exist (or
+    was already deleted) silently succeeds and still publishes
+    MILIUIM_CHANGED, even though nothing was actually deleted."""
+    model = MiliuimModel(db, event_bus)
+
+    change_called = False
+
+    def on_change() -> None:
+        nonlocal change_called
+        change_called = True
+
+    event_bus.subscribe(Event.MILIUIM_CHANGED, on_change)
+
+    with pytest.raises(
+        sqlite3.DatabaseError, match="No Miliuim record with id=999 exists to delete"
+    ):
+        model.delete_record(999)
+
+    assert change_called is False
+
+
+def test_update_record_on_since_deleted_record_raises(
+    db: Database, event_bus: EventBus
+) -> None:
+    """A record fetched/held before another caller (or the same one) deletes
+    it becomes stale -- update_record() must reject it via the
+    cursor.rowcount == 0 check rather than silently doing nothing."""
+    model = MiliuimModel(db, event_bus)
+
+    rec = MiliuimRecord(None, date(2026, 4, 1), date(2026, 4, 5))
+    rec_id = model.insert_record(rec)
+    fetched = model.get_record_by_id(rec_id)
+    assert fetched is not None
+
+    model.delete_record(rec_id)
+
+    change_called = False
+
+    def on_change() -> None:
+        nonlocal change_called
+        change_called = True
+
+    event_bus.subscribe(Event.MILIUIM_CHANGED, on_change)
+
+    stale = dataclasses.replace(fetched, note="too late")
+    with pytest.raises(
+        sqlite3.DatabaseError,
+        match=f"No Miliuim record with id={rec_id} exists to update",
+    ):
+        model.update_record(stale)
+
+    assert change_called is False
 
 
 def test_get_records_for_year_without_month_filter(

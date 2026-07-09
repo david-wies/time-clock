@@ -1,5 +1,6 @@
 import dataclasses
 import logging
+import sqlite3
 from datetime import date, datetime
 
 import pytest
@@ -261,6 +262,61 @@ def test_update_record_without_id_raises(db: Database, event_bus: EventBus) -> N
 
     with pytest.raises(ValueError, match="Cannot update a record without an ID"):
         model.update_record(rec)
+
+
+def test_delete_record_nonexistent_id_raises(db: Database, event_bus: EventBus) -> None:
+    """delete_record() must not silently succeed (and publish
+    VACATION_CHANGED) for an id that was never persisted or was already
+    deleted -- mirrors the rowcount-based guard already in update_record()."""
+    model = VacationModel(db, event_bus)
+
+    change_called = False
+
+    def on_change() -> None:
+        nonlocal change_called
+        change_called = True
+
+    event_bus.subscribe(Event.VACATION_CHANGED, on_change)
+
+    with pytest.raises(
+        sqlite3.DatabaseError, match="No vacation_record with id=999 exists to delete"
+    ):
+        model.delete_record(999)
+
+    assert change_called is False
+
+
+def test_update_record_on_since_deleted_record_raises(
+    db: Database, event_bus: EventBus
+) -> None:
+    """update_record() called with a stale record object -- one whose id was
+    deleted out from under it (e.g. a view that fetched a record and hasn't
+    refreshed since another path deleted it) -- must raise rather than
+    silently no-op, exactly like delete_record()'s own rowcount guard."""
+    model = VacationModel(db, event_bus)
+    rec = VacationRecord(None, date(2026, 7, 15), 8.0, VacationType.ANNUAL_LEAVE)
+    rec_id = model.insert_record(rec)
+    fetched = model.get_record_by_id(rec_id)
+    assert fetched is not None
+
+    model.delete_record(rec_id)
+
+    change_called = False
+
+    def on_change() -> None:
+        nonlocal change_called
+        change_called = True
+
+    event_bus.subscribe(Event.VACATION_CHANGED, on_change)
+
+    stale = dataclasses.replace(fetched, hours=4.0)
+    with pytest.raises(
+        sqlite3.DatabaseError,
+        match=f"No vacation record with id={rec_id} exists to update",
+    ):
+        model.update_record(stale)
+
+    assert change_called is False
 
 
 def test_get_carry_over_history_skips_malformed_year_gap_and_logs_warning(

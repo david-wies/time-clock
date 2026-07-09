@@ -8,7 +8,7 @@
 - Uses the `holidays` library — a required dependency, listed in `requirements.txt` and imported unconditionally at the top of `views/settings_dialog.py` (no `try/except ImportError` guard; see CLAUDE.md's import conventions) — to enumerate public holidays for the chosen region + year.
 - Each holiday becomes a `work_day_exception` row with `hours = 0` and `label = <holiday name>` — reusing the existing exception mechanism (see [data-model.md](data-model.md) §3, DESIGN.md §5.4). No new table.
 - Conflict handling: respects `UNIQUE(date)` — existing exception on a date is **kept**, import skips it and reports "N added, M skipped (already set)".
-- Holidays therefore flow automatically into the daily-target logic (0h target ⇒ "Day off") and into the sickness day-equivalent rules.
+- Holidays therefore flow automatically into the daily-target logic (0h target ⇒ "Day off").
 - **Jewish/Israeli holidays**: when country is set to `IL` (Israel) or `JewishHolidays` locale is selected, the `holidays` library's Israel support is used. This includes Rosh Hashana, Yom Kippur, Sukkot, Passover, Shavuot, Independence Day, etc. These are imported as `work_day_exception` rows exactly like any other country's holidays.
 - Country/Region is **optional** — app functions fully without it. Selector defaults to blank ("None"); no import is attempted until a region is chosen.
 

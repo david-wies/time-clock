@@ -511,6 +511,32 @@ def test_delete_record_sqlite_error_is_caught_and_returned(
     assert "Database error" in res.errors[0]
 
 
+def test_save_record_update_on_since_deleted_record_returns_error_result(
+    controller: VacationController,
+) -> None:
+    """End-to-end exercise of the rowcount-based guard in
+    VacationModel.update_record(): save a real record (within its year's
+    allowance, so the over-balance confirm path is never triggered), delete
+    it via the model directly (bypassing the controller, e.g. simulating a
+    concurrent delete from another view), then try to save an edit for that
+    now-stale id through the controller. update_record() raises
+    sqlite3.DatabaseError, which DatabaseErrorGuard must catch and turn into
+    Result(ok=False, ...) -- not a mocked generic exception, the real
+    rowcount mechanism."""
+    controller.model.save_settings(2026, 160.0, 40.0)
+    rec = VacationRecord(None, date(2026, 7, 15), 8.0, VacationType.ANNUAL_LEAVE)
+    assert controller.save_record(rec).ok is True
+    assert rec.id is not None
+
+    controller.model.delete_record(rec.id)
+
+    stale = dataclasses.replace(rec, hours=4.0)
+    res = controller.save_record(stale)
+
+    assert res.ok is False
+    assert "Database error" in res.errors[0]
+
+
 def test_delete_record_non_sqlite_error_propagates(
     controller: VacationController, monkeypatch: pytest.MonkeyPatch
 ) -> None:

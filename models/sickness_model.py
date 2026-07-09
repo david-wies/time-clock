@@ -41,7 +41,7 @@ class SicknessModel:
                 note=row["note"],
                 document_path=row["document_path"],
             )
-        except ValueError, TypeError:
+        except (ValueError, TypeError):  # fmt: skip
             logger.warning(
                 "Skipping malformed sickness_record row: id=%r date=%r",
                 row["id"],
@@ -114,7 +114,7 @@ class SicknessModel:
             for row in cursor.fetchall():
                 try:
                     dates.append((row["id"], iso_to_date(row["date"])))
-                except ValueError, TypeError:
+                except (ValueError, TypeError):  # fmt: skip
                     logger.warning(
                         "Skipping sickness_record row with unparseable date:"
                         " id=%r date=%r",
@@ -194,7 +194,13 @@ class SicknessModel:
         """Deletes the sickness record with the given id."""
         with self.db.connection() as conn:
             with conn:
-                conn.execute("DELETE FROM sickness_record WHERE id = ?;", (record_id,))
+                cursor = conn.execute(
+                    "DELETE FROM sickness_record WHERE id = ?;", (record_id,)
+                )
+                if cursor.rowcount == 0:
+                    raise sqlite3.DatabaseError(
+                        f"No sickness record with id={record_id} exists to delete"
+                    )
             self.bus.publish(Event.SICKNESS_CHANGED)
 
     # --- Sickness Settings Queries ---
