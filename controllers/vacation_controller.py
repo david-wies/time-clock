@@ -116,9 +116,7 @@ class VacationController:
                 projected_remaining = summary.remaining + old_hours - record.hours
 
                 if projected_remaining < 0 and not confirm_over_balance:
-                    return Result(
-                        ok=False, errors=(WarningCode.OVER_BALANCE.value,)
-                    )
+                    return Result(ok=False, errors=(WarningCode.OVER_BALANCE.value,))
 
             if record.id is None:
                 record_id = self.model.insert_record(record)

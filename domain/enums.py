@@ -51,7 +51,7 @@ class WarningCode(StrEnum):
 
     blocking: bool
 
-    def __new__(cls, value: str, blocking: bool) -> "WarningCode":
+    def __new__(cls, value: str, blocking: bool) -> WarningCode:
         obj = str.__new__(cls, value)
         obj._value_ = value
         obj.blocking = blocking

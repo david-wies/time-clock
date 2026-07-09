@@ -142,9 +142,7 @@ class SicknessController:
                 )
                 return Result(
                     ok=False,
-                    errors=(
-                        f"A sick record already exists for: {conflict_dates}.",
-                    ),
+                    errors=(f"A sick record already exists for: {conflict_dates}.",),
                 )
 
             dates: list[date] = []
