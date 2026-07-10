@@ -433,72 +433,83 @@ class Database:
             cursor.execute("PRAGMA user_version = 7")
 
         if version < 8:
-            # Add defense-in-depth CHECK(break_minutes >= 0), matching the
-            # existing constraints on vacation_record.hours / sickness_record.hours.
-            # SQLite can't ALTER TABLE to add a CHECK constraint, so rebuild
-            # the table (same pattern as the vacation_record v2 migration
-            # above). Column order matches the live physical layout: the
-            # original _create_tables columns followed by document_path,
-            # which was appended via ALTER TABLE in the v7 migration.
-            #
-            # A pre-existing row with a corrupt/bad negative break_minutes
-            # value (predating this constraint) would otherwise be silently
-            # and permanently dropped by INSERT OR IGNORE below when the
-            # table is rebuilt — CHECK-constraint violations are skipped
-            # per-row, not raised. Repair those rows first (clamp to 0,
-            # logging what was changed) so no data is lost; INSERT OR IGNORE
-            # remains afterward purely as defense-in-depth.
-            bad_break_rows = conn.execute(
-                "SELECT id, date, break_minutes FROM time_record "
-                "WHERE break_minutes < 0;"
-            ).fetchall()
-            for bad_row in bad_break_rows:
-                logger.warning(
-                    "Repairing time_record row with negative break_minutes "
-                    "before v8 migration: id=%r date=%r break_minutes=%r "
-                    "(clamped to 0)",
-                    bad_row["id"],
-                    bad_row["date"],
-                    bad_row["break_minutes"],
+            if version == 0:
+                # Fresh install: _create_tables() already created time_record
+                # with CHECK(break_minutes >= 0) (and document_path was added
+                # by the v7 ALTER TABLE above, which also ran unconditionally
+                # for a fresh install). There are no rows to repair and
+                # nothing to rebuild — just record that this instance is
+                # already at the v8 schema.
+                cursor.execute("PRAGMA user_version = 8")
+            else:
+                # Add defense-in-depth CHECK(break_minutes >= 0), matching the
+                # existing constraints on vacation_record.hours / sickness_record.hours.
+                # SQLite can't ALTER TABLE to add a CHECK constraint, so rebuild
+                # the table (same pattern as the vacation_record v2 migration
+                # above). Column order matches the live physical layout: the
+                # original _create_tables columns followed by document_path,
+                # which was appended via ALTER TABLE in the v7 migration.
+                #
+                # A pre-existing row with a corrupt/bad negative break_minutes
+                # value (predating this constraint) would otherwise be silently
+                # and permanently dropped by INSERT OR IGNORE below when the
+                # table is rebuilt — CHECK-constraint violations are skipped
+                # per-row, not raised. Repair those rows first (clamp to 0,
+                # logging what was changed) so no data is lost; INSERT OR IGNORE
+                # remains afterward purely as defense-in-depth.
+                bad_break_rows = conn.execute(
+                    "SELECT id, date, break_minutes FROM time_record "
+                    "WHERE break_minutes < 0;"
+                ).fetchall()
+                for bad_row in bad_break_rows:
+                    logger.warning(
+                        "Repairing time_record row with negative break_minutes "
+                        "before v8 migration: id=%r date=%r break_minutes=%r "
+                        "(clamped to 0)",
+                        bad_row["id"],
+                        bad_row["date"],
+                        bad_row["break_minutes"],
+                    )
+                conn.execute(
+                    "UPDATE time_record SET break_minutes = 0 "
+                    "WHERE break_minutes < 0;"
                 )
-            conn.execute(
-                "UPDATE time_record SET break_minutes = 0 WHERE break_minutes < 0;"
-            )
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS time_record_v8 (
-                    id            INTEGER PRIMARY KEY AUTOINCREMENT,
-                    date          TEXT    NOT NULL,
-                    start_time    TEXT    NOT NULL,
-                    end_time      TEXT    DEFAULT NULL,
-                    break_minutes INTEGER NOT NULL DEFAULT 0
-                        CHECK(break_minutes >= 0),
-                    work_type     TEXT    NOT NULL
-                        CHECK(work_type IN ('in_site', 'road', 'remote')),
-                    office        TEXT,
-                    note          TEXT,
-                    created_at    TEXT    NOT NULL DEFAULT (datetime('now')),
-                    updated_at    TEXT    NOT NULL DEFAULT (datetime('now')),
-                    document_path TEXT
-                );
-            """)
-            conn.execute(
-                "INSERT OR IGNORE INTO time_record_v8 SELECT * FROM time_record;"
-            )
-            conn.execute("DROP TABLE time_record;")
-            conn.execute("ALTER TABLE time_record_v8 RENAME TO time_record;")
-            conn.execute(
-                "CREATE INDEX IF NOT EXISTS idx_time_record_date ON time_record(date);"
-            )
-            conn.execute(
-                "CREATE INDEX IF NOT EXISTS idx_time_record_open "
-                "ON time_record(end_time) WHERE end_time IS NULL;"
-            )
-            conn.execute("""
-                CREATE TRIGGER IF NOT EXISTS trg_time_record_updated_at
-                AFTER UPDATE ON time_record
-                BEGIN
-                    UPDATE time_record SET updated_at = datetime('now')
-                        WHERE id = NEW.id;
-                END;
-            """)
-            cursor.execute("PRAGMA user_version = 8")
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS time_record_v8 (
+                        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                        date          TEXT    NOT NULL,
+                        start_time    TEXT    NOT NULL,
+                        end_time      TEXT    DEFAULT NULL,
+                        break_minutes INTEGER NOT NULL DEFAULT 0
+                            CHECK(break_minutes >= 0),
+                        work_type     TEXT    NOT NULL
+                            CHECK(work_type IN ('in_site', 'road', 'remote')),
+                        office        TEXT,
+                        note          TEXT,
+                        created_at    TEXT    NOT NULL DEFAULT (datetime('now')),
+                        updated_at    TEXT    NOT NULL DEFAULT (datetime('now')),
+                        document_path TEXT
+                    );
+                """)
+                conn.execute(
+                    "INSERT OR IGNORE INTO time_record_v8 SELECT * FROM time_record;"
+                )
+                conn.execute("DROP TABLE time_record;")
+                conn.execute("ALTER TABLE time_record_v8 RENAME TO time_record;")
+                conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_time_record_date "
+                    "ON time_record(date);"
+                )
+                conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_time_record_open "
+                    "ON time_record(end_time) WHERE end_time IS NULL;"
+                )
+                conn.execute("""
+                    CREATE TRIGGER IF NOT EXISTS trg_time_record_updated_at
+                    AFTER UPDATE ON time_record
+                    BEGIN
+                        UPDATE time_record SET updated_at = datetime('now')
+                            WHERE id = NEW.id;
+                    END;
+                """)
+                cursor.execute("PRAGMA user_version = 8")

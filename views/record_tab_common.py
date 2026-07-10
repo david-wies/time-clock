@@ -29,6 +29,7 @@ class RecordTabMixin:
     _selected_year: int
     _selected_month: int
     _unsubs: list[Callable[[], None]]
+    root: tk.Misc
 
     def _refresh(self, **_kw: object) -> None:
         raise NotImplementedError
@@ -118,8 +119,42 @@ class RecordTabMixin:
                 logger.exception("Error while unsubscribing from EventBus")
         self._unsubs.clear()
 
+    def _bind_shortcut(self, sequence: str, handler: Callable[[], object]) -> None:
+        """Registers a global keyboard shortcut via ``bind_all``, wrapped in
+        ``_guard_visible`` so it only fires while this tab is the visible
+        one, and records the binding so ``_on_destroy`` can undo it.
+
+        Lazily initializes ``self._shortcut_binds`` on first use so callers
+        don't need to set it up in ``__init__``, matching how ``_unsubs`` is
+        otherwise the only piece of destroy-time cleanup state on this mixin.
+        """
+        if not hasattr(self, "_shortcut_binds"):
+            self._shortcut_binds: list[tuple[str, str]] = []
+        funcid = self.root.bind_all(sequence, self._guard_visible(handler), add=True)
+        self._shortcut_binds.append((sequence, funcid))
+
+    def _clear_shortcuts(self) -> None:
+        """Unbinds every shortcut registered via ``_bind_shortcut``.
+
+        Uses ``root.unbind(sequence, funcid)`` -- a binding removed by its
+        specific funcid -- rather than ``root.unbind_all(sequence)``, which
+        would strip *every* handler bound to that sequence process-wide,
+        including ones ``add=True``-registered by other tab instances
+        sharing this root. Best-effort like ``_clear_unsubs``: an individual
+        unbind failing must not stop the rest from running (called from a
+        ``<Destroy>`` binding, where a raised exception has nowhere useful
+        to go).
+        """
+        for sequence, funcid in getattr(self, "_shortcut_binds", []):
+            try:
+                self.root.unbind(sequence, funcid)
+            except Exception:  # pylint: disable=broad-exception-caught
+                logger.exception("Error while unbinding shortcut %r", sequence)
+        self._shortcut_binds = []
+
     def _on_destroy(self, _event: object = None) -> None:
         self._clear_unsubs()
+        self._clear_shortcuts()
 
     def _guard_visible(
         self, fn: Callable[[], object]

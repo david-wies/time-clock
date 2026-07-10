@@ -70,5 +70,9 @@ class SettingsManager:
                     "INSERT OR REPLACE INTO app_config (key, value) VALUES (?, ?);",
                     (key, serialized),
                 )
+        except sqlite3.Error as exc:
+            logger.warning("SettingsManager: DB write failed for key %r: %s", key, exc)
+            if self.on_error is not None:
+                self.on_error(key, str(exc))
         finally:
             conn.close()

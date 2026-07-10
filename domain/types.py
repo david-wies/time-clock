@@ -136,12 +136,14 @@ def time_record_invariant_errors(record: TimeRecord) -> list[str]:
     """
     errors: list[str] = []
 
+    break_minutes_valid = True
     try:
         BreakMinutes(record.break_minutes)
     except (ValueError, TypeError) as e:
         errors.append(str(e))
+        break_minutes_valid = False
 
-    if record.end_time is not None:
+    if record.end_time is not None and break_minutes_valid:
         raw_duration = duration(record.start_time, record.end_time, 0)
         break_hours = record.break_minutes / 60.0
         if break_hours > raw_duration:

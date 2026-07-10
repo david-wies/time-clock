@@ -174,6 +174,16 @@ class VacationTab(RecordTabMixin, ttk.Frame):
         self._tree.bind("<Double-1>", self._on_double_click)
         self._tree.bind("<<TreeviewSelect>>", self._on_tree_select)
 
+        self._refresh_tree_tags()
+
+    def _refresh_tree_tags(self) -> None:
+        """(Re)applies the theme-dependent foreground/font for the semantic
+        row tags (``employer``/``planned``/``carry_over``/``unpaid``).
+
+        Called both at construction time and whenever the theme setting
+        changes at runtime, so row highlighting never goes stale relative
+        to the legend (see ``_on_event``).
+        """
         c = COLORS.get(self._theme_mode, COLORS[ThemeMode.LIGHT])
         self._tree.tag_configure("employer", foreground=c["success"])
         self._tree.tag_configure(
@@ -200,12 +210,10 @@ class VacationTab(RecordTabMixin, ttk.Frame):
         self._btn_carry_over.pack(side="left")
 
     def _bind_shortcuts(self) -> None:
-        self.root.bind_all(
-            "<Control-Shift-N>", self._guard_visible(self._do_add), add=True
-        )
-        self.root.bind_all("<Control-e>", self._guard_visible(self._do_edit), add=True)
-        self.root.bind_all("<Delete>", self._guard_visible(self._do_delete), add=True)
-        self.root.bind_all("<F5>", self._guard_visible(self._refresh), add=True)
+        self._bind_shortcut("<Control-Shift-N>", self._do_add)
+        self._bind_shortcut("<Control-e>", self._do_edit)
+        self._bind_shortcut("<Delete>", self._do_delete)
+        self._bind_shortcut("<F5>", self._refresh)
 
     # ─────────────────────────── Balance Bar ────────────────────────────────
 
@@ -331,13 +339,8 @@ class VacationTab(RecordTabMixin, ttk.Frame):
         # tab was open — otherwise row colors stay stale until rebuilt.
         self._theme_mode = resolve_theme_mode(self.settings.get("theme"))
         self._refresh_legend()
+        self._refresh_tree_tags()
         self._refresh()
-
-    # ─────────────────────────── Button State ───────────────────────────────
-
-    def _get_selected_record(self) -> VacationRecord | None:
-        rec_id = self._get_selected_record_id()
-        return self.model.get_record_by_id(rec_id) if rec_id is not None else None
 
     # ─────────────────────────── Actions ────────────────────────────────────
 
@@ -350,7 +353,10 @@ class VacationTab(RecordTabMixin, ttk.Frame):
         )
 
     def _do_edit(self) -> None:
-        rec = self._get_selected_record()
+        rec_id = self._get_selected_record_id()
+        if rec_id is None:
+            return
+        rec = self.model.get_record_by_id(rec_id)
         if rec is None:
             messagebox.showwarning(
                 "Record Not Found",

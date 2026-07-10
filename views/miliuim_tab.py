@@ -134,10 +134,8 @@ class MiliuimTab(RecordTabMixin, ttk.Frame):
         )
 
     def _bind_shortcuts(self) -> None:
-        self.root.bind_all(
-            "<Control-Shift-M>", self._guard_visible(self._do_add), add=True
-        )
-        self.root.bind_all("<F5>", self._guard_visible(self._refresh), add=True)
+        self._bind_shortcut("<Control-Shift-M>", self._do_add)
+        self._bind_shortcut("<F5>", self._refresh)
 
     def _refresh_summary(self, records: list[MiliuimRecord]) -> None:
         year = self._selected_year
@@ -219,17 +217,16 @@ class MiliuimTab(RecordTabMixin, ttk.Frame):
         self._theme_mode = resolve_theme_mode(self.settings.get("theme"))
         self._refresh()
 
-    def _get_selected_record(self) -> MiliuimRecord | None:
-        rec_id = self._get_selected_record_id()
-        return self.model.get_record_by_id(rec_id) if rec_id is not None else None
-
     def _do_add(self) -> None:
         MiliuimRecordDialog(
             self, controller=self.controller, model=self.model, record=None
         )
 
     def _do_edit(self) -> None:
-        rec = self._get_selected_record()
+        rec_id = self._get_selected_record_id()
+        if rec_id is None:
+            return
+        rec = self.model.get_record_by_id(rec_id)
         if rec is None:
             messagebox.showwarning(
                 "Record Not Found",

@@ -138,12 +138,10 @@ class SicknessTab(RecordTabMixin, ttk.Frame):
         )
 
     def _bind_shortcuts(self) -> None:
-        self.root.bind_all(
-            "<Control-Shift-S>", self._guard_visible(self._do_add), add=True
-        )
-        self.root.bind_all("<Control-e>", self._guard_visible(self._do_edit), add=True)
-        self.root.bind_all("<Delete>", self._guard_visible(self._do_delete), add=True)
-        self.root.bind_all("<F5>", self._guard_visible(self._refresh), add=True)
+        self._bind_shortcut("<Control-Shift-S>", self._do_add)
+        self._bind_shortcut("<Control-e>", self._do_edit)
+        self._bind_shortcut("<Delete>", self._do_delete)
+        self._bind_shortcut("<F5>", self._refresh)
 
     # ─────────────────────────── Balance Bar ────────────────────────────────
 
@@ -240,12 +238,6 @@ class SicknessTab(RecordTabMixin, ttk.Frame):
         self._theme_mode = resolve_theme_mode(self.settings.get("theme"))
         self._refresh()
 
-    # ─────────────────────────── Button State ───────────────────────────────
-
-    def _get_selected_record(self) -> SicknessRecord | None:
-        rec_id = self._get_selected_record_id()
-        return self.model.get_record_by_id(rec_id) if rec_id is not None else None
-
     # ─────────────────────────── Actions ────────────────────────────────────
 
     def _do_add(self) -> None:
@@ -257,7 +249,10 @@ class SicknessTab(RecordTabMixin, ttk.Frame):
         )
 
     def _do_edit(self) -> None:
-        rec = self._get_selected_record()
+        rec_id = self._get_selected_record_id()
+        if rec_id is None:
+            return
+        rec = self.model.get_record_by_id(rec_id)
         if rec is None:
             messagebox.showwarning(
                 "Record Not Found",

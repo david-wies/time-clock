@@ -293,6 +293,9 @@ class TimeClockController:
         # See save_record() above for why get_time_ranges_by_date() is used
         # here instead of get_records_by_date().
         existing = self.model.get_time_ranges_by_date(record.date)
+        # Exclude open records (end_time is None) from the overlap check: an
+        # open record would otherwise always overlap (open end is treated as
+        # end-of-day), permanently blocking force=True from ever succeeding.
         existing_for_validation = [t for t in existing if t[2] is not None]
         errors = validate_time_record(record, existing_for_validation)
         blocking = [e for e in errors if _is_blocking(e)]

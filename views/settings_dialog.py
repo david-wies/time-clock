@@ -18,7 +18,7 @@ from models.sickness_model import SicknessModel
 from models.time_clock_model import TimeClockModel
 from models.vacation_model import VacationModel
 from settings import SettingsManager
-from theme.style import ThemeMode
+from theme.style import COLORS, ThemeMode, resolve_theme_mode
 from views.date_picker import make_date_picker
 from views.dialog_common import setup_modal_window
 
@@ -207,8 +207,21 @@ class SettingsDialog(tk.Toplevel):
             canvas.unbind_all("<Button-4>")
             canvas.unbind_all("<Button-5>")
 
+        def _cleanup_mw_on_destroy(_e=None) -> None:
+            # The dialog can be destroyed (Escape key, WM close button) while
+            # the pointer is still over the canvas, so <Leave> never fires to
+            # unbind these global mousewheel handlers. Left bound, they close
+            # over this now-destroyed canvas and raise TclError on the next
+            # scroll anywhere in the app. Unbind unconditionally here too;
+            # harmless (and a no-op) if <Leave> already unbound them.
+            try:
+                _unbind_mw()
+            except tk.TclError:
+                pass
+
         canvas.bind("<Enter>", _bind_mw)
         canvas.bind("<Leave>", _unbind_mw)
+        canvas.bind("<Destroy>", _cleanup_mw_on_destroy)
 
         pad = {"padx": 10, "pady": 4}
 
@@ -252,6 +265,17 @@ class SettingsDialog(tk.Toplevel):
         offices: list[str] = list(self._settings.get("offices") or [])
         self._lb_offices = tk.Listbox(
             list_frame, height=4, selectmode="single", exportselection=False
+        )
+        # tk.Listbox is not a ttk widget, so sv_ttk.set_theme() never touches
+        # it — restyle it to match the active theme mode ourselves, mirroring
+        # the pattern in views/time_clock_tab.py.
+        mode = resolve_theme_mode(self._settings.get("theme"))
+        c = COLORS.get(mode, COLORS[ThemeMode.LIGHT])
+        self._lb_offices.configure(
+            bg=c["bg.card"],
+            fg=c["fg.default"],
+            selectbackground=c["accent"],
+            selectforeground="#FFFFFF",
         )
         for o in offices:
             self._lb_offices.insert("end", o)

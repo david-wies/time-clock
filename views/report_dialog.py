@@ -37,6 +37,7 @@ from models.sickness_model import SicknessModel
 from models.time_clock_model import TimeClockModel
 from models.vacation_model import VacationModel
 from settings import SettingsManager
+from theme.style import COLORS, ThemeMode, resolve_theme_mode
 from views.dialog_common import setup_modal_window
 
 logger = logging.getLogger(__name__)
@@ -71,6 +72,10 @@ class ReportDialog(tk.Toplevel):
         self._model_sickness = model_sickness
         self._settings = settings
         self._model_miliuim = model_miliuim
+        # Resolved once at construction time: this dialog is modal (grab_set
+        # via setup_modal_window), so the theme setting cannot change while
+        # it's open.
+        self._theme_mode: ThemeMode = resolve_theme_mode(self._settings.get("theme"))
 
         # Widgets/vars assigned in _build_ui() and its helpers; declared here
         # (bare annotations, no value) so their real first assignment isn't
@@ -205,6 +210,18 @@ class ReportDialog(tk.Toplevel):
             pady=4,
         )
         self._txt_preview.grid(row=0, column=0, sticky="nsew")
+
+        # tk.Text is a classic widget, not restyled by sv_ttk.set_theme()
+        # (which only themes ttk widgets), so it must be colored explicitly
+        # to match the active theme mode.
+        c = COLORS.get(self._theme_mode, COLORS[ThemeMode.LIGHT])
+        self._txt_preview.configure(
+            bg=c["bg.card"],
+            fg=c["fg.default"],
+            insertbackground=c["fg.default"],
+            selectbackground=c["accent"],
+            selectforeground="#FFFFFF",
+        )
 
         vsb = ttk.Scrollbar(frm_txt, orient="vertical", command=self._txt_preview.yview)
         vsb.grid(row=0, column=1, sticky="ns")
@@ -679,15 +696,24 @@ class ReportDialog(tk.Toplevel):
         # ── Attached Documents (PDF pages appended) ───────────────────────────
         if pdf_docs:
             writer = PdfWriter()
-            main_reader = PdfReader(filepath)
-            for page in main_reader.pages:
-                writer.add_page(page)
+            # Open each source through an explicit file handle and fully
+            # consume it (copy all pages into the writer) inside the `with`
+            # block, so the OS file handle is released before shutil.move()
+            # below replaces `filepath`. Passing a path straight to
+            # PdfReader() keeps the file open for lazy page/content-stream
+            # access, which can raise PermissionError on Windows when the
+            # source file is later moved/renamed while still open.
+            with open(filepath, "rb") as f:
+                main_reader = PdfReader(f)
+                for page in main_reader.pages:
+                    writer.add_page(page)
             failed_attachments: list[str] = []
             for _type_label, _rec_date, doc_path in pdf_docs:
                 try:
-                    att_reader = PdfReader(doc_path)
-                    for page in att_reader.pages:
-                        writer.add_page(page)
+                    with open(doc_path, "rb") as f:
+                        att_reader = PdfReader(f)
+                        for page in att_reader.pages:
+                            writer.add_page(page)
                 except Exception as exc:  # pylint: disable=broad-exception-caught
                     # A single corrupt/unreadable attachment shouldn't abort the
                     # whole report; log it and surface a warning after export.

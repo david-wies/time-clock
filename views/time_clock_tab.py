@@ -337,13 +337,11 @@ class TimeClockTab(RecordTabMixin, ttk.Frame):
         )
 
     def _bind_shortcuts(self) -> None:
-        self.root.bind_all("<Control-n>", self._guard_visible(self._do_add), add=True)
-        self.root.bind_all("<Control-e>", self._guard_visible(self._do_edit), add=True)
-        self.root.bind_all("<Delete>", self._guard_visible(self._do_delete), add=True)
-        self.root.bind_all(
-            "<Control-d>", self._guard_visible(self._do_clock_out), add=True
-        )
-        self.root.bind_all("<F5>", self._guard_visible(self._refresh), add=True)
+        self._bind_shortcut("<Control-n>", self._do_add)
+        self._bind_shortcut("<Control-e>", self._do_edit)
+        self._bind_shortcut("<Delete>", self._do_delete)
+        self._bind_shortcut("<Control-d>", self._do_clock_out)
+        self._bind_shortcut("<F5>", self._refresh)
 
     def _apply_tag_styles(self) -> None:
         c = COLORS.get(self._theme_mode, COLORS[ThemeMode.LIGHT])
@@ -807,6 +805,13 @@ class TimeClockTab(RecordTabMixin, ttk.Frame):
         lb_frame.pack(fill="x", padx=12, pady=4)
         lb = tk.Listbox(
             lb_frame, selectmode="single", height=min(len(open_recs), 8), width=52
+        )
+        c = COLORS.get(self._theme_mode, COLORS[ThemeMode.LIGHT])
+        lb.configure(
+            bg=c["bg.card"],
+            fg=c["fg.default"],
+            selectbackground=c["accent"],
+            selectforeground="#FFFFFF",
         )
         lb.pack(fill="x")
         for rec in open_recs:

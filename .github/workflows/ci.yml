@@ -46,6 +46,7 @@ jobs:
 
   type-check:
     name: Type Check
+    needs: lint
     runs-on: ubuntu-latest
 
     steps:
@@ -68,6 +69,7 @@ jobs:
 
   test:
     name: Test
+    needs: lint
     runs-on: ubuntu-latest
 
     steps:
