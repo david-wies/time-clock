@@ -142,6 +142,10 @@ Enums:
   WorkType      = IN_SITE | ROAD | REMOTE                                               (str enum → DB text)
   VacationType  = ANNUAL_LEAVE | PUBLIC_HOLIDAY | UNPAID_LEAVE | SPECIAL_LEAVE | CARRY_OVER (str enum → DB text)
   Weekday       = MON..SUN (0..6)                                                       (int enum → DB int)
+  WarningCode   = OVERNIGHT_SHIFT_WARNING (blocking=False) | OPEN_RECORD_EXISTS (blocking=True)
+                  | MULTIPLE_OPEN_RECORDS (blocking=True) | OVER_BALANCE_WARNING (blocking=True) (str enum → Result.warnings/errors; `blocking` picks which)
+  PeriodType    = MONTH | QUARTER | YEAR                                                (str enum → DB text)
+  OvertimePeriod = WEEK | MONTH | YEAR                                                  (str enum → DB text)
 
 Dataclasses (slots=True):
   TimeRecord:         id, date, start, end | None, break_minutes, work_type, office?, note?, document_path?

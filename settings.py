@@ -51,7 +51,12 @@ class SettingsManager:
         except sqlite3.Error as exc:
             logger.warning("SettingsManager: DB read failed for key %r: %s", key, exc)
             if self.on_error is not None:
-                self.on_error(key, str(exc))
+                try:
+                    self.on_error(key, str(exc))
+                except Exception as hook_exc:
+                    logger.warning(
+                        "SettingsManager: on_error hook failed: %s", hook_exc
+                    )
         finally:
             conn.close()
 
@@ -73,6 +78,11 @@ class SettingsManager:
         except sqlite3.Error as exc:
             logger.warning("SettingsManager: DB write failed for key %r: %s", key, exc)
             if self.on_error is not None:
-                self.on_error(key, str(exc))
+                try:
+                    self.on_error(key, str(exc))
+                except Exception as hook_exc:
+                    logger.warning(
+                        "SettingsManager: on_error hook failed: %s", hook_exc
+                    )
         finally:
             conn.close()

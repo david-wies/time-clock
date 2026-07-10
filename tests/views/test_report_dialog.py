@@ -227,8 +227,9 @@ def test_export_pdf_warns_when_records_skipped(tmp_path, monkeypatch) -> None:
     dialog = _make_export_pdf_dialog(_make_report_data(skipped_record_count=5))
     filepath = str(tmp_path / "report.pdf")
     monkeypatch.setattr("views.report_dialog.asksaveasfilename", lambda **_kw: filepath)
-    show_warning = mock.MagicMock()
-    show_info = mock.MagicMock()
+    manager = mock.MagicMock()
+    show_warning = manager.showwarning
+    show_info = manager.showinfo
     monkeypatch.setattr("views.report_dialog.messagebox.showwarning", show_warning)
     monkeypatch.setattr("views.report_dialog.messagebox.showinfo", show_info)
 
@@ -239,3 +240,4 @@ def test_export_pdf_warns_when_records_skipped(tmp_path, monkeypatch) -> None:
     warning_text = show_warning.call_args.args[1]
     assert "5 record(s) skipped due to data errors" in warning_text
     show_info.assert_called_once()
+    assert [c[0] for c in manager.mock_calls] == ["showwarning", "showinfo"]

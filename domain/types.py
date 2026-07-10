@@ -373,12 +373,14 @@ class Result:
     warnings: tuple[str, ...] = field(default_factory=tuple)
 
     def __post_init__(self) -> None:
-        if not self.ok and not self.errors:
+        errors = tuple(self.errors)
+        warnings = tuple(self.warnings)
+        if not self.ok and not errors:
             raise ValueError("Result(ok=False, ...) must carry at least one error.")
-        if self.ok and self.errors:
+        if self.ok and errors:
             raise ValueError("Result(ok=True, ...) must not carry any errors.")
-        object.__setattr__(self, "errors", tuple(self.errors))
-        object.__setattr__(self, "warnings", tuple(self.warnings))
+        object.__setattr__(self, "errors", errors)
+        object.__setattr__(self, "warnings", warnings)
 
 
 @dataclass(slots=True)
