@@ -20,7 +20,14 @@ from views.record_tab_common import RecordTabMixin
 
 
 class _FakeMixinHost(RecordTabMixin):
-    """Minimal stand-in providing the attributes/hooks RecordTabMixin needs."""
+    """Minimal stand-in providing the attributes/hooks RecordTabMixin needs.
+
+    ``root`` is a plain ``mock.Mock`` standing in for the shared Tk root
+    widget: ``_bind_shortcut``/``_clear_shortcuts`` only ever call
+    ``root.bind_all``/``root.unbind`` on it, so a Mock records those calls
+    without needing a live Tk interpreter, matching how ``_tree`` etc. are
+    faked below.
+    """
 
     def __init__(self) -> None:
         # Explicit `mock.Mock` annotations override the `ttk.Treeview` /
@@ -41,6 +48,7 @@ class _FakeMixinHost(RecordTabMixin):
         self.edit_called = False
         self.winfo_exists: mock.Mock = mock.Mock(return_value=True)
         self.winfo_ismapped: mock.Mock = mock.Mock(return_value=True)
+        self.root: mock.Mock = mock.Mock()
 
     def _refresh(self, **_kw: object) -> None:
         self.refresh_called = True
@@ -284,6 +292,103 @@ def test_clear_unsubs_with_no_subscriptions_is_a_noop() -> None:
     assert host._unsubs == []
 
 
+# --- _bind_shortcut -------------------------------------------------------------
+
+
+def test_bind_shortcut_calls_root_bind_all_and_records_binding() -> None:
+    host = _FakeMixinHost()
+    host.root.bind_all.return_value = "funcid-1"
+    handler = mock.Mock()
+
+    host._bind_shortcut("<Control-s>", handler)
+
+    call_args = host.root.bind_all.call_args
+    assert call_args.args[0] == "<Control-s>"
+    assert callable(call_args.args[1])
+    assert call_args.kwargs == {"add": True}
+    assert host._shortcut_binds == [("<Control-s>", "funcid-1")]
+
+
+def test_bind_shortcut_wraps_handler_with_guard_visible() -> None:
+    """The callable passed to ``bind_all`` must be the ``_guard_visible``
+    wrapper around ``handler``, not ``handler`` itself -- otherwise the
+    shortcut would fire even while this tab is hidden behind another one in
+    the Notebook."""
+    host = _FakeMixinHost()
+    host.root.bind_all.return_value = "funcid-1"
+    handler = mock.Mock()
+
+    host._bind_shortcut("<Control-s>", handler)
+    wrapped = host.root.bind_all.call_args.args[1]
+    assert wrapped is not handler
+
+    wrapped(None)
+    handler.assert_called_once_with()
+
+    handler.reset_mock()
+    host.winfo_ismapped.return_value = False
+    wrapped(None)
+    handler.assert_not_called()
+
+
+def test_bind_shortcut_appends_across_multiple_calls() -> None:
+    host = _FakeMixinHost()
+    host.root.bind_all.side_effect = ["fid-1", "fid-2"]
+
+    host._bind_shortcut("<Control-s>", mock.Mock())
+    host._bind_shortcut("<Control-p>", mock.Mock())
+
+    assert host._shortcut_binds == [
+        ("<Control-s>", "fid-1"),
+        ("<Control-p>", "fid-2"),
+    ]
+
+
+# --- _clear_shortcuts -------------------------------------------------------------
+
+
+def test_clear_shortcuts_unbinds_each_binding_by_funcid_not_unbind_all() -> None:
+    """Must use ``root.unbind(sequence, funcid)`` per-binding, never
+    ``root.unbind_all(sequence)`` -- the latter would strip bindings that
+    other tab instances sharing this root registered via ``add=True`` on the
+    same key sequence."""
+    host = _FakeMixinHost()
+    host._shortcut_binds = [("<Control-s>", "fid-1"), ("<Control-p>", "fid-2")]
+
+    host._clear_shortcuts()
+
+    host.root.unbind.assert_has_calls(
+        [mock.call("<Control-s>", "fid-1"), mock.call("<Control-p>", "fid-2")]
+    )
+    host.root.unbind_all.assert_not_called()
+    assert host._shortcut_binds == []
+
+
+def test_clear_shortcuts_calls_all_and_isolates_failures(caplog) -> None:
+    host = _FakeMixinHost()
+    host._shortcut_binds = [
+        ("<Control-s>", "fid-1"),
+        ("<Control-p>", "fid-2"),
+        ("<Control-z>", "fid-3"),
+    ]
+    host.root.unbind.side_effect = [None, RuntimeError("boom"), None]
+
+    with caplog.at_level(logging.ERROR, logger="views.record_tab_common"):
+        host._clear_shortcuts()  # must not raise
+
+    assert host.root.unbind.call_count == 3
+    assert host._shortcut_binds == []
+
+
+def test_clear_shortcuts_with_no_bindings_is_a_noop() -> None:
+    host = _FakeMixinHost()
+
+    host._clear_shortcuts()
+
+    host.root.unbind.assert_not_called()
+    assert host._shortcut_binds == []
+
+
 # --- _on_destroy ------------------------------------------------------------------
 
 
@@ -298,9 +403,27 @@ def test_on_destroy_clears_unsubs() -> None:
     assert host._unsubs == []
 
 
+def test_on_destroy_clears_shortcuts() -> None:
+    host = _FakeMixinHost()
+    host._shortcut_binds = [("<Control-s>", "fid-1")]
+
+    host._on_destroy(None)
+
+    host.root.unbind.assert_called_once_with("<Control-s>", "fid-1")
+    assert host._shortcut_binds == []
+
+
 def test_on_destroy_delegates_to_clear_unsubs() -> None:
     host = _FakeMixinHost()
     with mock.patch.object(host, "_clear_unsubs") as spy:
+        host._on_destroy(None)
+
+    spy.assert_called_once_with()
+
+
+def test_on_destroy_delegates_to_clear_shortcuts() -> None:
+    host = _FakeMixinHost()
+    with mock.patch.object(host, "_clear_shortcuts") as spy:
         host._on_destroy(None)
 
     spy.assert_called_once_with()

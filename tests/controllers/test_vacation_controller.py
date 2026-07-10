@@ -547,3 +547,77 @@ def test_delete_record_non_sqlite_error_propagates(
 
     with pytest.raises(KeyError):
         controller.delete_record(1)
+
+
+# ──────────── Read calls inside the guard (§ codebase review gap) ───────────
+# save_record() was changed to move certain read calls inside the same
+# DatabaseErrorGuard `with` block used for the write call, so that a
+# sqlite3.Error raised during a read (e.g. a locked DB) also becomes a
+# Result(ok=False, ...) instead of propagating. These mirror the write-call
+# "sqlite_error_is_caught" tests above, but target each guarded read call.
+
+
+def test_save_record_daily_target_read_sqlite_error_is_caught_and_returned(
+    controller: VacationController, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """get_daily_target_for_date() is the first read inside save_record()'s
+    guard, ahead of both the hours-bound validation and the balance check --
+    a sqlite3.Error raised there must be caught exactly like one raised by
+    insert_record()."""
+    rec = VacationRecord(None, date(2026, 7, 15), 8.0, VacationType.ANNUAL_LEAVE)
+
+    def _boom(_d: date) -> None:
+        raise sqlite3.Error("db error")
+
+    monkeypatch.setattr(controller.model, "get_daily_target_for_date", _boom)
+
+    res = controller.save_record(rec)
+
+    assert res.ok is False
+    assert "Database error" in res.errors[0]
+
+
+def test_save_record_summary_read_sqlite_error_is_caught_and_returned(
+    controller: VacationController, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """calculate_vacation_summary() is called inside save_record()'s guard
+    for debit vtypes (ANNUAL_LEAVE/PUBLIC_HOLIDAY/SPECIAL_LEAVE) to compute
+    the projected remaining balance -- a sqlite3.Error raised there must be
+    caught the same way as one raised by insert_record()."""
+    controller.model.save_settings(2026, 160.0, 40.0)
+    rec = VacationRecord(None, date(2026, 7, 15), 8.0, VacationType.ANNUAL_LEAVE)
+
+    def _boom(_year: int) -> None:
+        raise sqlite3.Error("db error")
+
+    monkeypatch.setattr(controller.model, "calculate_vacation_summary", _boom)
+
+    res = controller.save_record(rec)
+
+    assert res.ok is False
+    assert "Database error" in res.errors[0]
+
+
+def test_save_record_edit_lookup_read_sqlite_error_is_caught_and_returned(
+    controller: VacationController, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """get_record_by_id() is called inside save_record()'s guard on the edit
+    path for debit vtypes (record.id is not None and is_debit) to look up the
+    pre-edit hours for the projected-balance calculation -- a sqlite3.Error
+    raised there must be caught the same way as one raised by
+    insert_record()/update_record()."""
+    controller.model.save_settings(2026, 160.0, 40.0)
+    rec = VacationRecord(None, date(2026, 7, 15), 8.0, VacationType.ANNUAL_LEAVE)
+    assert controller.save_record(rec).ok is True
+    assert rec.id is not None
+
+    def _boom(_record_id: int) -> None:
+        raise sqlite3.Error("db error")
+
+    monkeypatch.setattr(controller.model, "get_record_by_id", _boom)
+
+    edited = dataclasses.replace(rec, hours=4.0)
+    res = controller.save_record(edited)
+
+    assert res.ok is False
+    assert "Database error" in res.errors[0]

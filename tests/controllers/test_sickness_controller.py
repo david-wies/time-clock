@@ -444,3 +444,72 @@ def test_save_range_non_sqlite_error_propagates(
 
     with pytest.raises(TypeError):
         controller.save_range(date(2026, 6, 8), date(2026, 6, 10), 8.0)
+
+
+# ──────────── Read calls inside the guard (§ codebase review gap) ───────────
+# save_record()/save_range() were changed to move certain read calls inside
+# the same DatabaseErrorGuard `with` block used for the write call, so that a
+# sqlite3.Error raised during a read (e.g. a locked DB) also becomes a
+# Result(ok=False, ...) instead of propagating. These mirror the write-call
+# "sqlite_error_is_caught" tests above, but target each guarded read call.
+
+
+def test_save_record_summary_read_sqlite_error_is_caught_and_returned(
+    controller: SicknessController, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """calculate_sickness_summary() is the first read inside save_record()'s
+    guard (used to compute projected_used/projected_remaining), ahead of the
+    insert -- a sqlite3.Error raised there must be caught exactly like one
+    raised by insert_record()."""
+    rec = SicknessRecord(None, date(2026, 2, 15), 8.0, "Flu")
+
+    def _boom(_year: int) -> None:
+        raise sqlite3.Error("db error")
+
+    monkeypatch.setattr(controller.model, "calculate_sickness_summary", _boom)
+
+    res = controller.save_record(rec)
+
+    assert res.ok is False
+    assert "Database error" in res.errors[0]
+
+
+def test_save_record_edit_lookup_read_sqlite_error_is_caught_and_returned(
+    controller: SicknessController, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """get_record_by_id() is called inside save_record()'s guard on the edit
+    path (record.id is not None) to look up the pre-edit hours for the
+    projected-balance calculation -- a sqlite3.Error raised there must be
+    caught the same way as one raised by insert_record()/update_record()."""
+    rec = SicknessRecord(None, date(2026, 2, 15), 8.0, "Flu")
+    assert controller.save_record(rec).ok is True
+    assert rec.id is not None
+
+    def _boom(_record_id: int) -> None:
+        raise sqlite3.Error("db error")
+
+    monkeypatch.setattr(controller.model, "get_record_by_id", _boom)
+
+    edited = dataclasses.replace(rec, hours=4.0)
+    res = controller.save_record(edited)
+
+    assert res.ok is False
+    assert "Database error" in res.errors[0]
+
+
+def test_save_range_dates_lookup_read_sqlite_error_is_caught_and_returned(
+    controller: SicknessController, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """get_dates_in_range() is the conflict-check read inside save_range()'s
+    guard, ahead of the bulk insert -- a sqlite3.Error raised there must be
+    caught the same way as one raised by insert_records_bulk()."""
+
+    def _boom(_start: date, _end: date) -> None:
+        raise sqlite3.Error("db error")
+
+    monkeypatch.setattr(controller.model, "get_dates_in_range", _boom)
+
+    res = controller.save_range(date(2026, 6, 8), date(2026, 6, 10), 8.0)
+
+    assert res.ok is False
+    assert "Database error" in res.errors[0]
