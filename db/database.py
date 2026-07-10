@@ -471,8 +471,7 @@ class Database:
                         bad_row["break_minutes"],
                     )
                 conn.execute(
-                    "UPDATE time_record SET break_minutes = 0 "
-                    "WHERE break_minutes < 0;"
+                    "UPDATE time_record SET break_minutes = 0 WHERE break_minutes < 0;"
                 )
                 conn.execute("""
                     CREATE TABLE IF NOT EXISTS time_record_v8 (
