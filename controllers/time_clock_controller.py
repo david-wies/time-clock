@@ -93,7 +93,7 @@ class DatabaseErrorGuard(AbstractContextManager[None]):
             return True
         if exc_type is not None and issubclass(exc_type, sqlite3.Error):
             self._log.exception(self._message, *self._args)
-            self.result = Result(ok=False, errors=("Database error",))
+            self.result = Result(ok=False, errors=(f"Database error: {exc}",))
             return True
         return False
 
