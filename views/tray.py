@@ -24,6 +24,7 @@ _PNG_PATH = Path(__file__).parent.parent / "resources" / "time-clock.png"
 
 
 def _load_base_icon() -> Image.Image:
+    """Load and resize the base tray icon image from disk."""
     return (
         Image.open(_PNG_PATH)
         .convert("RGBA")
@@ -32,6 +33,7 @@ def _load_base_icon() -> Image.Image:
 
 
 def _make_icon(clocked_in: bool, base: Image.Image) -> Image.Image:
+    """Return the icon image, badged if clocked in."""
     img = base.copy()
     if clocked_in:
         draw = ImageDraw.Draw(img)
@@ -57,6 +59,7 @@ class SystemTray:
         settings: SettingsManager,
         bus: EventBus,
     ) -> None:
+        """Wire root/controller/model/settings/bus and subscribe to events."""
         self._root = root
         self._controller = controller
         self._model = model
@@ -112,15 +115,19 @@ class SystemTray:
     # ─────────────────────── Icon helpers ──────────────────────────────────
 
     def _is_clocked_in(self) -> bool:
+        """Return whether there's an open record for today."""
         return bool(self._model.get_open_records_for_date(date.today()))
 
     def _current_icon_image(self) -> Image.Image:
+        """Return the icon image for the current clocked-in state."""
         return _make_icon(self._clocked_in_cache, self._base_icon)
 
     def _current_title(self) -> str:
+        """Return the tray tooltip title for the current clocked-in state."""
         return "Time Clock — Clocked In" if self._clocked_in_cache else "Time Clock"
 
     def _build_menu(self) -> pystray.Menu:
+        """Build the pystray menu."""
         return pystray.Menu(
             pystray.MenuItem(
                 "Clock In",
@@ -151,20 +158,25 @@ class SystemTray:
     # ─────────────────── Tray callbacks (pystray thread) ───────────────────
 
     def _tray_clock_in(self, _icon, _item) -> None:
+        """Marshal clock-in to the tkinter main thread."""
         self._root.after(0, self._do_clock_in)
 
     def _tray_clock_out(self, _icon, _item) -> None:
+        """Marshal clock-out to the tkinter main thread."""
         self._root.after(0, self._do_clock_out)
 
     def _tray_open(self, _icon, _item) -> None:
+        """Marshal window-open to the tkinter main thread."""
         self._root.after(0, self._do_open)
 
     def _tray_quit(self, _icon, _item) -> None:
+        """Marshal quit to the tkinter main thread."""
         self._root.after(0, self._do_quit)
 
     # ─────────────────── Main-thread actions ───────────────────────────────
 
     def _do_clock_in(self) -> None:
+        """Call controller.clock_in and handle the Result."""
         result = self._controller.clock_in()
         if not result.ok:
             if result.errors == (WarningCode.OPEN_RECORD_EXISTS.value,):
@@ -180,49 +192,39 @@ class SystemTray:
                     "Tray 'Clock In' invoked while already clocked in; "
                     "tray-menu cache was stale."
                 )
-                self._root.after(
-                    0,
-                    lambda: messagebox.showinfo(
-                        "Already Clocked In",
-                        "You are already clocked in for today.",
-                    ),
+                messagebox.showinfo(
+                    "Already Clocked In",
+                    "You are already clocked in for today.",
                 )
                 return
-            errors = result.errors
-            self._root.after(
-                0,
-                lambda: messagebox.showerror("Clock In Failed", "\n".join(errors)),
-            )
+            messagebox.showerror("Clock In Failed", "\n".join(result.errors))
 
     def _do_clock_out(self) -> None:
+        """Call controller.clock_out and handle the Result."""
         result = self._controller.clock_out()
         if not result.ok:
             if result.errors == (WarningCode.MULTIPLE_OPEN_RECORDS.value,):
-                self._root.after(
-                    0,
-                    lambda: messagebox.showinfo(
-                        "Multiple Open Records",
-                        "Multiple open records exist for today.\n"
-                        "Open the main window to choose which one to clock out.",
-                    ),
+                messagebox.showinfo(
+                    "Multiple Open Records",
+                    "Multiple open records exist for today.\n"
+                    "Open the main window to choose which one to clock out.",
                 )
                 return
-            errors = result.errors
-            self._root.after(
-                0,
-                lambda: messagebox.showerror("Clock Out Failed", "\n".join(errors)),
-            )
+            messagebox.showerror("Clock Out Failed", "\n".join(result.errors))
 
     def _do_open(self) -> None:
+        """Restore and focus the main window."""
         self._root.deiconify()
         self._root.lift()
         self._root.focus_force()
 
     def _do_quit(self) -> None:
+        """Stop the tray and destroy the root window."""
         self.stop()
         self._root.destroy()
 
     def _on_window_close(self) -> None:
+        """Withdraw to tray or quit, per settings, on WM_DELETE_WINDOW."""
         if self._settings.get("minimize_to_tray"):
             self._root.withdraw()
         else:
