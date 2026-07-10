@@ -249,7 +249,7 @@ def test_update_record_on_since_deleted_record_raises_and_publishes_no_event(
 
     event_bus.subscribe(Event.TIME_RECORDS_CHANGED, on_change)
 
-    with pytest.raises(RecordNotFoundError, match=f"No time record with id={rec_id}"):
+    with pytest.raises(RecordNotFoundError, match=f"No time_record with id={rec_id}"):
         model.update_record(stored)
 
     assert change_called is False

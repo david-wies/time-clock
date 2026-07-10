@@ -127,7 +127,7 @@ class VacationModel:
                         record.id,
                     ),
                 )
-                raise_if_no_rows(cursor, "vacation record", record.id, "update")
+                raise_if_no_rows(cursor, "vacation_record", record.id, "update")
             self.bus.publish(Event.VACATION_CHANGED)
 
     def delete_record(self, record_id: int) -> None:

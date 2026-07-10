@@ -83,7 +83,7 @@ class DatabaseErrorGuard(AbstractContextManager[None]):
         tb: TracebackType | None,
     ) -> bool:
         if exc_type is not None and issubclass(exc_type, RecordNotFoundError):
-            self._log.info(self._message, *self._args)
+            self._log.info("%s", exc)
             self.result = Result(
                 ok=False,
                 errors=(

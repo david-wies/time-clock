@@ -312,7 +312,7 @@ def test_update_record_on_since_deleted_record_raises(
     stale = dataclasses.replace(fetched, hours=4.0)
     with pytest.raises(
         RecordNotFoundError,
-        match=f"No vacation record with id={rec_id} exists to update",
+        match=f"No vacation_record with id={rec_id} exists to update",
     ):
         model.update_record(stale)
 

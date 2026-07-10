@@ -246,7 +246,7 @@ class TimeClockModel:
                         record.id,
                     ),
                 )
-                raise_if_no_rows(cursor, "time record", record.id, "update")
+                raise_if_no_rows(cursor, "time_record", record.id, "update")
             self.bus.publish(Event.TIME_RECORDS_CHANGED)
 
     def delete_record(self, record_id: int) -> None:
