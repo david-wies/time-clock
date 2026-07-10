@@ -180,12 +180,9 @@ class SystemTray:
                     "Tray 'Clock In' invoked while already clocked in; "
                     "tray-menu cache was stale."
                 )
-                self._root.after(
-                    0,
-                    lambda: messagebox.showinfo(
-                        "Already Clocked In",
-                        "You are already clocked in for today.",
-                    ),
+                messagebox.showinfo(
+                    "Already Clocked In",
+                    "You are already clocked in for today.",
                 )
                 return
             errors = result.errors
@@ -198,13 +195,10 @@ class SystemTray:
         result = self._controller.clock_out()
         if not result.ok:
             if result.errors == (WarningCode.MULTIPLE_OPEN_RECORDS.value,):
-                self._root.after(
-                    0,
-                    lambda: messagebox.showinfo(
-                        "Multiple Open Records",
-                        "Multiple open records exist for today.\n"
-                        "Open the main window to choose which one to clock out.",
-                    ),
+                messagebox.showinfo(
+                    "Multiple Open Records",
+                    "Multiple open records exist for today.\n"
+                    "Open the main window to choose which one to clock out.",
                 )
                 return
             errors = result.errors
