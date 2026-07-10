@@ -21,10 +21,27 @@ class RecordNotFoundError(Exception):
     """
 
     def __init__(self, entity: Entity, record_id: int, action: str) -> None:
-        self.entity = entity
-        self.record_id = record_id
-        self.action = action
+        self._entity: Entity = entity
+        self._record_id: int = record_id
+        self._action: str = action
         super().__init__(f"No {entity} with id={record_id} exists to {action}")
+
+    @property
+    def entity(self) -> Entity:
+        """The kind of record that was not found (read-only after construction —
+        see class docstring for why this must be trustworthy diagnostic data)."""
+        return self._entity
+
+    @property
+    def record_id(self) -> int:
+        """The id of the record that was not found (read-only after construction)."""
+        return self._record_id
+
+    @property
+    def action(self) -> str:
+        """The action that was attempted (e.g. "update", "delete") (read-only
+        after construction)."""
+        return self._action
 
 
 def raise_if_no_rows(

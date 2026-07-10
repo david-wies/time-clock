@@ -403,7 +403,7 @@ def test_save_record_update_on_since_deleted_record_returns_error_result(
     (not a monkeypatched generic exception): a record is saved, deleted via
     the model directly (simulating a concurrent delete from another view),
     and then re-saved through the controller's update path. update_record()
-    matches zero rows, raises sqlite3.DatabaseError, and DatabaseErrorGuard
+    matches zero rows, raises RecordNotFoundError, and DatabaseErrorGuard
     must convert that into an ok=False Result rather than letting it
     propagate.
 
@@ -453,7 +453,7 @@ def test_delete_record_on_since_deleted_record_returns_error_result(
     (not a monkeypatched generic exception): a record is saved, deleted once
     via the controller's own delete_record(), and then deleted again through
     the controller for the same now-stale id. The second delete_record()
-    call matches zero rows, raises sqlite3.DatabaseError, and
+    call matches zero rows, raises RecordNotFoundError, and
     DatabaseErrorGuard must convert that into an ok=False Result rather than
     letting it propagate -- mirrors
     test_save_record_update_on_since_deleted_record_returns_error_result

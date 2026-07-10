@@ -81,6 +81,19 @@ class DatabaseErrorGuard(AbstractContextManager[None]):
         self._args = args
         self.result: Result | None = None
 
+    def __enter__(self) -> None:
+        """Returns None, matching the `AbstractContextManager[None]` generic
+        parameter above. The inherited `AbstractContextManager.__enter__`
+        returns `self`, not None, so without this override the declared
+        generic and the actual runtime return value would disagree — a
+        hypothetical `with guard as g:` would get the guard object at
+        runtime despite `g` being typed as None. This guard is only ever
+        used as bare `with guard:` (see class docstring); overriding
+        `__enter__` here makes that "no usable value on entry" contract
+        explicit and mypy-checked rather than incidental.
+        """
+        return None
+
     def __exit__(
         self,
         exc_type: type[BaseException] | None,
@@ -109,10 +122,10 @@ class DatabaseErrorGuard(AbstractContextManager[None]):
 
     def unwrap(self) -> Result:
         """Returns the Result captured by `__exit__` after a sqlite3.Error
-        was caught. Only call this in the code reached when the `with`
-        body did not itself return — i.e., right after the `with` block —
-        at which point an error is guaranteed to have been caught and
-        `self.result` populated.
+        or RecordNotFoundError was caught. Only call this in the code
+        reached when the `with` body did not itself return — i.e., right
+        after the `with` block — at which point an error is guaranteed to
+        have been caught and `self.result` populated.
         """
         if self.result is None:
             raise RuntimeError(

@@ -520,7 +520,7 @@ def test_save_record_update_on_since_deleted_record_returns_error_result(
     it via the model directly (bypassing the controller, e.g. simulating a
     concurrent delete from another view), then try to save an edit for that
     now-stale id through the controller. update_record() raises
-    sqlite3.DatabaseError, which DatabaseErrorGuard must catch and turn into
+    RecordNotFoundError, which DatabaseErrorGuard must catch and turn into
     Result(ok=False, ...) -- not a mocked generic exception, the real
     rowcount mechanism."""
     controller.model.save_settings(2026, 160.0, 40.0)
@@ -570,7 +570,7 @@ def test_delete_record_on_since_deleted_record_returns_error_result(
     VacationModel.delete_record(): save a real record, delete it once via
     the controller's own delete_record(), then delete the same now-stale id
     again through the controller. The second delete_record() call raises
-    sqlite3.DatabaseError on the zero-rowcount DELETE, which
+    RecordNotFoundError on the zero-rowcount DELETE, which
     DatabaseErrorGuard must catch and turn into Result(ok=False, ...) --
     not a mocked generic exception, the real rowcount mechanism exercised by
     test_save_record_update_on_since_deleted_record_returns_error_result

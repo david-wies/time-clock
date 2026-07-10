@@ -330,7 +330,7 @@ def test_save_record_update_after_real_delete_returns_result(
     model directly (bypassing the controller, to simulate e.g. another view
     deleting it first), then call save_record() with the now-stale record
     object. update_record() should hit cursor.rowcount == 0, raise
-    sqlite3.DatabaseError, and DatabaseErrorGuard should convert that into
+    RecordNotFoundError, and DatabaseErrorGuard should convert that into
     a Result(ok=False, ...) rather than letting it propagate."""
     rec = MiliuimRecord(None, date(2026, 6, 22), date(2026, 6, 26))
     assert controller.save_record(rec).ok is True
@@ -376,7 +376,7 @@ def test_delete_record_on_since_deleted_record_returns_error_result(
     (not a mocked-raise): insert a real record, delete it once via the
     controller's own delete_record(), then call delete_record() again for
     the same now-stale id. The second call should hit cursor.rowcount == 0,
-    raise sqlite3.DatabaseError, and DatabaseErrorGuard should convert that
+    raise RecordNotFoundError, and DatabaseErrorGuard should convert that
     into a Result(ok=False, ...) rather than letting it propagate -- mirrors
     test_save_record_update_after_real_delete_returns_result above but for
     the delete path."""

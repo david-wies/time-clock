@@ -64,7 +64,7 @@ def test_save_record_on_since_deleted_record_returns_error_result(
     model.update_record() (see test_save_record_with_id_updates_existing_record
     above). If the underlying row was deleted out from under the caller
     (e.g. a stale UI selection), model.update_record() now raises
-    sqlite3.DatabaseError on the zero-rowcount UPDATE -- this must surface
+    RecordNotFoundError on the zero-rowcount UPDATE -- this must surface
     as Result(ok=False, ...) via DatabaseErrorGuard, not propagate or
     silently report success. Exercises the real rowcount-based mechanism
     end-to-end (a real row is inserted then really deleted), rather than
@@ -90,7 +90,7 @@ def test_delete_record_on_since_deleted_record_returns_error_result(
     """delete_record() called twice on the same id: the first call really
     deletes the row, and the second call must hit the same zero-rowcount
     guard exercised by test_save_record_on_since_deleted_record_returns_error_result
-    above, converting the resulting sqlite3.DatabaseError into
+    above, converting the resulting RecordNotFoundError into
     Result(ok=False, ...) via DatabaseErrorGuard rather than propagating
     or silently reporting success on a no-op delete."""
     rec = TimeRecord(
