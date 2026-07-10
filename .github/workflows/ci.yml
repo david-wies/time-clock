@@ -16,42 +16,99 @@ permissions:
   contents: read
 
 jobs:
-  type-check:
-    name: Type Check
+  lint:
+    name: Lint
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        with:
+          persist-credentials: false
 
       - name: Set up Python
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6.3.0
         with:
-          python-version: "3.12"
+          python-version: "3.14"
           cache: pip
 
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: pip install -r requirements-dev.txt
+
+      # Check-only, not --fix/auto-format: CI should fail loudly on lint
+      # violations rather than silently rewriting code. Local pre-commit
+      # (.pre-commit-config.yaml) is the one that auto-fixes.
+      - name: Run ruff check
+        run: ruff check .
+
+      - name: Run ruff format check
+        run: ruff format --check .
+
+  type-check:
+    name: Type Check
+    needs: lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6.3.0
+        with:
+          python-version: "3.14"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
 
       - name: Run mypy
         run: mypy --strict domain/ core/ controllers/
 
   test:
     name: Test
+    needs: lint
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        with:
+          persist-credentials: false
 
       - name: Set up Python
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6.3.0
         with:
-          python-version: "3.12"
+          python-version: "3.14"
           cache: pip
 
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: pip install -r requirements-dev.txt
 
-      - name: Run pytest
-        run: pytest tests/
+      # PYSTRAY_BACKEND=dummy: this runner has no X server. On Linux,
+      # pystray's default backend probing tries appindicator/gtk (missing,
+      # raises ImportError, skipped) then falls back to _xorg, which opens
+      # a real Xlib.display.Display() at import time -- not caught as
+      # ImportError, so it crashes test collection the moment anything
+      # imports views.tray (directly, or via main.py). The dummy backend
+      # is pystray's own supported no-GUI mode for exactly this case.
+      #
+      # The 90% fail-under gate applies only to domain/core/models/controllers
+      # (see CLAUDE.md's coverage target) -- views/settings/theme/db are
+      # UI and I/O heavy and reported for visibility only, not gated.
+      - name: Run pytest with coverage
+        env:
+          PYSTRAY_BACKEND: dummy
+        run: >
+          pytest tests/
+          --cov=domain --cov=core --cov=controllers
+          --cov=models --cov=db --cov=settings --cov=theme --cov=views
+          --cov-report=term-missing
+
+      - name: Enforce coverage gate on core layers
+        run: >
+          coverage report
+          --include="domain/*,core/*,controllers/*,models/*"
+          --fail-under=90

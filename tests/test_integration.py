@@ -2,25 +2,27 @@
 
 from __future__ import annotations
 
-import pytest
+import dataclasses
 from datetime import date, datetime, time
 
+import pytest
+
+from controllers.sickness_controller import SicknessController
 from controllers.time_clock_controller import TimeClockController
 from controllers.vacation_controller import VacationController
-from controllers.sickness_controller import SicknessController
-from core.events import EventBus, Event
+from core.events import Event, EventBus
 from core.hebrew_date import to_hebrew_label
 from core.report import period_summary
 from db.database import Database
-from domain.enums import WorkType, VacationType
-from domain.types import TimeRecord, VacationRecord, SicknessRecord
+from domain.enums import VacationType, WorkType
+from domain.types import SicknessRecord, TimeRecord, VacationRecord
 from models.sickness_model import SicknessModel
 from models.time_clock_model import TimeClockModel
 from models.vacation_model import VacationModel
 from settings import SettingsManager
 
-
 # ─────────────────────────── Fixtures ────────────────────────────────────────
+
 
 @pytest.fixture
 def bus() -> EventBus:
@@ -58,6 +60,7 @@ def sick_model(db: Database, bus: EventBus) -> SicknessModel:
 def tc_ctrl(tc_model: TimeClockModel, settings: SettingsManager) -> TimeClockController:
     def fixed_clock() -> datetime:
         return datetime(2026, 6, 26, 9, 0)
+
     return TimeClockController(tc_model, settings, clock=fixed_clock)
 
 
@@ -73,6 +76,7 @@ def sick_ctrl(sick_model: SicknessModel) -> SicknessController:
 
 # ─────────────────────── Hebrew date tests ────────────────────────────────────
 
+
 def test_hebrew_label_returns_string() -> None:
     label = to_hebrew_label(date(2026, 6, 26))
     assert isinstance(label, str)
@@ -82,16 +86,21 @@ def test_hebrew_label_returns_string() -> None:
 def test_hebrew_label_known_date() -> None:
     # 26 June 2026 = 1 Tammuz 5786 (א' תמוז תשפ"ו)
     label = to_hebrew_label(date(2026, 6, 26))
-    assert "זומת" in label  # to_hebrew_label reverses the string; "זומת" == "תמוז"[::-1]
+    assert (
+        "זומת" in label
+    )  # to_hebrew_label reverses the string; "זומת" == "תמוז"[::-1]
 
 
 def test_hebrew_label_rosh_hashana() -> None:
     # 23 Sep 2025 = 1 Tishri 5786 (Rosh Hashana; 22 Sep is still 29 Elul)
     label = to_hebrew_label(date(2025, 9, 23))
-    assert "ירשת" in label  # to_hebrew_label reverses the string; "ירשת" == "תשרי"[::-1]
+    assert (
+        "ירשת" in label
+    )  # to_hebrew_label reverses the string; "ירשת" == "תשרי"[::-1]
 
 
 # ─────────────────── Clock-in / clock-out integration ─────────────────────────
+
 
 def test_clock_in_creates_open_record(
     tc_ctrl: TimeClockController, tc_model: TimeClockModel
@@ -128,7 +137,8 @@ def test_force_flag_bypasses_open_record_check(
 ) -> None:
     tc_ctrl.clock_in(work_type=WorkType.REMOTE)
     result = tc_ctrl.clock_in(work_type=WorkType.ROAD, force=True)
-    # force=True suppresses OPEN_RECORD_EXISTS — any remaining error is overlap, not the guard
+    # force=True suppresses OPEN_RECORD_EXISTS — any remaining error is
+    # overlap, not the guard
     assert "OPEN_RECORD_EXISTS" not in result.errors
 
 
@@ -149,7 +159,7 @@ def test_add_edit_delete_record(
     assert result.ok
     assert record.id is not None
 
-    record.note = "Updated"
+    record = dataclasses.replace(record, note="Updated")
     result2 = tc_ctrl.save_record(record)
     assert result2.ok
 
@@ -165,9 +175,17 @@ def test_add_edit_delete_record(
 def test_all_three_work_types(
     tc_ctrl: TimeClockController, tc_model: TimeClockModel
 ) -> None:
-    slots = [(time(9, 0), time(10, 0)), (time(11, 0), time(12, 0)), (time(13, 0), time(14, 0))]
+    slots = [
+        (time(9, 0), time(10, 0)),
+        (time(11, 0), time(12, 0)),
+        (time(13, 0), time(14, 0)),
+    ]
     for (wtype, office), (s, e) in zip(
-        [(WorkType.IN_SITE, "Office A"), (WorkType.ROAD, None), (WorkType.REMOTE, None)],
+        [
+            (WorkType.IN_SITE, "Office A"),
+            (WorkType.ROAD, None),
+            (WorkType.REMOTE, None),
+        ],
         slots,
     ):
         r = TimeRecord(
@@ -186,15 +204,20 @@ def test_all_three_work_types(
 
 # ─────────────────── Vacation integration ─────────────────────────────────────
 
+
 def test_vacation_four_pool_types(
     vac_ctrl: VacationController, vac_model: VacationModel
 ) -> None:
     vac_model.save_settings(year=2026, hours_per_year=160.0, max_carry_over=40.0)
     # carry_over must go via add_carry_over(); test the other four pool types
-    for i, vtype in enumerate([
-        VacationType.ANNUAL_LEAVE, VacationType.PUBLIC_HOLIDAY,
-        VacationType.SPECIAL_LEAVE, VacationType.UNPAID_LEAVE,
-    ]):
+    for i, vtype in enumerate(
+        [
+            VacationType.ANNUAL_LEAVE,
+            VacationType.PUBLIC_HOLIDAY,
+            VacationType.SPECIAL_LEAVE,
+            VacationType.UNPAID_LEAVE,
+        ]
+    ):
         r = VacationRecord(
             id=None,
             date=date(2026, 6, i + 1),
@@ -223,6 +246,7 @@ def test_carry_over_flow(
 
 # ─────────────────── Sickness integration ─────────────────────────────────────
 
+
 def test_sickness_add_and_convert(
     sick_ctrl: SicknessController, sick_model: SicknessModel
 ) -> None:
@@ -236,6 +260,7 @@ def test_sickness_add_and_convert(
 
 
 # ─────────────────── Report integration ───────────────────────────────────────
+
 
 @pytest.fixture
 def populated_db(
@@ -252,15 +277,30 @@ def populated_db(
     settings.set("overtime_rate", 1.0)
 
     # Add two time records
-    for d, s, e in [(date(2026, 6, 1), time(9, 0), time(17, 0)),
-                    (date(2026, 6, 2), time(8, 0), time(16, 0))]:
-        r = TimeRecord(id=None, date=d, start_time=s, end_time=e,
-                       break_minutes=30, work_type=WorkType.REMOTE, office=None, note=None)
+    for d, s, e in [
+        (date(2026, 6, 1), time(9, 0), time(17, 0)),
+        (date(2026, 6, 2), time(8, 0), time(16, 0)),
+    ]:
+        r = TimeRecord(
+            id=None,
+            date=d,
+            start_time=s,
+            end_time=e,
+            break_minutes=30,
+            work_type=WorkType.REMOTE,
+            office=None,
+            note=None,
+        )
         tc_ctrl.save_record(r)
 
     # Vacation
-    vr = VacationRecord(id=None, date=date(2026, 6, 5), hours=8.0,
-                        vtype=VacationType.ANNUAL_LEAVE, note=None)
+    vr = VacationRecord(
+        id=None,
+        date=date(2026, 6, 5),
+        hours=8.0,
+        vtype=VacationType.ANNUAL_LEAVE,
+        note=None,
+    )
     vac_ctrl.save_record(vr, confirm_over_balance=True)
 
     # Sickness
@@ -271,13 +311,18 @@ def populated_db(
 
 
 def test_report_month(
-    populated_db: tuple[TimeClockModel, VacationModel, SicknessModel, SettingsManager]
+    populated_db: tuple[TimeClockModel, VacationModel, SicknessModel, SettingsManager],
 ) -> None:
     tc_model, vac_model, sick_model, settings = populated_db
     data = period_summary(
-        period_type="month", year=2026, month=6, quarter=None,
-        model_tc=tc_model, model_vacation=vac_model,
-        model_sickness=sick_model, settings=settings,
+        period_type="month",
+        year=2026,
+        month=6,
+        quarter=None,
+        model_tc=tc_model,
+        model_vacation=vac_model,
+        model_sickness=sick_model,
+        settings=settings,
     )
     assert data.period_label == "June 2026"
     assert data.worked_hours > 0
@@ -287,13 +332,18 @@ def test_report_month(
 
 
 def test_report_quarter(
-    populated_db: tuple[TimeClockModel, VacationModel, SicknessModel, SettingsManager]
+    populated_db: tuple[TimeClockModel, VacationModel, SicknessModel, SettingsManager],
 ) -> None:
     tc_model, vac_model, sick_model, settings = populated_db
     data = period_summary(
-        period_type="quarter", year=2026, month=None, quarter=2,
-        model_tc=tc_model, model_vacation=vac_model,
-        model_sickness=sick_model, settings=settings,
+        period_type="quarter",
+        year=2026,
+        month=None,
+        quarter=2,
+        model_tc=tc_model,
+        model_vacation=vac_model,
+        model_sickness=sick_model,
+        settings=settings,
     )
     assert data.period_label == "Q2 2026"
     assert len(data.monthly_rows) == 3
@@ -302,19 +352,25 @@ def test_report_quarter(
 
 
 def test_report_year(
-    populated_db: tuple[TimeClockModel, VacationModel, SicknessModel, SettingsManager]
+    populated_db: tuple[TimeClockModel, VacationModel, SicknessModel, SettingsManager],
 ) -> None:
     tc_model, vac_model, sick_model, settings = populated_db
     data = period_summary(
-        period_type="year", year=2026, month=None, quarter=None,
-        model_tc=tc_model, model_vacation=vac_model,
-        model_sickness=sick_model, settings=settings,
+        period_type="year",
+        year=2026,
+        month=None,
+        quarter=None,
+        model_tc=tc_model,
+        model_vacation=vac_model,
+        model_sickness=sick_model,
+        settings=settings,
     )
     assert data.period_label == "2026"
     assert len(data.monthly_rows) == 12
 
 
 # ─────────────────── Event bus integration ────────────────────────────────────
+
 
 def test_event_published_on_clock_in(
     tc_ctrl: TimeClockController, bus: EventBus
@@ -336,6 +392,7 @@ def test_event_unsubscribe(bus: EventBus) -> None:
 
 
 # ─────────────────── Settings persistence ─────────────────────────────────────
+
 
 def test_settings_round_trip(settings: SettingsManager) -> None:
     settings.set("theme", "dark")

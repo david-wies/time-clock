@@ -2,34 +2,73 @@
 
 from __future__ import annotations
 
+import logging
 import tkinter as tk
-from tkinter import ttk, messagebox, simpledialog
+from collections.abc import Callable
 from datetime import date
-from typing import Callable, Optional
+from tkinter import messagebox, simpledialog, ttk
 
 import holidays
 
-from core.events import EventBus, Event
-from core.timeutil import to_display_date, date_to_iso, iso_to_date
-from domain.enums import WorkType, VacationType
-from domain.types import WorkDayException, VacationRecord
+from core.events import Event, EventBus
+from core.timeutil import date_to_iso, iso_to_date, to_display_date
+from domain.enums import OvertimePeriod, VacationType, Weekday, WorkType
+from domain.types import VacationRecord, WorkDayException
 from models.sickness_model import SicknessModel
 from models.time_clock_model import TimeClockModel
 from models.vacation_model import VacationModel
 from settings import SettingsManager
+from theme.style import COLORS, ThemeMode, resolve_theme_mode
 from views.date_picker import make_date_picker
+from views.dialog_common import setup_modal_window
 
-_DAY_NAMES = ["Monday", "Tuesday", "Wednesday",
-              "Thursday", "Friday", "Saturday", "Sunday"]
+logger = logging.getLogger(__name__)
+
+_DAY_NAMES = [
+    "Monday",
+    "Tuesday",
+    "Wednesday",
+    "Thursday",
+    "Friday",
+    "Saturday",
+    "Sunday",
+]
 
 _COUNTRIES = [
-    "Australia", "Austria", "Belgium", "Brazil", "Canada",
-    "China", "Czech", "Denmark", "Finland", "France",
-    "Germany", "Greece", "Hungary", "India", "Ireland",
-    "Israel", "Italy", "Japan", "Mexico", "Netherlands",
-    "NewZealand", "Norway", "Poland", "Portugal", "Russia",
-    "SaudiArabia", "Slovakia", "Spain", "Sweden", "Switzerland",
-    "Turkey", "Ukraine", "UnitedKingdom", "UnitedStates",
+    "Australia",
+    "Austria",
+    "Belgium",
+    "Brazil",
+    "Canada",
+    "China",
+    "Czech",
+    "Denmark",
+    "Finland",
+    "France",
+    "Germany",
+    "Greece",
+    "Hungary",
+    "India",
+    "Ireland",
+    "Israel",
+    "Italy",
+    "Japan",
+    "Mexico",
+    "Netherlands",
+    "NewZealand",
+    "Norway",
+    "Poland",
+    "Portugal",
+    "Russia",
+    "SaudiArabia",
+    "Slovakia",
+    "Spain",
+    "Sweden",
+    "Switzerland",
+    "Turkey",
+    "Ukraine",
+    "UnitedKingdom",
+    "UnitedStates",
 ]
 
 _WORK_TYPE_OPTIONS: list[tuple[WorkType, str]] = [
@@ -38,10 +77,11 @@ _WORK_TYPE_OPTIONS: list[tuple[WorkType, str]] = [
     (WorkType.REMOTE, "Remote"),
 ]
 
-_OVERTIME_PERIODS = ["week", "month", "year"]
+_OVERTIME_PERIODS = [str(p) for p in OvertimePeriod]
 
 
 class SettingsDialog(tk.Toplevel):
+    """Modal dialog exposing all application preferences across tabbed sections."""
 
     def __init__(
         self,
@@ -59,12 +99,36 @@ class SettingsDialog(tk.Toplevel):
         self._model_sickness = model_sickness
         self._bus = bus
 
-        self.title("Settings")
-        self.minsize(600, 560)
-        self.resizable(True, True)
-        self.transient(parent)
-        self.grab_set()
-        self.bind("<Escape>", lambda e: self.destroy())
+        # Declared here (bare annotations, no values) so pylint's
+        # attribute-defined-outside-init check sees them as belonging to
+        # __init__ — the real assignments happen in the _build_tab_* helpers
+        # invoked (transitively) from _build_ui below, before __init__ returns.
+        self._day_vars: dict[int, tuple[tk.BooleanVar, tk.StringVar]]
+        self._lb_offices: tk.Listbox
+        self._break_vars: list[tk.StringVar]
+        self._var_work_type: tk.StringVar
+        self._var_ot_rate: tk.StringVar
+        self._var_ot_period: tk.StringVar
+        self._var_country: tk.StringVar
+        self._var_hol_year: tk.StringVar
+        self._btn_import_hol: ttk.Button
+        self._lbl_hol_status: ttk.Label
+        self._exc_year_var: tk.StringVar
+        self._exc_tree: ttk.Treeview
+        self._vac_year_var: tk.StringVar
+        self._var_vac_hours: tk.StringVar
+        self._var_vac_carry: tk.StringVar
+        self._lbl_vac_status: ttk.Label
+        self._sick_year_var: tk.StringVar
+        self._var_sick_days: tk.StringVar
+        self._lbl_sick_status: ttk.Label
+        self._var_theme: tk.StringVar
+        self._week_first_day_options: dict[str, Weekday]
+        self._var_week_first_day: tk.StringVar
+
+        setup_modal_window(
+            self, parent, "Settings", minsize=(600, 560), resizable=(True, True)
+        )
 
         self._build_ui()
 
@@ -102,9 +166,11 @@ class SettingsDialog(tk.Toplevel):
         btn_row = ttk.Frame(main)
         btn_row.pack(fill="x", pady=(8, 0))
         ttk.Button(btn_row, text="Cancel", command=self.destroy).pack(
-            side="right", padx=(6, 0))
-        ttk.Button(btn_row, text="Save", style="Accent.TButton",
-                   command=self._on_save).pack(side="right")
+            side="right", padx=(6, 0)
+        )
+        ttk.Button(
+            btn_row, text="Save", style="Accent.TButton", command=self._on_save
+        ).pack(side="right")
 
     # ─────────────────────────── Tab 1: Time Clock ──────────────────────────
 
@@ -118,10 +184,10 @@ class SettingsDialog(tk.Toplevel):
         inner = ttk.Frame(canvas)
         win_id = canvas.create_window((0, 0), window=inner, anchor="nw")
 
-        inner.bind("<Configure>", lambda e: canvas.configure(
-            scrollregion=canvas.bbox("all")))
-        canvas.bind("<Configure>", lambda e: canvas.itemconfig(
-            win_id, width=e.width))
+        inner.bind(
+            "<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+        canvas.bind("<Configure>", lambda e: canvas.itemconfig(win_id, width=e.width))
 
         def _on_mousewheel(e: tk.Event) -> None:
             if e.num == 4:
@@ -141,20 +207,32 @@ class SettingsDialog(tk.Toplevel):
             canvas.unbind_all("<Button-4>")
             canvas.unbind_all("<Button-5>")
 
+        def _cleanup_mw_on_destroy(_e=None) -> None:
+            # The dialog can be destroyed (Escape key, WM close button) while
+            # the pointer is still over the canvas, so <Leave> never fires to
+            # unbind these global mousewheel handlers. Left bound, they close
+            # over this now-destroyed canvas and raise TclError on the next
+            # scroll anywhere in the app. Unbind unconditionally here too;
+            # harmless (and a no-op) if <Leave> already unbound them.
+            try:
+                _unbind_mw()
+            except tk.TclError:
+                pass
+
         canvas.bind("<Enter>", _bind_mw)
         canvas.bind("<Leave>", _unbind_mw)
+        canvas.bind("<Destroy>", _cleanup_mw_on_destroy)
 
         pad = {"padx": 10, "pady": 4}
 
         # ── Daily Work Hours ──────────────────────────────────────────────────
-        lf_days = ttk.LabelFrame(
-            inner, text="Daily Work Hours", padding=(8, 4, 8, 8))
+        lf_days = ttk.LabelFrame(inner, text="Daily Work Hours", padding=(8, 4, 8, 8))
         lf_days.pack(fill="x", **pad)
 
         targets = self._model_tc.get_work_day_targets()
         self._day_vars: dict[int, tuple[tk.BooleanVar, tk.StringVar]] = {}
 
-        week_start = int(self._settings.get("week_first_day") or 0)
+        week_start = Weekday(int(self._settings.get("week_first_day") or 0))
         day_order = [(week_start + i) % 7 for i in range(7)]
 
         for day_idx in day_order:
@@ -170,27 +248,40 @@ class SettingsDialog(tk.Toplevel):
             def _toggle(cv=chk_var, ent=entry) -> None:
                 ent.config(state="normal" if cv.get() else "disabled")
 
-            ttk.Checkbutton(row, text=day_name, variable=chk_var,
-                            width=12, command=_toggle).pack(side="left")
+            ttk.Checkbutton(
+                row, text=day_name, variable=chk_var, width=12, command=_toggle
+            ).pack(side="left")
             entry.pack(side="left", padx=(4, 2))
             ttk.Label(row, text="h").pack(side="left")
             entry.config(state="normal" if enabled else "disabled")
             self._day_vars[day_idx] = (chk_var, hrs_var)
 
         # ── Offices ───────────────────────────────────────────────────────────
-        lf_offices = ttk.LabelFrame(
-            inner, text="Offices", padding=(8, 4, 8, 8))
+        lf_offices = ttk.LabelFrame(inner, text="Offices", padding=(8, 4, 8, 8))
         lf_offices.pack(fill="x", **pad)
 
         list_frame = ttk.Frame(lf_offices)
         list_frame.pack(fill="x")
         offices: list[str] = list(self._settings.get("offices") or [])
         self._lb_offices = tk.Listbox(
-            list_frame, height=4, selectmode="single", exportselection=False)
+            list_frame, height=4, selectmode="single", exportselection=False
+        )
+        # tk.Listbox is not a ttk widget, so sv_ttk.set_theme() never touches
+        # it — restyle it to match the active theme mode ourselves, mirroring
+        # the pattern in views/time_clock_tab.py.
+        mode = resolve_theme_mode(self._settings.get("theme"))
+        c = COLORS.get(mode, COLORS[ThemeMode.LIGHT])
+        self._lb_offices.configure(
+            bg=c["bg.card"],
+            fg=c["fg.default"],
+            selectbackground=c["accent"],
+            selectforeground="#FFFFFF",
+        )
         for o in offices:
             self._lb_offices.insert("end", o)
-        osb = ttk.Scrollbar(list_frame, orient="vertical",
-                            command=self._lb_offices.yview)
+        osb = ttk.Scrollbar(
+            list_frame, orient="vertical", command=self._lb_offices.yview
+        )
         self._lb_offices.configure(yscrollcommand=osb.set)
         self._lb_offices.pack(side="left", fill="x", expand=True)
         osb.pack(side="left", fill="y")
@@ -198,19 +289,25 @@ class SettingsDialog(tk.Toplevel):
         office_btns = ttk.Frame(lf_offices)
         office_btns.pack(fill="x", pady=(4, 0))
         ttk.Button(office_btns, text="Add", command=self._office_add).pack(
-            side="left", padx=(0, 4))
+            side="left", padx=(0, 4)
+        )
         ttk.Button(office_btns, text="Edit", command=self._office_edit).pack(
-            side="left", padx=(0, 4))
-        ttk.Button(office_btns, text="Remove",
-                   command=self._office_remove).pack(side="left")
+            side="left", padx=(0, 4)
+        )
+        ttk.Button(office_btns, text="Remove", command=self._office_remove).pack(
+            side="left"
+        )
 
         # ── Break Presets ─────────────────────────────────────────────────────
         lf_break = ttk.LabelFrame(
-            inner, text="Break Presets (minutes)", padding=(8, 4, 8, 8))
+            inner, text="Break Presets (minutes)", padding=(8, 4, 8, 8)
+        )
         lf_break.pack(fill="x", **pad)
 
-        presets: list[int] = list(self._settings.get(
-            "break_presets") or [15, 30, 45, 60])
+        stored_presets = self._settings.get("break_presets")
+        presets: list[int] = (
+            list(stored_presets) if stored_presets is not None else [15, 30, 45, 60]
+        )
         while len(presets) < 4:
             presets.append(0)
         self._break_vars: list[tk.StringVar] = []
@@ -218,27 +315,23 @@ class SettingsDialog(tk.Toplevel):
         bp_row.pack(fill="x")
         for i in range(4):
             v = tk.StringVar(value=str(presets[i]))
-            ttk.Label(
-                bp_row, text=f"Preset {i + 1}:").pack(side="left", padx=(0, 2))
-            ttk.Entry(bp_row, textvariable=v, width=5).pack(
-                side="left", padx=(0, 12))
+            ttk.Label(bp_row, text=f"Preset {i + 1}:").pack(side="left", padx=(0, 2))
+            ttk.Entry(bp_row, textvariable=v, width=5).pack(side="left", padx=(0, 12))
             self._break_vars.append(v)
 
         # ── Default Work Type ─────────────────────────────────────────────────
-        lf_wtype = ttk.LabelFrame(
-            inner, text="Default Work Type", padding=(8, 4, 8, 8))
+        lf_wtype = ttk.LabelFrame(inner, text="Default Work Type", padding=(8, 4, 8, 8))
         lf_wtype.pack(fill="x", **pad)
 
         self._var_work_type = tk.StringVar(
-            value=str(self._settings.get(
-                "default_work_type") or WorkType.REMOTE)
+            value=str(self._settings.get("default_work_type") or WorkType.REMOTE)
         )
         wt_row = ttk.Frame(lf_wtype)
         wt_row.pack(fill="x")
         for wt, label in _WORK_TYPE_OPTIONS:
-            ttk.Radiobutton(wt_row, text=label, variable=self._var_work_type, value=str(wt)).pack(
-                side="left", padx=(0, 8)
-            )
+            ttk.Radiobutton(
+                wt_row, text=label, variable=self._var_work_type, value=str(wt)
+            ).pack(side="left", padx=(0, 8))
 
         # ── Overtime ──────────────────────────────────────────────────────────
         lf_ot = ttk.LabelFrame(inner, text="Overtime", padding=(8, 4, 8, 8))
@@ -248,22 +341,31 @@ class SettingsDialog(tk.Toplevel):
         ot_row.pack(fill="x")
         ttk.Label(ot_row, text="Rate multiplier:").pack(side="left")
         self._var_ot_rate = tk.StringVar(
-            value=str(self._settings.get("overtime_rate") or 1.0))
+            value=str(self._settings.get("overtime_rate") or 1.0)
+        )
         ttk.Spinbox(
-            ot_row, textvariable=self._var_ot_rate,
-            from_=0.5, to=5.0, increment=0.1, width=6, format="%.1f",
+            ot_row,
+            textvariable=self._var_ot_rate,
+            from_=0.5,
+            to=5.0,
+            increment=0.1,
+            width=6,
+            format="%.1f",
         ).pack(side="left", padx=(4, 16))
         ttk.Label(ot_row, text="Period:").pack(side="left")
         self._var_ot_period = tk.StringVar(
-            value=self._settings.get("overtime_period") or "month")
+            value=str(self._settings.get("overtime_period") or OvertimePeriod.MONTH)
+        )
         ttk.Combobox(
-            ot_row, textvariable=self._var_ot_period,
-            values=_OVERTIME_PERIODS, state="readonly", width=8,
+            ot_row,
+            textvariable=self._var_ot_period,
+            values=_OVERTIME_PERIODS,
+            state="readonly",
+            width=8,
         ).pack(side="left", padx=(4, 0))
 
         # ── Holiday Auto-Import ───────────────────────────────────────────────
-        lf_hol = ttk.LabelFrame(
-            inner, text="Holiday Auto-Import", padding=(8, 4, 8, 8))
+        lf_hol = ttk.LabelFrame(inner, text="Holiday Auto-Import", padding=(8, 4, 8, 8))
         lf_hol.pack(fill="x", **pad)
 
         hol_row = ttk.Frame(lf_hol)
@@ -273,19 +375,27 @@ class SettingsDialog(tk.Toplevel):
             value=self._settings.get("last_country_holiday") or "UnitedStates"
         )
         ttk.Combobox(
-            hol_row, textvariable=self._var_country,
-            values=_COUNTRIES, state="readonly", width=16,
+            hol_row,
+            textvariable=self._var_country,
+            values=_COUNTRIES,
+            state="readonly",
+            width=16,
         ).pack(side="left", padx=(4, 12))
         ttk.Label(hol_row, text="Year:").pack(side="left")
         cur_year = date.today().year
         self._var_hol_year = tk.StringVar(value=str(cur_year))
         ttk.Spinbox(
-            hol_row, textvariable=self._var_hol_year,
-            from_=cur_year - 2, to=cur_year + 2, increment=1, width=6,
+            hol_row,
+            textvariable=self._var_hol_year,
+            from_=cur_year - 2,
+            to=cur_year + 2,
+            increment=1,
+            width=6,
         ).pack(side="left", padx=(4, 12))
 
         self._btn_import_hol = ttk.Button(
-            hol_row, text="Import Holidays for Year",
+            hol_row,
+            text="Import Holidays for Year",
             command=self._import_holidays,
         )
         self._btn_import_hol.pack(side="left")
@@ -299,8 +409,7 @@ class SettingsDialog(tk.Toplevel):
         return list(self._lb_offices.get(0, "end"))
 
     def _office_add(self) -> None:
-        name = simpledialog.askstring(
-            "Add Office", "Office name:", parent=self)
+        name = simpledialog.askstring("Add Office", "Office name:", parent=self)
         if name and name.strip():
             self._lb_offices.insert("end", name.strip())
 
@@ -308,12 +417,14 @@ class SettingsDialog(tk.Toplevel):
         sel = self._lb_offices.curselection()
         if not sel:
             messagebox.showwarning(
-                "Edit Office", "Select an office to edit.", parent=self)
+                "Edit Office", "Select an office to edit.", parent=self
+            )
             return
         idx = sel[0]
         old_name = self._lb_offices.get(idx)
         name = simpledialog.askstring(
-            "Edit Office", "Office name:", initialvalue=old_name, parent=self)
+            "Edit Office", "Office name:", initialvalue=old_name, parent=self
+        )
         if name and name.strip():
             self._lb_offices.delete(idx)
             self._lb_offices.insert(idx, name.strip())
@@ -323,7 +434,8 @@ class SettingsDialog(tk.Toplevel):
         sel = self._lb_offices.curselection()
         if not sel:
             messagebox.showwarning(
-                "Remove Office", "Select an office to remove.", parent=self)
+                "Remove Office", "Select an office to remove.", parent=self
+            )
             return
         self._lb_offices.delete(sel[0])
 
@@ -339,36 +451,49 @@ class SettingsDialog(tk.Toplevel):
 
         try:
             hol_dict = holidays.country_holidays(country, years=year)
-        except Exception as exc:
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            # `holidays` can raise a variety of errors for bad country codes
+            # or internal data issues; surfaced to the user via messagebox.
+            logger.exception(
+                "Failed to load holidays for country=%s year=%s", country, year
+            )
             messagebox.showerror(
-                "Error", f"Could not load holidays for {country!r}: {exc}", parent=self)
+                "Error", f"Could not load holidays for {country!r}: {exc}", parent=self
+            )
             return
 
         existing_records = self._model_vacation.get_records_for_year(year)
         existing_holiday_dates = {
-            r.date for r in existing_records
-            if r.vtype == VacationType.PUBLIC_HOLIDAY
+            r.date for r in existing_records if r.vtype == VacationType.PUBLIC_HOLIDAY
         }
 
         added = 0
         skipped = 0
         insert_errors: list[str] = []
         for h_date, h_name in sorted(hol_dict.items()):
-            rec_date = h_date if isinstance(
-                h_date, date) else iso_to_date(str(h_date))
+            rec_date = h_date if isinstance(h_date, date) else iso_to_date(str(h_date))
             if rec_date in existing_holiday_dates:
                 skipped += 1
             else:
                 try:
-                    self._model_vacation.insert_record(VacationRecord(
-                        id=None,
-                        date=rec_date,
-                        hours=0.0,
-                        vtype=VacationType.PUBLIC_HOLIDAY,
-                        note=h_name,
-                    ))
+                    self._model_vacation.insert_record(
+                        VacationRecord(
+                            id=None,
+                            date=rec_date,
+                            hours=0.0,
+                            vtype=VacationType.PUBLIC_HOLIDAY,
+                            note=h_name,
+                        )
+                    )
                     added += 1
-                except Exception as exc:
+                except Exception as exc:  # pylint: disable=broad-exception-caught
+                    # Model insert can fail for varied reasons (validation,
+                    # DB constraints); collected per-item and reported below.
+                    logger.exception(
+                        "Failed to insert imported holiday record for date=%s (%s)",
+                        rec_date,
+                        h_name,
+                    )
                     insert_errors.append(f"{rec_date}: {exc}")
 
         self._settings.set("last_country_holiday", country)
@@ -396,8 +521,11 @@ class SettingsDialog(tk.Toplevel):
         exc_years = [str(y) for y in range(cur_year - 5, cur_year + 4)]
         self._exc_year_var = tk.StringVar(value=str(cur_year))
         cbo_exc_year = ttk.Combobox(
-            filter_row, textvariable=self._exc_year_var,
-            values=exc_years, state="readonly", width=8,
+            filter_row,
+            textvariable=self._exc_year_var,
+            values=exc_years,
+            state="readonly",
+            width=8,
         )
         cbo_exc_year.pack(side="left", padx=(4, 0))
         cbo_exc_year.bind("<<ComboboxSelected>>", lambda e: self._exc_load())
@@ -407,7 +535,8 @@ class SettingsDialog(tk.Toplevel):
 
         cols = ("date", "hours", "label")
         self._exc_tree = ttk.Treeview(
-            tree_frame, columns=cols, show="headings", height=12)
+            tree_frame, columns=cols, show="headings", height=12
+        )
         self._exc_tree.heading("date", text="Date")
         self._exc_tree.heading("hours", text="Hours")
         self._exc_tree.heading("label", text="Label")
@@ -416,7 +545,8 @@ class SettingsDialog(tk.Toplevel):
         self._exc_tree.column("label", width=300, stretch=True, anchor="w")
 
         tree_vsb = ttk.Scrollbar(
-            tree_frame, orient="vertical", command=self._exc_tree.yview)
+            tree_frame, orient="vertical", command=self._exc_tree.yview
+        )
         self._exc_tree.configure(yscrollcommand=tree_vsb.set)
         tree_vsb.pack(side="right", fill="y")
         self._exc_tree.pack(side="left", fill="both", expand=True)
@@ -424,11 +554,12 @@ class SettingsDialog(tk.Toplevel):
         btn_row = ttk.Frame(outer)
         btn_row.pack(fill="x")
         ttk.Button(btn_row, text="Add", command=self._exc_add).pack(
-            side="left", padx=(0, 4))
+            side="left", padx=(0, 4)
+        )
         ttk.Button(btn_row, text="Edit", command=self._exc_edit).pack(
-            side="left", padx=(0, 4))
-        ttk.Button(btn_row, text="Remove",
-                   command=self._exc_remove).pack(side="left")
+            side="left", padx=(0, 4)
+        )
+        ttk.Button(btn_row, text="Remove", command=self._exc_remove).pack(side="left")
 
         self._exc_load()
 
@@ -440,47 +571,50 @@ class SettingsDialog(tk.Toplevel):
         except ValueError:
             return
         for exc in self._model_tc.get_date_exceptions(year):
-            d = iso_to_date(exc.date)
             self._exc_tree.insert(
-                "", "end", iid=str(exc.id),
-                values=(to_display_date(d),
-                        f"{exc.hours:.1f}", exc.label or ""),
+                "",
+                "end",
+                iid=str(exc.id),
+                values=(to_display_date(exc.date), f"{exc.hours:.1f}", exc.label or ""),
             )
 
     def _exc_add(self) -> None:
-        _ExceptionDialog(self, self._model_tc, exc=None,
-                         on_saved=self._exc_load)
+        _ExceptionDialog(self, self._model_tc, exc=None, on_saved=self._exc_load)
 
     def _exc_edit(self) -> None:
         sel = self._exc_tree.selection()
         if not sel:
-            messagebox.showwarning(
-                "Edit", "Select an exception to edit.", parent=self)
+            messagebox.showwarning("Edit", "Select an exception to edit.", parent=self)
             return
         exc_id = int(sel[0])
         try:
             year = int(self._exc_year_var.get())
         except ValueError:
             return
-        exc = next((e for e in self._model_tc.get_date_exceptions(
-            year) if e.id == exc_id), None)
+        exc = next(
+            (e for e in self._model_tc.get_date_exceptions(year) if e.id == exc_id),
+            None,
+        )
         if exc is None:
             return
-        _ExceptionDialog(self, self._model_tc, exc=exc,
-                         on_saved=self._exc_load)
+        _ExceptionDialog(self, self._model_tc, exc=exc, on_saved=self._exc_load)
 
     def _exc_remove(self) -> None:
         sel = self._exc_tree.selection()
         if not sel:
             messagebox.showwarning(
-                "Remove", "Select an exception to remove.", parent=self)
+                "Remove", "Select an exception to remove.", parent=self
+            )
             return
         if messagebox.askyesno("Remove", "Remove this date exception?", parent=self):
             try:
                 self._model_tc.delete_date_exception(int(sel[0]))
-            except Exception as exc:
+            except Exception as exc:  # pylint: disable=broad-exception-caught
+                # Model errors are unpredictable; reported to the user below.
+                logger.exception("Failed to delete date exception id=%s", sel[0])
                 messagebox.showerror(
-                    "Error", f"Could not remove exception: {exc}", parent=self)
+                    "Error", f"Could not remove exception: {exc}", parent=self
+                )
                 return
             self._exc_load()
 
@@ -497,33 +631,51 @@ class SettingsDialog(tk.Toplevel):
         yr_row.pack(fill="x", pady=(0, 10))
         ttk.Label(yr_row, text="Year:", width=18, anchor="e").pack(side="left")
         self._vac_year_var = tk.StringVar(value=str(cur_year))
-        cbo_vac = ttk.Combobox(yr_row, textvariable=self._vac_year_var,
-                               values=vac_years, state="readonly", width=8)
+        cbo_vac = ttk.Combobox(
+            yr_row,
+            textvariable=self._vac_year_var,
+            values=vac_years,
+            state="readonly",
+            width=8,
+        )
         cbo_vac.pack(side="left", padx=(4, 0))
         cbo_vac.bind("<<ComboboxSelected>>", lambda e: self._vac_load())
 
         hpy_row = ttk.Frame(outer)
         hpy_row.pack(fill="x", pady=(0, 6))
-        ttk.Label(hpy_row, text="Hours per year:",
-                  width=18, anchor="e").pack(side="left")
+        ttk.Label(hpy_row, text="Hours per year:", width=18, anchor="e").pack(
+            side="left"
+        )
         self._var_vac_hours = tk.StringVar(value="160.0")
         ttk.Spinbox(
-            hpy_row, textvariable=self._var_vac_hours,
-            from_=0.0, to=5000.0, increment=8.0, width=8, format="%.1f",
+            hpy_row,
+            textvariable=self._var_vac_hours,
+            from_=0.0,
+            to=5000.0,
+            increment=8.0,
+            width=8,
+            format="%.1f",
         ).pack(side="left", padx=(4, 0))
 
         mco_row = ttk.Frame(outer)
         mco_row.pack(fill="x", pady=(0, 6))
-        ttk.Label(mco_row, text="Max carry-over:",
-                  width=18, anchor="e").pack(side="left")
+        ttk.Label(mco_row, text="Max carry-over:", width=18, anchor="e").pack(
+            side="left"
+        )
         self._var_vac_carry = tk.StringVar(value="40.0")
         ttk.Spinbox(
-            mco_row, textvariable=self._var_vac_carry,
-            from_=0.0, to=5000.0, increment=8.0, width=8, format="%.1f",
+            mco_row,
+            textvariable=self._var_vac_carry,
+            from_=0.0,
+            to=5000.0,
+            increment=8.0,
+            width=8,
+            format="%.1f",
         ).pack(side="left", padx=(4, 0))
 
-        ttk.Button(outer, text="Save Vacation Settings",
-                   command=self._vac_save).pack(anchor="w", pady=(10, 0))
+        ttk.Button(outer, text="Save Vacation Settings", command=self._vac_save).pack(
+            anchor="w", pady=(10, 0)
+        )
 
         self._lbl_vac_status = ttk.Label(outer, text="")
         self._lbl_vac_status.pack(anchor="w", pady=(4, 0))
@@ -554,12 +706,14 @@ class SettingsDialog(tk.Toplevel):
             return
         try:
             self._model_vacation.save_settings(year, hours, carry)
-        except Exception as exc:
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            # Model errors are unpredictable; reported to the user below.
+            logger.exception("Failed to save vacation settings for year=%s", year)
             messagebox.showerror(
-                "Error", f"Could not save vacation settings: {exc}", parent=self)
+                "Error", f"Could not save vacation settings: {exc}", parent=self
+            )
             return
-        self._lbl_vac_status.config(
-            text=f"Saved vacation settings for {year}.")
+        self._lbl_vac_status.config(text=f"Saved vacation settings for {year}.")
 
     # ─────────────────────────── Tab 4: Sickness ─────────────────────────────
 
@@ -574,23 +728,35 @@ class SettingsDialog(tk.Toplevel):
         yr_row.pack(fill="x", pady=(0, 10))
         ttk.Label(yr_row, text="Year:", width=18, anchor="e").pack(side="left")
         self._sick_year_var = tk.StringVar(value=str(cur_year))
-        cbo_sick = ttk.Combobox(yr_row, textvariable=self._sick_year_var,
-                                values=sick_years, state="readonly", width=8)
+        cbo_sick = ttk.Combobox(
+            yr_row,
+            textvariable=self._sick_year_var,
+            values=sick_years,
+            state="readonly",
+            width=8,
+        )
         cbo_sick.pack(side="left", padx=(4, 0))
         cbo_sick.bind("<<ComboboxSelected>>", lambda e: self._sick_load())
 
         dpy_row = ttk.Frame(outer)
         dpy_row.pack(fill="x", pady=(0, 6))
-        ttk.Label(dpy_row, text="Hours per year:",
-                  width=18, anchor="e").pack(side="left")
+        ttk.Label(dpy_row, text="Hours per year:", width=18, anchor="e").pack(
+            side="left"
+        )
         self._var_sick_days = tk.StringVar(value="80.0")
         ttk.Spinbox(
-            dpy_row, textvariable=self._var_sick_days,
-            from_=0.0, to=3000.0, increment=8.0, width=8, format="%.1f",
+            dpy_row,
+            textvariable=self._var_sick_days,
+            from_=0.0,
+            to=3000.0,
+            increment=8.0,
+            width=8,
+            format="%.1f",
         ).pack(side="left", padx=(4, 0))
 
-        ttk.Button(outer, text="Save Sickness Settings",
-                   command=self._sick_save).pack(anchor="w", pady=(10, 0))
+        ttk.Button(outer, text="Save Sickness Settings", command=self._sick_save).pack(
+            anchor="w", pady=(10, 0)
+        )
 
         self._lbl_sick_status = ttk.Label(outer, text="")
         self._lbl_sick_status.pack(anchor="w", pady=(4, 0))
@@ -615,12 +781,14 @@ class SettingsDialog(tk.Toplevel):
             return
         try:
             self._model_sickness.save_settings(year, days)
-        except Exception as exc:
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            # Model errors are unpredictable; reported to the user below.
+            logger.exception("Failed to save sickness settings for year=%s", year)
             messagebox.showerror(
-                "Error", f"Could not save sickness settings: {exc}", parent=self)
+                "Error", f"Could not save sickness settings: {exc}", parent=self
+            )
             return
-        self._lbl_sick_status.config(
-            text=f"Saved sickness settings for {year}.")
+        self._lbl_sick_status.config(text=f"Saved sickness settings for {year}.")
 
     # ─────────────────────────── Tab 5: Display ──────────────────────────────
 
@@ -631,29 +799,34 @@ class SettingsDialog(tk.Toplevel):
         lf_theme = ttk.LabelFrame(outer, text="Theme", padding=(8, 4, 8, 8))
         lf_theme.pack(fill="x")
         self._var_theme = tk.StringVar(
-            value=self._settings.get("theme") or "system")
-        for val, label in [("light", "Light"), ("dark", "Dark"), ("system", "System")]:
-            ttk.Radiobutton(lf_theme, text=label, variable=self._var_theme, value=val).pack(
-                anchor="w", pady=2
-            )
+            value=str(self._settings.get("theme") or ThemeMode.SYSTEM)
+        )
+        for val, label in [
+            (ThemeMode.LIGHT, "Light"),
+            (ThemeMode.DARK, "Dark"),
+            (ThemeMode.SYSTEM, "System"),
+        ]:
+            ttk.Radiobutton(
+                lf_theme, text=label, variable=self._var_theme, value=str(val)
+            ).pack(anchor="w", pady=2)
 
         lf_cal = ttk.LabelFrame(outer, text="Calendar", padding=(8, 4, 8, 8))
         lf_cal.pack(fill="x", pady=(8, 0))
         row = ttk.Frame(lf_cal)
         row.pack(anchor="w")
         ttk.Label(row, text="Week starts on:").pack(side="left", padx=(0, 8))
-        # _WEEK_FIRST_DAY_OPTIONS maps display label → Python weekday int (0=Mon, 6=Sun)
-        self._WEEK_FIRST_DAY_OPTIONS = {"Monday": 0, "Sunday": 6}
-        current_wfd = int(self._settings.get("week_first_day", 0))
+        # _week_first_day_options maps display label → Weekday
+        self._week_first_day_options = {"Monday": Weekday.MON, "Sunday": Weekday.SUN}
+        current_wfd = Weekday(int(self._settings.get("week_first_day", 0)))
         current_label = next(
-            (k for k, v in self._WEEK_FIRST_DAY_OPTIONS.items()
-             if v == current_wfd), "Monday"
+            (k for k, v in self._week_first_day_options.items() if v == current_wfd),
+            "Monday",
         )
         self._var_week_first_day = tk.StringVar(value=current_label)
         ttk.Combobox(
             row,
             textvariable=self._var_week_first_day,
-            values=list(self._WEEK_FIRST_DAY_OPTIONS.keys()),
+            values=list(self._week_first_day_options.keys()),
             width=10,
             state="readonly",
         ).pack(side="left")
@@ -668,23 +841,41 @@ class SettingsDialog(tk.Toplevel):
                 try:
                     h = float(hrs_var.get())
                 except ValueError:
-                    h = 8.0
+                    messagebox.showerror(
+                        "Error",
+                        f"Invalid hours for {_DAY_NAMES[day_idx]}: "
+                        f"{hrs_var.get()!r}. Enter a number, e.g. 8.0.",
+                        parent=self,
+                    )
+                    return
                 targets[day_idx] = max(0.0, h)
             else:
                 targets[day_idx] = 0.0
         presets: list[int] = []
-        for v in self._break_vars:
+        for i, v in enumerate(self._break_vars):
             try:
                 val = int(v.get())
-                if val > 0:
-                    presets.append(val)
             except ValueError:
-                pass
+                messagebox.showerror(
+                    "Error",
+                    f"Invalid break preset #{i + 1}: {v.get()!r}. "
+                    "Enter a whole number of minutes.",
+                    parent=self,
+                )
+                return
+            if val > 0:
+                presets.append(val)
 
         try:
             rate = float(self._var_ot_rate.get())
         except ValueError:
-            rate = 1.0
+            messagebox.showerror(
+                "Error",
+                f"Invalid overtime rate multiplier: {self._var_ot_rate.get()!r}. "
+                "Enter a number, e.g. 1.5.",
+                parent=self,
+            )
+            return
 
         wfd_label = self._var_week_first_day.get()
 
@@ -698,12 +889,15 @@ class SettingsDialog(tk.Toplevel):
             self._settings.set("overtime_period", self._var_ot_period.get())
             self._settings.set("theme", self._var_theme.get())
             self._settings.set(
-                "week_first_day", self._WEEK_FIRST_DAY_OPTIONS.get(
-                    wfd_label, 0)
+                "week_first_day",
+                int(self._week_first_day_options.get(wfd_label, Weekday.MON)),
             )
-        except Exception as exc:
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            # Settings/model errors are unpredictable; reported to the user below.
+            logger.exception("Failed to save work day settings")
             messagebox.showerror(
-                "Error", f"Could not save settings: {exc}", parent=self)
+                "Error", f"Could not save settings: {exc}", parent=self
+            )
             return
 
         self._bus.publish(Event.SETTINGS_CHANGED)
@@ -712,6 +906,23 @@ class SettingsDialog(tk.Toplevel):
 
 # ─────────────────────────── Exception Add/Edit Dialog ───────────────────────
 
+
+def _parse_exception_hours(raw: str) -> float:
+    """Parses and validates a WorkDayException hours field.
+
+    Mirrors the Spinbox's ``from_=0.0, to=24.0`` bounds, which only
+    constrain the arrow controls, not typed input. Raises ``ValueError``
+    with a user-facing message if ``raw`` is not a number in [0, 24].
+    """
+    try:
+        hours = float(raw)
+    except ValueError:
+        raise ValueError("Hours must be a number.") from None
+    if not 0.0 <= hours <= 24.0:
+        raise ValueError("Hours must be between 0 and 24.")
+    return hours
+
+
 class _ExceptionDialog(tk.Toplevel):
     """Add / Edit a single date exception."""
 
@@ -719,7 +930,7 @@ class _ExceptionDialog(tk.Toplevel):
         self,
         parent,
         model_tc: TimeClockModel,
-        exc: Optional[WorkDayException],
+        exc: WorkDayException | None,
         on_saved: Callable,
     ) -> None:
         super().__init__(parent)
@@ -727,12 +938,12 @@ class _ExceptionDialog(tk.Toplevel):
         self._exc = exc
         self._on_saved = on_saved
 
-        self.title("Edit Date Exception" if exc else "Add Date Exception")
-        self.resizable(False, False)
-        self.minsize(340, 220)
-        self.transient(parent)
-        self.grab_set()
-        self.bind("<Escape>", lambda e: self.destroy())
+        setup_modal_window(
+            self,
+            parent,
+            "Edit Date Exception" if exc else "Add Date Exception",
+            minsize=(340, 220),
+        )
 
         self._build_ui()
         if exc:
@@ -746,43 +957,46 @@ class _ExceptionDialog(tk.Toplevel):
 
         date_row = ttk.Frame(outer)
         date_row.pack(fill="x", pady=(0, 6))
-        ttk.Label(date_row, text="Date:", width=10,
-                  anchor="e").pack(side="left")
-        self._date_widget, self._get_date, self._set_date = make_date_picker(
-            date_row)
+        ttk.Label(date_row, text="Date:", width=10, anchor="e").pack(side="left")
+        self._date_widget, self._get_date, self._set_date = make_date_picker(date_row)
         self._date_widget.pack(side="left", padx=(4, 0))
 
         hrs_row = ttk.Frame(outer)
         hrs_row.pack(fill="x", pady=(0, 6))
-        ttk.Label(hrs_row, text="Hours:", width=10,
-                  anchor="e").pack(side="left")
+        ttk.Label(hrs_row, text="Hours:", width=10, anchor="e").pack(side="left")
         self._var_hours = tk.StringVar(value="0.0")
         ttk.Spinbox(
-            hrs_row, textvariable=self._var_hours,
-            from_=0.0, to=24.0, increment=0.5, width=6, format="%.1f",
+            hrs_row,
+            textvariable=self._var_hours,
+            from_=0.0,
+            to=24.0,
+            increment=0.5,
+            width=6,
+            format="%.1f",
         ).pack(side="left", padx=(4, 0))
 
         lbl_row = ttk.Frame(outer)
         lbl_row.pack(fill="x", pady=(0, 6))
-        ttk.Label(lbl_row, text="Label:", width=10,
-                  anchor="e").pack(side="left")
+        ttk.Label(lbl_row, text="Label:", width=10, anchor="e").pack(side="left")
         self._var_label = tk.StringVar()
         ttk.Entry(lbl_row, textvariable=self._var_label, width=26).pack(
-            side="left", padx=(4, 0), fill="x", expand=True)
+            side="left", padx=(4, 0), fill="x", expand=True
+        )
 
         self._lbl_error = ttk.Label(
-            outer, text="", foreground="red", wraplength=300, justify="left")
+            outer, text="", foreground="red", wraplength=300, justify="left"
+        )
         self._lbl_error.pack(fill="x", pady=(0, 4))
 
         btn_row = ttk.Frame(outer)
         btn_row.pack(fill="x", pady=(4, 0))
         ttk.Button(btn_row, text="Cancel", command=self.destroy).pack(
-            side="right", padx=(6, 0))
-        ttk.Button(btn_row, text="Save",
-                   command=self._on_save).pack(side="right")
+            side="right", padx=(6, 0)
+        )
+        ttk.Button(btn_row, text="Save", command=self._on_save).pack(side="right")
 
     def _populate(self, exc: WorkDayException) -> None:
-        self._set_date(iso_to_date(exc.date))
+        self._set_date(exc.date)
         self._var_hours.set(f"{exc.hours:.1f}")
         self._var_label.set(exc.label or "")
 
@@ -790,25 +1004,30 @@ class _ExceptionDialog(tk.Toplevel):
         self._lbl_error.config(text="")
         try:
             d = self._get_date()
-        except Exception:
+        except Exception:  # pylint: disable=broad-exception-caught
+            # Date picker parsing can fail in varied ways; reported inline.
+            logger.exception("Failed to parse date exception picker value")
             self._lbl_error.config(text="Invalid date.")
             return
         try:
-            hours = float(self._var_hours.get())
-        except ValueError:
-            self._lbl_error.config(text="Hours must be a number.")
+            hours = _parse_exception_hours(self._var_hours.get())
+        except ValueError as exc:
+            self._lbl_error.config(text=str(exc))
             return
 
         date_str = date_to_iso(d)
-        label: Optional[str] = self._var_label.get().strip() or None
+        label: str | None = self._var_label.get().strip() or None
 
         try:
-            if self._exc is not None:
-                self._model_tc.delete_date_exception(self._exc.id)
             self._model_tc.save_date_exception(date_str, hours, label)
-        except Exception as exc:
+            if self._exc is not None and self._exc.date != d:
+                self._model_tc.delete_date_exception(self._exc.id)
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            # Model errors are unpredictable; reported to the user below.
+            logger.exception("Failed to save date exception date=%s", date_str)
             messagebox.showerror(
-                "Error", f"Could not save exception: {exc}", parent=self)
+                "Error", f"Could not save exception: {exc}", parent=self
+            )
             return
 
         self._on_saved()

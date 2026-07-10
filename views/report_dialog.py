@@ -2,40 +2,45 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import shutil
 import tempfile
+import tkinter as tk
 from datetime import date
 from pathlib import Path
-from typing import Optional
-
-import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import messagebox, ttk
 from tkinter.filedialog import asksaveasfilename
 
+from pypdf import PdfReader, PdfWriter
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib.units import cm
 from reportlab.platypus import (
     HRFlowable,
-    Image as RLImage,
     Paragraph,
     SimpleDocTemplate,
     Spacer,
     Table,
     TableStyle,
 )
-from pypdf import PdfWriter, PdfReader
+from reportlab.platypus import (
+    Image as RLImage,
+)
 
-from core.report import period_summary, period_range, ReportData, MONTH_NAMES
+from core.report import MONTH_NAMES, ReportData, period_range, period_summary
 from core.timeutil import to_display_date
+from domain.enums import PeriodType
+from models.miliuim_model import MiliuimModel
+from models.sickness_model import SicknessModel
 from models.time_clock_model import TimeClockModel
 from models.vacation_model import VacationModel
-from models.sickness_model import SicknessModel
-from models.miliuim_model import MiliuimModel
 from settings import SettingsManager
+from theme.style import COLORS, ThemeMode, resolve_theme_mode
+from views.dialog_common import setup_modal_window
 
+logger = logging.getLogger(__name__)
 
 _QUARTER_VALUES = ["Q1", "Q2", "Q3", "Q4"]
 
@@ -59,7 +64,7 @@ class ReportDialog(tk.Toplevel):
         model_vacation: VacationModel,
         model_sickness: SicknessModel,
         settings: SettingsManager,
-        model_miliuim: Optional[MiliuimModel] = None,
+        model_miliuim: MiliuimModel | None = None,
     ) -> None:
         super().__init__(parent)
         self._model_tc = model_tc
@@ -67,13 +72,28 @@ class ReportDialog(tk.Toplevel):
         self._model_sickness = model_sickness
         self._settings = settings
         self._model_miliuim = model_miliuim
+        # Resolved once at construction time: this dialog is modal (grab_set
+        # via setup_modal_window), so the theme setting cannot change while
+        # it's open.
+        self._theme_mode: ThemeMode = resolve_theme_mode(self._settings.get("theme"))
 
-        self.title("Generate Report")
-        self.minsize(480, 400)
-        self.resizable(True, True)
-        self.transient(parent)
-        self.grab_set()
-        self.bind("<Escape>", lambda e: self.destroy())
+        # Widgets/vars assigned in _build_ui() and its helpers; declared here
+        # (bare annotations, no value) so their real first assignment isn't
+        # flagged as attribute-defined-outside-init.
+        self._var_period: tk.StringVar
+        self._var_year: tk.StringVar
+        self._spn_year: ttk.Spinbox
+        self._lbl_month: ttk.Label
+        self._var_month: tk.StringVar
+        self._cbo_month: ttk.Combobox
+        self._lbl_quarter: ttk.Label
+        self._var_quarter: tk.StringVar
+        self._cbo_quarter: ttk.Combobox
+        self._txt_preview: tk.Text
+
+        setup_modal_window(
+            self, parent, "Generate Report", minsize=(480, 400), resizable=(True, True)
+        )
 
         self._build_ui()
         self._on_period_changed()  # set initial visibility
@@ -110,11 +130,17 @@ class ReportDialog(tk.Toplevel):
         )
         frm_radios = ttk.Frame(frm)
         frm_radios.grid(row=0, column=1, sticky="w", pady=3)
-        self._var_period = tk.StringVar(value="month")
-        for label, value in [("Month", "month"), ("Quarter", "quarter"), ("Year", "year")]:
+        self._var_period = tk.StringVar(value=str(PeriodType.MONTH))
+        for label, value in [
+            ("Month", PeriodType.MONTH),
+            ("Quarter", PeriodType.QUARTER),
+            ("Year", PeriodType.YEAR),
+        ]:
             ttk.Radiobutton(
-                frm_radios, text=label,
-                variable=self._var_period, value=value,
+                frm_radios,
+                text=label,
+                variable=self._var_period,
+                value=str(value),
                 command=self._on_period_changed,
             ).pack(side="left", padx=(0, 10))
 
@@ -149,8 +175,7 @@ class ReportDialog(tk.Toplevel):
 
         # Quarter combobox (shown only for Quarter mode)
         self._lbl_quarter = ttk.Label(frm, text="Quarter:")
-        self._lbl_quarter.grid(
-            row=3, column=0, sticky="w", padx=(0, 8), pady=3)
+        self._lbl_quarter.grid(row=3, column=0, sticky="w", padx=(0, 8), pady=3)
         self._var_quarter = tk.StringVar(value="Q1")
         self._cbo_quarter = ttk.Combobox(
             frm,
@@ -165,9 +190,9 @@ class ReportDialog(tk.Toplevel):
         btn_row = ttk.Frame(parent)
         btn_row.grid(row=2, column=0, sticky="ew", pady=(0, 6))
 
-        ttk.Button(
-            btn_row, text="Preview Summary", command=self._do_preview
-        ).pack(side="left")
+        ttk.Button(btn_row, text="Preview Summary", command=self._do_preview).pack(
+            side="left"
+        )
 
         frm_txt = ttk.Frame(parent, relief="sunken", borderwidth=1)
         frm_txt.grid(row=3, column=0, sticky="nsew", pady=(0, 8))
@@ -186,13 +211,25 @@ class ReportDialog(tk.Toplevel):
         )
         self._txt_preview.grid(row=0, column=0, sticky="nsew")
 
-        vsb = ttk.Scrollbar(frm_txt, orient="vertical",
-                            command=self._txt_preview.yview)
+        # tk.Text is a classic widget, not restyled by sv_ttk.set_theme()
+        # (which only themes ttk widgets), so it must be colored explicitly
+        # to match the active theme mode.
+        c = COLORS.get(self._theme_mode, COLORS[ThemeMode.LIGHT])
+        self._txt_preview.configure(
+            bg=c["bg.card"],
+            fg=c["fg.default"],
+            insertbackground=c["fg.default"],
+            selectbackground=c["accent"],
+            selectforeground="#FFFFFF",
+        )
+
+        vsb = ttk.Scrollbar(frm_txt, orient="vertical", command=self._txt_preview.yview)
         vsb.grid(row=0, column=1, sticky="ns")
         self._txt_preview.configure(yscrollcommand=vsb.set)
 
-        hsb = ttk.Scrollbar(frm_txt, orient="horizontal",
-                            command=self._txt_preview.xview)
+        hsb = ttk.Scrollbar(
+            frm_txt, orient="horizontal", command=self._txt_preview.xview
+        )
         hsb.grid(row=1, column=0, sticky="ew")
         self._txt_preview.configure(xscrollcommand=hsb.set)
 
@@ -201,24 +238,24 @@ class ReportDialog(tk.Toplevel):
             row=4, column=0, sticky="ew", pady=(0, 8)
         )
 
-        bar = ttk.Frame(parent)
-        bar.grid(row=5, column=0, sticky="ew")
+        button_bar = ttk.Frame(parent)
+        button_bar.grid(row=5, column=0, sticky="ew")
 
-        ttk.Button(bar, text="Export PDF", command=self._do_export_pdf).pack(
+        ttk.Button(button_bar, text="Export PDF", command=self._do_export_pdf).pack(
             side="right", padx=(6, 0)
         )
-        ttk.Button(bar, text="Cancel", command=self.destroy).pack(side="right")
+        ttk.Button(button_bar, text="Cancel", command=self.destroy).pack(side="right")
 
     # ─────────────────────────── Period Toggle ───────────────────────────────
 
     def _on_period_changed(self) -> None:
-        period = self._var_period.get()
-        if period == "month":
+        period = PeriodType(self._var_period.get())
+        if period == PeriodType.MONTH:
             self._lbl_month.grid()
             self._cbo_month.grid()
             self._lbl_quarter.grid_remove()
             self._cbo_quarter.grid_remove()
-        elif period == "quarter":
+        elif period == PeriodType.QUARTER:
             self._lbl_month.grid_remove()
             self._cbo_month.grid_remove()
             self._lbl_quarter.grid()
@@ -231,7 +268,7 @@ class ReportDialog(tk.Toplevel):
 
     # ─────────────────────────── Data Assembly ───────────────────────────────
 
-    def _get_report_data(self) -> Optional[ReportData]:
+    def _get_report_data(self) -> ReportData | None:
         try:
             year = int(self._var_year.get())
         except ValueError:
@@ -240,11 +277,11 @@ class ReportDialog(tk.Toplevel):
             )
             return None
 
-        period_type = self._var_period.get()
-        month: Optional[int] = None
-        quarter: Optional[int] = None
+        period_type = PeriodType(self._var_period.get())
+        month: int | None = None
+        quarter: int | None = None
 
-        if period_type == "month":
+        if period_type == PeriodType.MONTH:
             month_name = self._var_month.get()
             if month_name not in MONTH_NAMES[1:]:
                 messagebox.showerror(
@@ -253,11 +290,11 @@ class ReportDialog(tk.Toplevel):
                 return None
             month = MONTH_NAMES.index(month_name)
 
-        elif period_type == "quarter":
+        elif period_type == PeriodType.QUARTER:
             q_str = self._var_quarter.get()
             try:
                 quarter = int(q_str[1])
-            except (IndexError, ValueError):
+            except (IndexError, ValueError):  # fmt: skip
                 messagebox.showerror(
                     "Invalid Input", "Please select a valid quarter.", parent=self
                 )
@@ -275,7 +312,17 @@ class ReportDialog(tk.Toplevel):
                 model_miliuim=self._model_miliuim,
                 settings=self._settings,
             )
-        except Exception as exc:
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            # period_summary() delegates to multiple model/report layers that can
+            # raise a variety of exception types; report to the user and log.
+            logger.exception(
+                "Failed to assemble report data for period_type=%s year=%s "
+                "month=%s quarter=%s",
+                period_type,
+                year,
+                month,
+                quarter,
+            )
             messagebox.showerror(
                 "Report Error", f"Failed to assemble report data:\n{exc}", parent=self
             )
@@ -299,13 +346,17 @@ class ReportDialog(tk.Toplevel):
 
         lines.append(f"Period: {data.period_label}")
         lines.append(sep)
+        if data.skipped_record_count > 0:
+            lines.append(
+                f"WARNING: {data.skipped_record_count} record(s) skipped due to "
+                "data errors"
+            )
         lines.append("")
 
         lines.append("TIME CLOCK")
         lines.append(f"  Worked:              {data.worked_hours:>9.2f} h")
         lines.append(f"  Target:              {data.target_hours:>9.2f} h")
-        lines.append(
-            f"  Balance:             {_signed(data.time_balance):>9} h")
+        lines.append(f"  Balance:             {_signed(data.time_balance):>9} h")
         lines.append(
             f"  Weighted overtime:   {data.weighted_overtime:>9.2f} h"
             f"  (rate: {data.overtime_rate}x)"
@@ -321,11 +372,9 @@ class ReportDialog(tk.Toplevel):
         lines.append("")
 
         lines.append(f"SICKNESS ({data.year})")
-        lines.append(
-            f"  Allowance:           {data.sick_allowance_hours:>9.1f} h")
+        lines.append(f"  Allowance:           {data.sick_allowance_hours:>9.1f} h")
         lines.append(f"  Used:                {data.sick_used_hours:>9.1f} h")
-        lines.append(
-            f"  Remaining:           {data.sick_remaining_hours:>9.1f} h")
+        lines.append(f"  Remaining:           {data.sick_remaining_hours:>9.1f} h")
         lines.append("")
 
         lines.append(f"MILIUIM ({data.year})")
@@ -336,8 +385,9 @@ class ReportDialog(tk.Toplevel):
             lines.append("")
             lines.append("MONTHLY BREAKDOWN")
             lines.append(
-                f"  {'Month':<16} {'Worked':>9}  {'Target':>9}  {'Balance':>10}")
-            lines.append(f"  {'-'*16} {'-'*9}  {'-'*9}  {'-'*10}")
+                f"  {'Month':<16} {'Worked':>9}  {'Target':>9}  {'Balance':>10}"
+            )
+            lines.append(f"  {'-' * 16} {'-' * 9}  {'-' * 9}  {'-' * 10}")
             for row in data.monthly_rows:
                 name = MONTH_NAMES[row.month]
                 lines.append(
@@ -356,8 +406,7 @@ class ReportDialog(tk.Toplevel):
         Each element: (type_label, record_date, file_path).
         Only includes paths that actually exist on disk.
         """
-        start, end = period_range(
-            data.period_type, data.year, data.month, data.quarter)
+        start, end = period_range(data.period_type, data.year, data.month, data.quarter)
 
         image_exts = {".png", ".jpg", ".jpeg", ".bmp", ".tiff", ".tif", ".gif"}
         image_docs: list[tuple[str, date, str]] = []
@@ -369,8 +418,7 @@ class ReportDialog(tk.Toplevel):
                 if ext == ".pdf":
                     pdf_docs.append(("Sickness", rec.date, rec.document_path))
                 elif ext in image_exts:
-                    image_docs.append(
-                        ("Sickness", rec.date, rec.document_path))
+                    image_docs.append(("Sickness", rec.date, rec.document_path))
 
         for rec in self._model_tc.get_records_for_date_range(start, end):
             if rec.document_path and Path(rec.document_path).exists():
@@ -385,11 +433,11 @@ class ReportDialog(tk.Toplevel):
                 if rec.document_path and Path(rec.document_path).exists():
                     ext = Path(rec.document_path).suffix.lower()
                     if ext == ".pdf":
-                        pdf_docs.append(
-                            ("Miliuim", rec.start_date, rec.document_path))
+                        pdf_docs.append(("Miliuim", rec.start_date, rec.document_path))
                     elif ext in image_exts:
                         image_docs.append(
-                            ("Miliuim", rec.start_date, rec.document_path))
+                            ("Miliuim", rec.start_date, rec.document_path)
+                        )
 
         return image_docs, pdf_docs
 
@@ -412,11 +460,26 @@ class ReportDialog(tk.Toplevel):
 
         try:
             self._generate_pdf(data, filepath)
-        except Exception as exc:
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            # reportlab/pypdf and file I/O can raise many different exception
+            # types; report to the user and log rather than crash the dialog.
+            logger.exception(
+                "Failed to generate PDF report for period=%s path=%s",
+                data.period_label,
+                filepath,
+            )
             messagebox.showerror(
                 "Export Failed", f"Could not generate PDF:\n{exc}", parent=self
             )
             return
+
+        if data.skipped_record_count > 0:
+            messagebox.showwarning(
+                "Data Warning",
+                f"{data.skipped_record_count} record(s) skipped due to data "
+                "errors.\n\nThe generated report may be incomplete.",
+                parent=self,
+            )
 
         messagebox.showinfo(
             "PDF Exported",
@@ -430,37 +493,49 @@ class ReportDialog(tk.Toplevel):
         def kv_table(rows: list[list[str]]) -> Table:
             """Two-column key/value table."""
             t = Table(rows, colWidths=[7 * cm, 9 * cm])
-            t.setStyle(TableStyle([
-                ("GRID", (0, 0), (-1, -1), 0.5, colors.lightgrey),
-                ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#f5f5f5")),
-                ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
-                ("FONTSIZE", (0, 0), (-1, -1), 10),
-                ("LEFTPADDING", (0, 0), (-1, -1), 8),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 8),
-                ("TOPPADDING", (0, 0), (-1, -1), 5),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
-                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-            ]))
+            t.setStyle(
+                TableStyle(
+                    [
+                        ("GRID", (0, 0), (-1, -1), 0.5, colors.lightgrey),
+                        ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#f5f5f5")),
+                        ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
+                        ("FONTSIZE", (0, 0), (-1, -1), 10),
+                        ("LEFTPADDING", (0, 0), (-1, -1), 8),
+                        ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+                        ("TOPPADDING", (0, 0), (-1, -1), 5),
+                        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+                        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                    ]
+                )
+            )
             return t
 
         def monthly_table(rows: list[list[str]]) -> Table:
             """Multi-column monthly breakdown table with a header row."""
             col_widths = [5.5 * cm, 4 * cm, 4 * cm, 4 * cm]
             t = Table(rows, colWidths=col_widths)
-            t.setStyle(TableStyle([
-                ("GRID", (0, 0), (-1, -1), 0.5, colors.lightgrey),
-                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#d9d9d9")),
-                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                ("FONTSIZE", (0, 0), (-1, -1), 10),
-                ("ALIGN", (1, 0), (-1, -1), "RIGHT"),
-                ("LEFTPADDING", (0, 0), (-1, -1), 8),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 8),
-                ("TOPPADDING", (0, 0), (-1, -1), 5),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
-                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                ("ROWBACKGROUNDS", (0, 1), (-1, -1),
-                 [colors.white, colors.HexColor("#f9f9f9")]),
-            ]))
+            t.setStyle(
+                TableStyle(
+                    [
+                        ("GRID", (0, 0), (-1, -1), 0.5, colors.lightgrey),
+                        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#d9d9d9")),
+                        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                        ("FONTSIZE", (0, 0), (-1, -1), 10),
+                        ("ALIGN", (1, 0), (-1, -1), "RIGHT"),
+                        ("LEFTPADDING", (0, 0), (-1, -1), 8),
+                        ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+                        ("TOPPADDING", (0, 0), (-1, -1), 5),
+                        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+                        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                        (
+                            "ROWBACKGROUNDS",
+                            (0, 1),
+                            (-1, -1),
+                            [colors.white, colors.HexColor("#f9f9f9")],
+                        ),
+                    ]
+                )
+            )
             return t
 
         doc = SimpleDocTemplate(
@@ -476,10 +551,12 @@ class ReportDialog(tk.Toplevel):
         story = []
 
         # ── Title ─────────────────────────────────────────────────────────────
-        story.append(Paragraph(
-            f"Time Clock Report — {data.period_label}",
-            styles["Title"],
-        ))
+        story.append(
+            Paragraph(
+                f"Time Clock Report — {data.period_label}",
+                styles["Title"],
+            )
+        )
         story.append(Spacer(1, 0.4 * cm))
         story.append(HRFlowable(width="100%", thickness=1, color=colors.grey))
         story.append(Spacer(1, 0.4 * cm))
@@ -487,44 +564,63 @@ class ReportDialog(tk.Toplevel):
         # ── Time Clock ────────────────────────────────────────────────────────
         story.append(Paragraph("Time Clock", styles["Heading1"]))
         story.append(Spacer(1, 0.2 * cm))
-        story.append(kv_table([
-            ["Worked", _fmt_h(data.worked_hours)],
-            ["Target", _fmt_h(data.target_hours)],
-            ["Balance", f"{_signed(data.time_balance)} h"],
-            ["Weighted Overtime",
-                f"{data.weighted_overtime:.2f} h  (rate: {data.overtime_rate}x)"],
-        ]))
+        story.append(
+            kv_table(
+                [
+                    ["Worked", _fmt_h(data.worked_hours)],
+                    ["Target", _fmt_h(data.target_hours)],
+                    ["Balance", f"{_signed(data.time_balance)} h"],
+                    [
+                        "Weighted Overtime",
+                        f"{data.weighted_overtime:.2f} h "
+                        f" (rate: {data.overtime_rate}x)",
+                    ],
+                ]
+            )
+        )
         story.append(Spacer(1, 0.5 * cm))
 
         # ── Vacation ──────────────────────────────────────────────────────────
         story.append(Paragraph(f"Vacation ({data.year})", styles["Heading1"]))
         story.append(Spacer(1, 0.2 * cm))
-        story.append(kv_table([
-            ["Allowance", f"{data.vac_allowance:.1f} h"],
-            ["Carry-over", f"{data.vac_carry_over:.1f} h"],
-            ["Total Pool", f"{data.vac_total_pool:.1f} h"],
-            ["Used", f"{data.vac_used:.1f} h"],
-            ["Remaining", f"{data.vac_remaining:.1f} h"],
-        ]))
+        story.append(
+            kv_table(
+                [
+                    ["Allowance", f"{data.vac_allowance:.1f} h"],
+                    ["Carry-over", f"{data.vac_carry_over:.1f} h"],
+                    ["Total Pool", f"{data.vac_total_pool:.1f} h"],
+                    ["Used", f"{data.vac_used:.1f} h"],
+                    ["Remaining", f"{data.vac_remaining:.1f} h"],
+                ]
+            )
+        )
         story.append(Spacer(1, 0.5 * cm))
 
         # ── Sickness ──────────────────────────────────────────────────────────
         story.append(Paragraph(f"Sickness ({data.year})", styles["Heading1"]))
         story.append(Spacer(1, 0.2 * cm))
-        story.append(kv_table([
-            ["Allowance", f"{data.sick_allowance_hours:.1f} h"],
-            ["Used", f"{data.sick_used_hours:.1f} h"],
-            ["Remaining", f"{data.sick_remaining_hours:.1f} h"],
-        ]))
+        story.append(
+            kv_table(
+                [
+                    ["Allowance", f"{data.sick_allowance_hours:.1f} h"],
+                    ["Used", f"{data.sick_used_hours:.1f} h"],
+                    ["Remaining", f"{data.sick_remaining_hours:.1f} h"],
+                ]
+            )
+        )
         story.append(Spacer(1, 0.5 * cm))
 
         # ── Miliuim ───────────────────────────────────────────────────────────
         story.append(Paragraph(f"Miliuim ({data.year})", styles["Heading1"]))
         story.append(Spacer(1, 0.2 * cm))
-        story.append(kv_table([
-            ["Periods", str(data.miliuim_period_count)],
-            ["Total days", str(data.miliuim_total_days)],
-        ]))
+        story.append(
+            kv_table(
+                [
+                    ["Periods", str(data.miliuim_period_count)],
+                    ["Total days", str(data.miliuim_total_days)],
+                ]
+            )
+        )
 
         # ── Monthly Breakdown ─────────────────────────────────────────────────
         if data.monthly_rows:
@@ -536,51 +632,99 @@ class ReportDialog(tk.Toplevel):
                 ["Month", "Worked (h)", "Target (h)", "Balance (h)"]
             ]
             for row in data.monthly_rows:
-                table_rows.append([
-                    f"{MONTH_NAMES[row.month]} {row.year}",
-                    f"{row.worked_hours:.2f}",
-                    f"{row.target_hours:.2f}",
-                    _signed(row.balance),
-                ])
+                table_rows.append(
+                    [
+                        f"{MONTH_NAMES[row.month]} {row.year}",
+                        f"{row.worked_hours:.2f}",
+                        f"{row.target_hours:.2f}",
+                        _signed(row.balance),
+                    ]
+                )
             story.append(monthly_table(table_rows))
 
         # ── Attached Documents (images) ───────────────────────────────────────
         image_docs, pdf_docs = self._collect_documents(data)
 
+        failed_images: list[str] = []
         if image_docs:
             story.append(Spacer(1, 0.5 * cm))
-            story.append(HRFlowable(
-                width="100%", thickness=1, color=colors.grey))
+            story.append(HRFlowable(width="100%", thickness=1, color=colors.grey))
             story.append(Spacer(1, 0.4 * cm))
             story.append(Paragraph("Attached Documents", styles["Heading1"]))
             for type_label, rec_date, doc_path in image_docs:
+                try:
+                    img = RLImage(
+                        doc_path, width=15 * cm, height=20 * cm, kind="proportional"
+                    )
+                except Exception as exc:  # pylint: disable=broad-exception-caught
+                    # A single corrupt/unreadable attachment shouldn't abort the
+                    # whole report; log it and surface a warning after export.
+                    logger.exception(
+                        "Failed to load image attachment %s (%s dated %s) for "
+                        "report %s",
+                        doc_path,
+                        type_label,
+                        rec_date,
+                        filepath,
+                    )
+                    failed_images.append(f"{os.path.basename(doc_path)}: {exc}")
+                    continue
                 story.append(Spacer(1, 0.3 * cm))
-                story.append(Paragraph(
-                    f"{type_label} — {to_display_date(rec_date)} — {os.path.basename(doc_path)}",
-                    styles["Heading2"],
-                ))
+                doc_label = (
+                    f"{type_label} — {to_display_date(rec_date)} — "
+                    f"{os.path.basename(doc_path)}"
+                )
+                story.append(
+                    Paragraph(
+                        doc_label,
+                        styles["Heading2"],
+                    )
+                )
                 story.append(Spacer(1, 0.2 * cm))
-                img = RLImage(doc_path, width=15 * cm,
-                              height=20 * cm, kind="proportional")
                 story.append(img)
 
         doc.build(story)
 
+        if failed_images:
+            messagebox.showwarning(
+                "Attachment Warning",
+                "Some attached images could not be included:\n"
+                + "\n".join(failed_images),
+                parent=self,
+            )
+
         # ── Attached Documents (PDF pages appended) ───────────────────────────
         if pdf_docs:
             writer = PdfWriter()
-            main_reader = PdfReader(filepath)
-            for page in main_reader.pages:
-                writer.add_page(page)
+            # Open each source through an explicit file handle and fully
+            # consume it (copy all pages into the writer) inside the `with`
+            # block, so the OS file handle is released before shutil.move()
+            # below replaces `filepath`. Passing a path straight to
+            # PdfReader() keeps the file open for lazy page/content-stream
+            # access, which can raise PermissionError on Windows when the
+            # source file is later moved/renamed while still open.
+            with open(filepath, "rb") as f:
+                main_reader = PdfReader(f)
+                for page in main_reader.pages:
+                    writer.add_page(page)
             failed_attachments: list[str] = []
             for _type_label, _rec_date, doc_path in pdf_docs:
                 try:
-                    att_reader = PdfReader(doc_path)
-                    for page in att_reader.pages:
-                        writer.add_page(page)
-                except Exception as exc:
-                    failed_attachments.append(
-                        f"{os.path.basename(doc_path)}: {exc}")
+                    with open(doc_path, "rb") as f:
+                        att_reader = PdfReader(f)
+                        for page in att_reader.pages:
+                            writer.add_page(page)
+                except Exception as exc:  # pylint: disable=broad-exception-caught
+                    # A single corrupt/unreadable attachment shouldn't abort the
+                    # whole report; log it and surface a warning after export.
+                    logger.exception(
+                        "Failed to append PDF attachment %s (%s dated %s) to report %s",
+                        doc_path,
+                        _type_label,
+                        _rec_date,
+                        filepath,
+                    )
+                    failed_attachments.append(f"{os.path.basename(doc_path)}: {exc}")
             tmp_fd, tmp_path = tempfile.mkstemp(suffix=".pdf")
             try:
                 os.close(tmp_fd)
@@ -590,13 +734,19 @@ class ReportDialog(tk.Toplevel):
             except Exception:
                 try:
                     os.unlink(tmp_path)
-                except Exception:
-                    pass
+                except Exception:  # pylint: disable=broad-exception-caught
+                    # Best-effort cleanup of the temp file; log rather than
+                    # silently swallow so a leaked temp file is traceable, and
+                    # don't let a cleanup failure mask the original error below.
+                    logger.exception(
+                        "Failed to clean up temp file %s after PDF write failure",
+                        tmp_path,
+                    )
                 raise
             if failed_attachments:
                 messagebox.showwarning(
                     "Attachment Warning",
-                    "Some attachments could not be merged:\n" +
-                    "\n".join(failed_attachments),
+                    "Some attachments could not be merged:\n"
+                    + "\n".join(failed_attachments),
                     parent=self,
                 )

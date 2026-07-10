@@ -51,7 +51,7 @@ body:
       description: OS, Python version, and app version (e.g. v1.2.0)
       placeholder: |
         OS: Windows 11 / macOS 14 / Ubuntu 24.04
-        Python: 3.12.x
+        Python: 3.14.x
         App version: v1.0.0
     validations:
       required: false

@@ -1,19 +1,39 @@
 """MainWindow: ttk.Notebook tab container with menu bar and status bar."""
 
-from tkinter import Menu, StringVar, ttk
+import logging
+import time
+import traceback
+from tkinter import Menu, StringVar, messagebox, ttk
+from typing import Any
 
 from core.events import Event, EventBus
+from views.enums import ExportTab
 from views.export_dialog import ExportDialog
 from views.help_viewer import open_help, report_bug, show_about, suggest_feature
 from views.report_dialog import ReportDialog
 from views.settings_dialog import SettingsDialog
 
+logger = logging.getLogger(__name__)
+
 
 class MainWindow(ttk.Frame):
     """Root application window with notebook tabs, menu, and status bar."""
 
-    def __init__(self, root, bus: EventBus, settings=None, model_tc=None,
-                 model_vacation=None, model_sickness=None, model_miliuim=None) -> None:
+    # Minimum seconds between two identical error dialogs. Repeated errors
+    # within this window are logged instead of shown, to avoid a "modal
+    # error storm" when a recurring bus event or callback keeps failing.
+    _ERROR_DEDUPE_WINDOW_SECONDS = 5.0
+
+    def __init__(
+        self,
+        root,
+        bus: EventBus,
+        settings=None,
+        model_tc=None,
+        model_vacation=None,
+        model_sickness=None,
+        model_miliuim=None,
+    ) -> None:
         super().__init__(root)
         self.root = root
         self.bus = bus
@@ -26,9 +46,16 @@ class MainWindow(ttk.Frame):
         self._count_var = StringVar(value="")
         self._clock_var = StringVar(value="Idle")
         self._tab_var = StringVar(value="Time Clock")
+        self._last_error_shown_at: dict[str, float] = {}
 
         root.title("Time Clock")
         root.minsize(800, 600)
+
+        # Surface handler exceptions the EventBus only logs by default, and
+        # catch anything an uncaught Tk widget callback (button, combobox,
+        # tree, ...) raises — otherwise both fail silently in a packaged app.
+        self.bus.on_handler_error = self._on_bus_handler_error
+        root.report_callback_exception = self._on_tk_callback_exception
 
         self._build_menu(root)
         self._build_notebook()
@@ -37,18 +64,26 @@ class MainWindow(ttk.Frame):
         self.pack(fill="both", expand=True)
 
         self._unsubs: list = [
-            self.bus.subscribe(Event.TIME_RECORDS_CHANGED, lambda **
-                               _: self._set_status("Records updated")),
-            self.bus.subscribe(Event.VACATION_CHANGED, lambda **
-                               _: self._set_status("Vacation records updated")),
-            self.bus.subscribe(Event.SICKNESS_CHANGED, lambda **
-                               _: self._set_status("Sick records updated")),
-            self.bus.subscribe(Event.MILIUIM_CHANGED, lambda **
-                               _: self._set_status("Miliuim records updated")),
-            self.bus.subscribe(Event.SETTINGS_CHANGED, lambda **
-                               _: self._set_status("Settings changed")),
-            self.bus.subscribe(Event.CLOCK_STATE_CHANGED,
-                               self._on_clock_state_changed),
+            self.bus.subscribe(
+                Event.TIME_RECORDS_CHANGED,
+                lambda **_: self._set_status("Records updated"),
+            ),
+            self.bus.subscribe(
+                Event.VACATION_CHANGED,
+                lambda **_: self._set_status("Vacation records updated"),
+            ),
+            self.bus.subscribe(
+                Event.SICKNESS_CHANGED,
+                lambda **_: self._set_status("Sick records updated"),
+            ),
+            self.bus.subscribe(
+                Event.MILIUIM_CHANGED,
+                lambda **_: self._set_status("Miliuim records updated"),
+            ),
+            self.bus.subscribe(
+                Event.SETTINGS_CHANGED, lambda **_: self._set_status("Settings changed")
+            ),
+            self.bus.subscribe(Event.CLOCK_STATE_CHANGED, self._on_clock_state_changed),
         ]
 
         root.bind("<Destroy>", self._on_destroy)
@@ -61,12 +96,18 @@ class MainWindow(ttk.Frame):
         menubar = Menu(root)
 
         file_menu = Menu(menubar, tearoff=0)
-        file_menu.add_command(label="Export Time Records",
-                              command=lambda: self._open_export("time"))
-        file_menu.add_command(label="Export Vacation",
-                              command=lambda: self._open_export("vacation"))
-        file_menu.add_command(label="Export Sickness",
-                              command=lambda: self._open_export("sickness"))
+        file_menu.add_command(
+            label="Export Time Records",
+            command=lambda: self._open_export(ExportTab.TIME),
+        )
+        file_menu.add_command(
+            label="Export Vacation",
+            command=lambda: self._open_export(ExportTab.VACATION),
+        )
+        file_menu.add_command(
+            label="Export Sickness",
+            command=lambda: self._open_export(ExportTab.SICKNESS),
+        )
         file_menu.add_separator()
         file_menu.add_command(label="Reports", command=self._open_report)
         file_menu.add_separator()
@@ -75,24 +116,28 @@ class MainWindow(ttk.Frame):
 
         settings_menu = Menu(menubar, tearoff=0)
         settings_menu.add_command(
-            label="Settings", command=self._open_settings, accelerator="Ctrl+S")
+            label="Settings", command=self._open_settings, accelerator="Ctrl+S"
+        )
         menubar.add_cascade(label="Settings", menu=settings_menu)
 
         help_menu = Menu(menubar, tearoff=0)
         help_menu.add_command(label="Usage Guide", command=open_help)
-        help_menu.add_command(
-            label="About", command=lambda: show_about(self.root))
+        help_menu.add_command(label="About", command=lambda: show_about(self.root))
         help_menu.add_separator()
         help_menu.add_command(
-            label="Report a Bug", command=lambda: report_bug(self.root))
+            label="Report a Bug", command=lambda: report_bug(self.root)
+        )
         help_menu.add_command(
-            label="Suggest a Feature", command=lambda: suggest_feature(self.root))
+            label="Suggest a Feature", command=lambda: suggest_feature(self.root)
+        )
         menubar.add_cascade(label="Help", menu=help_menu)
 
         root.config(menu=menubar)
 
     def _open_settings(self) -> None:
-        if not all([self._settings, self._model_tc, self._model_vacation, self._model_sickness]):
+        if not all(
+            [self._settings, self._model_tc, self._model_vacation, self._model_sickness]
+        ):
             self._set_status("Settings not available")
             return
 
@@ -105,7 +150,7 @@ class MainWindow(ttk.Frame):
             bus=self.bus,
         )
 
-    def _open_export(self, tab: str = "time") -> None:
+    def _open_export(self, tab: ExportTab = ExportTab.TIME) -> None:
         if not all([self._model_tc, self._model_vacation, self._model_sickness]):
             self._set_status("Export not available")
             return
@@ -119,7 +164,9 @@ class MainWindow(ttk.Frame):
         )
 
     def _open_report(self) -> None:
-        if not all([self._settings, self._model_tc, self._model_vacation, self._model_sickness]):
+        if not all(
+            [self._settings, self._model_tc, self._model_vacation, self._model_sickness]
+        ):
             self._set_status("Reports not available")
             return
 
@@ -149,40 +196,54 @@ class MainWindow(ttk.Frame):
         self.notebook.bind("<<NotebookTabChanged>>", self._on_tab_changed)
 
     def _build_statusbar(self) -> None:
-        bar = ttk.Frame(self)
-        bar.pack(side="bottom", fill="x", padx=4, pady=(0, 4))
-        sep = ttk.Separator(bar, orient="horizontal")
+        status_bar = ttk.Frame(self)
+        status_bar.pack(side="bottom", fill="x", padx=4, pady=(0, 4))
+        sep = ttk.Separator(status_bar, orient="horizontal")
         sep.pack(fill="x")
 
-        self.status_label = ttk.Label(bar, textvariable=self.status_var,
-                                      style="StatusBar.TLabel", padding=(4, 2))
+        self.status_label = ttk.Label(
+            status_bar,
+            textvariable=self.status_var,
+            style="StatusBar.TLabel",
+            padding=(4, 2),
+        )
         self.status_label.pack(side="left", fill="x", expand=True)
 
-        ttk.Separator(bar, orient="vertical").pack(
-            side="left", fill="y", padx=4)
-        ttk.Label(bar, textvariable=self._count_var,
-                  style="StatusBar.TLabel", padding=(4, 2)).pack(side="left")
+        ttk.Separator(status_bar, orient="vertical").pack(side="left", fill="y", padx=4)
+        ttk.Label(
+            status_bar,
+            textvariable=self._count_var,
+            style="StatusBar.TLabel",
+            padding=(4, 2),
+        ).pack(side="left")
 
-        ttk.Separator(bar, orient="vertical").pack(
-            side="left", fill="y", padx=4)
-        ttk.Label(bar, textvariable=self._clock_var,
-                  style="StatusBar.TLabel", padding=(4, 2)).pack(side="left")
+        ttk.Separator(status_bar, orient="vertical").pack(side="left", fill="y", padx=4)
+        ttk.Label(
+            status_bar,
+            textvariable=self._clock_var,
+            style="StatusBar.TLabel",
+            padding=(4, 2),
+        ).pack(side="left")
 
-        ttk.Separator(bar, orient="vertical").pack(
-            side="left", fill="y", padx=4)
-        ttk.Label(bar, textvariable=self._tab_var,
-                  style="StatusBar.TLabel", padding=(4, 2)).pack(side="left")
+        ttk.Separator(status_bar, orient="vertical").pack(side="left", fill="y", padx=4)
+        ttk.Label(
+            status_bar,
+            textvariable=self._tab_var,
+            style="StatusBar.TLabel",
+            padding=(4, 2),
+        ).pack(side="left")
 
     def _set_status(self, msg: str) -> None:
         self.status_var.set(msg)
 
     def set_record_count(self, n: int) -> None:
+        """Updates the status bar's record-count label."""
         self._count_var.set(f"{n} records")
 
     def set_clocked_in(self, is_in: bool, since: str = "") -> None:
+        """Updates the status bar's clocked-in/idle indicator."""
         if is_in:
-            self._clock_var.set(
-                f"Clocked in{' since ' + since if since else ''}")
+            self._clock_var.set(f"Clocked in{' since ' + since if since else ''}")
         else:
             self._clock_var.set("Idle")
 
@@ -195,5 +256,104 @@ class MainWindow(ttk.Frame):
         for fn in self._unsubs:
             fn()
 
-    def _on_clock_state_changed(self, clocked_in: bool = False, since: str = "", **_: object) -> None:
+    def _on_clock_state_changed(
+        self, clocked_in: bool = False, since: str = "", **_: object
+    ) -> None:
         self.set_clocked_in(clocked_in, since)
+
+    def _show_error_deduped(self, key: str, title: str, message: str) -> None:
+        """Show an error dialog, unless the same error (by `key`) was already
+        shown within `_ERROR_DEDUPE_WINDOW_SECONDS`. This prevents a "modal
+        error storm" when a recurring bus event or callback keeps failing
+        with the same error — repeats are logged instead of popped up.
+
+        Tracked per-key (not just the single most recent error) so that two
+        distinct recurring errors firing alternately (A, B, A, B, ...) are
+        each deduped correctly instead of bypassing the window every time."""
+        now = time.monotonic()
+        last_shown = self._last_error_shown_at.get(key)
+        if (
+            last_shown is not None
+            and (now - last_shown) < self._ERROR_DEDUPE_WINDOW_SECONDS
+        ):
+            logger.info("Suppressing repeat error dialog (already shown): %s", key)
+            return
+
+        # `key` can embed dynamic data (exception messages, e.g. file paths
+        # or record ids), so prune entries outside the dedupe window on each
+        # call to keep this dict from growing unbounded over a long-running
+        # session.
+        cutoff = now - self._ERROR_DEDUPE_WINDOW_SECONDS
+        self._last_error_shown_at = {
+            k: t for k, t in self._last_error_shown_at.items() if t >= cutoff
+        }
+        self._last_error_shown_at[key] = now
+        messagebox.showerror(title, message, parent=self.root)
+
+    def notify_settings_error(self, key: str, detail: str) -> None:
+        """SettingsManager.on_error hook: a settings read hit a DB error and
+        fell back to a default value. Deferred via root.after for the same
+        reason as `_on_bus_handler_error` — may be invoked from a call stack
+        that shouldn't block on a modal's nested event loop."""
+        self.root.after(
+            0,
+            lambda: self._show_error_deduped(
+                f"settings:{key}",
+                "Settings Warning",
+                f"Could not read the '{key}' setting from the database; using "
+                f"the default value instead.\n\nDetails were written to the log.",
+            ),
+        )
+
+    def _on_bus_handler_error(self, message: str) -> None:
+        """EventBus.on_handler_error hook: a subscriber raised. The bus has
+        already logged the full traceback; let the user know something went
+        wrong instead of leaving the UI silently stale.
+
+        This hook is called synchronously from inside EventBus.publish()'s
+        subscriber loop, so it must return immediately — it only schedules
+        the dialog via `root.after(0, ...)` rather than showing it inline.
+        Showing it inline would block on the modal's own nested Tk event
+        loop before `publish()` could move on to the remaining subscribers
+        of the same event, effectively serializing unrelated tabs/handlers
+        behind one broken one. `message` is this call's own argument (not a
+        mutated loop variable), so a plain closure over it is safe."""
+        self.root.after(
+            0,
+            lambda: self._show_error_deduped(
+                f"bus:{message}",
+                "Unexpected Error",
+                "An internal error occurred while updating the app.\n"
+                "The application will keep running, but a screen may be "
+                "stale — details were written to the log.",
+            ),
+        )
+
+    def _on_tk_callback_exception(
+        self, exc: type[BaseException], val: BaseException, tb: Any
+    ) -> None:
+        """Tk.report_callback_exception override: catches exceptions raised
+        inside any bound widget callback (button, combobox, tree, ...) that
+        Tk would otherwise only print to stderr and silently swallow.
+
+        Unlike `_on_bus_handler_error`, this isn't called from inside a loop
+        over other pending callbacks — Tk invokes it once, after a single
+        callback has already failed and control is unwinding back to the
+        event loop — so showing the dialog inline here doesn't block any
+        sibling handler the way it would in EventBus.publish(). No
+        `root.after` deferral needed."""
+        logger.error("Unhandled exception in Tk callback", exc_info=(exc, val, tb))
+        # Build the dedupe key from the exception type plus the innermost
+        # (raising) frame's location, not `str(val)` — the latter embeds
+        # dynamic, per-call data (e.g. a record id), which would give a
+        # recurring same-site bug a different key on every occurrence and
+        # defeat the modal-storm dedup window entirely. The dialog body
+        # below still shows the full dynamic message; only the key is
+        # normalized.
+        frames = traceback.extract_tb(tb)
+        site = f"{frames[-1].filename}:{frames[-1].lineno}" if frames else "unknown"
+        self._show_error_deduped(
+            f"tk:{exc.__name__}:{site}",
+            "Unexpected Error",
+            f"An unexpected error occurred:\n\n{exc.__name__}: {val}",
+        )

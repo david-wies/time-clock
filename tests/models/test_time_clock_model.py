@@ -1,10 +1,15 @@
-import pytest
+import dataclasses
+import logging
+import sqlite3
 from datetime import date, time
-from domain.types import TimeRecord
-from domain.enums import WorkType
-from models.time_clock_model import TimeClockModel
-from core.events import EventBus, Event
+
+import pytest
+
+from core.events import Event, EventBus
 from db.database import Database
+from domain.enums import WorkType
+from domain.types import TimeRecord
+from models.time_clock_model import TimeClockModel
 
 
 def test_time_record_crud(db: Database, event_bus: EventBus) -> None:
@@ -19,7 +24,7 @@ def test_time_record_crud(db: Database, event_bus: EventBus) -> None:
         break_minutes=30,
         work_type=WorkType.REMOTE,
         office=None,
-        note="Test record"
+        note="Test record",
     )
 
     # Listen to changes
@@ -28,6 +33,7 @@ def test_time_record_crud(db: Database, event_bus: EventBus) -> None:
     def on_change() -> None:
         nonlocal change_called
         change_called = True
+
     event_bus.subscribe(Event.TIME_RECORDS_CHANGED, on_change)
 
     rec_id = model.insert_record(rec)
@@ -41,10 +47,10 @@ def test_time_record_crud(db: Database, event_bus: EventBus) -> None:
     assert fetched.note == "Test record"
     assert fetched.work_type == WorkType.REMOTE
 
-    # 3. Update
+    # 3. Update — TimeRecord is frozen, so dataclasses.replace() derives the
+    # changed record instead of mutating `fetched` in place.
     change_called = False
-    fetched.note = "Updated note"
-    fetched.break_minutes = 45
+    fetched = dataclasses.replace(fetched, note="Updated note", break_minutes=45)
     model.update_record(fetched)
     assert change_called is True
 
@@ -63,12 +69,11 @@ def test_time_record_crud(db: Database, event_bus: EventBus) -> None:
 def test_get_records_for_period(db: Database, event_bus: EventBus) -> None:
     model = TimeClockModel(db, event_bus)
 
-    r1 = TimeRecord(None, date(2026, 6, 1), time(
-        9, 0), time(17, 0), 0, WorkType.REMOTE)
-    r2 = TimeRecord(None, date(2026, 6, 15), time(10, 0),
-                    None, 0, WorkType.REMOTE)  # Open record
-    r3 = TimeRecord(None, date(2026, 7, 1), time(
-        9, 0), time(17, 0), 0, WorkType.REMOTE)
+    r1 = TimeRecord(None, date(2026, 6, 1), time(9, 0), time(17, 0), 0, WorkType.REMOTE)
+    r2 = TimeRecord(
+        None, date(2026, 6, 15), time(10, 0), None, 0, WorkType.REMOTE
+    )  # Open record
+    r3 = TimeRecord(None, date(2026, 7, 1), time(9, 0), time(17, 0), 0, WorkType.REMOTE)
 
     model.insert_record(r1)
     model.insert_record(r2)
@@ -87,15 +92,54 @@ def test_get_records_for_period(db: Database, event_bus: EventBus) -> None:
     assert open_records[0].date == date(2026, 6, 15)
 
 
+@pytest.mark.parametrize(
+    "year, month, expected_last_day",
+    [
+        (2024, 2, 29),  # leap-year February
+        (2026, 2, 28),  # non-leap-year February
+        (2026, 4, 30),  # 30-day month
+    ],
+)
+def test_get_records_for_period_uses_real_month_end_date(
+    db: Database, event_bus: EventBus, year: int, month: int, expected_last_day: int
+) -> None:
+    """Regression guard for the `f"{year:04d}-{month:02d}-31"` hardcoding
+    bug: the query's end-of-month bound must be the real last day of the
+    month (via calendar.monthrange), not a literal "-31" that happens to
+    still sort correctly by lexicographic accident. Captures the actual
+    bound SQLite receives via set_trace_callback (which expands bound
+    parameters into the executed SQL text)."""
+    model = TimeClockModel(db, event_bus)
+    conn = db.get_connection()
+
+    captured_statements: list[str] = []
+    conn.set_trace_callback(captured_statements.append)
+    try:
+        model.get_records_for_period(year, month=month)
+    finally:
+        conn.set_trace_callback(None)
+
+    select_statements = [
+        s for s in captured_statements if s.startswith("SELECT * FROM time_record")
+    ]
+    assert len(select_statements) == 1
+    expected_end_date = f"{year:04d}-{month:02d}-{expected_last_day:02d}"
+    assert expected_end_date in select_statements[0]
+    # A literal "-31" end bound must never appear for a month with fewer days.
+    if expected_last_day != 31:
+        assert f"{year:04d}-{month:02d}-31" not in select_statements[0]
+
+
 def test_get_records_by_date(db: Database, event_bus: EventBus) -> None:
     model = TimeClockModel(db, event_bus)
 
-    r1 = TimeRecord(None, date(2026, 6, 26), time(
-        9, 0), time(12, 0), 0, WorkType.REMOTE)
-    r2 = TimeRecord(None, date(2026, 6, 26), time(
-        13, 0), time(17, 0), 0, WorkType.ROAD)
-    r3 = TimeRecord(None, date(2026, 6, 27), time(
-        9, 0), time(17, 0), 0, WorkType.REMOTE)
+    r1 = TimeRecord(
+        None, date(2026, 6, 26), time(9, 0), time(12, 0), 0, WorkType.REMOTE
+    )
+    r2 = TimeRecord(None, date(2026, 6, 26), time(13, 0), time(17, 0), 0, WorkType.ROAD)
+    r3 = TimeRecord(
+        None, date(2026, 6, 27), time(9, 0), time(17, 0), 0, WorkType.REMOTE
+    )
 
     model.insert_record(r1)
     model.insert_record(r2)
@@ -130,13 +174,305 @@ def test_targets_and_exceptions(db: Database, event_bus: EventBus) -> None:
 
     exceptions = model.get_date_exceptions(year=2026)
     assert len(exceptions) == 2
-    assert exceptions[0].date == "2026-12-24"
+    assert exceptions[0].date == date(2026, 12, 24)
     assert exceptions[0].hours == 4.0
-    assert exceptions[1].date == "2026-12-25"
+    assert exceptions[1].date == date(2026, 12, 25)
     assert exceptions[1].hours == 0.0
 
     # Delete exception
     model.delete_date_exception_by_date("2026-12-24")
     exceptions_after = model.get_date_exceptions(year=2026)
     assert len(exceptions_after) == 1
-    assert exceptions_after[0].date == "2026-12-25"
+    assert exceptions_after[0].date == date(2026, 12, 25)
+
+
+def test_update_record_without_id_raises(db: Database, event_bus: EventBus) -> None:
+    """update_record() requires a persisted id -- a record that was never
+    inserted (id=None) cannot be targeted by an UPDATE ... WHERE id = ?
+    statement, so this is checked explicitly rather than silently updating
+    zero rows."""
+    model = TimeClockModel(db, event_bus)
+    rec = TimeRecord(
+        None, date(2026, 6, 26), time(9, 0), time(17, 0), 30, WorkType.REMOTE
+    )
+
+    with pytest.raises(ValueError, match="Cannot update a record without an ID"):
+        model.update_record(rec)
+
+
+def test_delete_record_nonexistent_id_raises_and_publishes_no_event(
+    db: Database, event_bus: EventBus
+) -> None:
+    """delete_record() must check cursor.rowcount after the DELETE, exactly
+    like update_record() already does -- otherwise deleting an id that
+    doesn't exist (or was already deleted) silently "succeeds" and still
+    publishes TIME_RECORDS_CHANGED, even though nothing changed."""
+    model = TimeClockModel(db, event_bus)
+
+    change_called = False
+
+    def on_change() -> None:
+        nonlocal change_called
+        change_called = True
+
+    event_bus.subscribe(Event.TIME_RECORDS_CHANGED, on_change)
+
+    with pytest.raises(sqlite3.DatabaseError, match="No time_record with id=999999"):
+        model.delete_record(999999)
+
+    assert change_called is False
+
+
+def test_update_record_on_since_deleted_record_raises_and_publishes_no_event(
+    db: Database, event_bus: EventBus
+) -> None:
+    """A record fetched/held before another caller (or the same caller)
+    deletes it underneath -- e.g. a stale UI selection -- must not silently
+    no-op on update_record(). The UPDATE ... WHERE id = ? affects zero rows,
+    which update_record() must detect via cursor.rowcount and raise on,
+    rather than publishing TIME_RECORDS_CHANGED for a no-op write."""
+    model = TimeClockModel(db, event_bus)
+    rec = TimeRecord(
+        None, date(2026, 6, 26), time(9, 0), time(17, 0), 30, WorkType.REMOTE
+    )
+    rec_id = model.insert_record(rec)
+    stored = model.get_record_by_id(rec_id)
+    assert stored is not None
+
+    model.delete_record(rec_id)
+
+    change_called = False
+
+    def on_change() -> None:
+        nonlocal change_called
+        change_called = True
+
+    event_bus.subscribe(Event.TIME_RECORDS_CHANGED, on_change)
+
+    with pytest.raises(sqlite3.DatabaseError, match=f"No time record with id={rec_id}"):
+        model.update_record(stored)
+
+    assert change_called is False
+
+
+def test_get_open_records_for_today_returns_only_todays_open_records(
+    db: Database, event_bus: EventBus
+) -> None:
+    """Convenience wrapper around get_open_records_for_date(date.today()) --
+    uses the real wall-clock date (no injectable clock at the model layer),
+    so this builds records against the actual today rather than a fixed
+    date. Confirms it returns only today's still-open record and excludes a
+    closed one on the same day."""
+    model = TimeClockModel(db, event_bus)
+    today = date.today()
+    open_rec = TimeRecord(None, today, time(9, 0), None, 0, WorkType.REMOTE)
+    closed_rec = TimeRecord(None, today, time(10, 0), time(11, 0), 0, WorkType.REMOTE)
+    model.insert_record(open_rec)
+    model.insert_record(closed_rec)
+
+    open_today = model.get_open_records_for_today()
+
+    assert len(open_today) == 1
+    assert open_today[0].start_time == time(9, 0)
+    assert open_today[0].end_time is None
+
+
+def test_delete_date_exception_by_id(db: Database, event_bus: EventBus) -> None:
+    """delete_date_exception(id) -- distinct from
+    delete_date_exception_by_date(date_str), which is exercised in
+    test_targets_and_exceptions above. Only the exception matching the
+    given id is removed."""
+    model = TimeClockModel(db, event_bus)
+    model.save_date_exception("2026-12-24", 4.0, "Christmas Eve")
+    model.save_date_exception("2026-12-25", 0.0, "Christmas Day")
+    exceptions = model.get_date_exceptions(year=2026)
+    assert len(exceptions) == 2
+    target_id = exceptions[0].id
+
+    model.delete_date_exception(target_id)
+
+    remaining = model.get_date_exceptions(year=2026)
+    assert len(remaining) == 1
+    assert remaining[0].id != target_id
+
+
+def test_get_date_exceptions_skips_malformed_date_and_logs_warning(
+    db: Database, event_bus: EventBus, caplog
+) -> None:
+    """A corrupted `date` column value (e.g. from manual DB editing) must
+    not crash get_date_exceptions() — it should be logged and skipped,
+    exactly like the (pre-existing) view-layer handling in
+    views/time_clock_tab.py:_build_exc_dict() used to do before date
+    parsing moved down into the model layer."""
+    model = TimeClockModel(db, event_bus)
+
+    model.save_date_exception("2026-12-24", 4.0, "Christmas Eve")
+    conn = db.get_connection()
+    try:
+        with conn:
+            conn.execute(
+                "INSERT INTO work_day_exception (date, hours, label) "
+                "VALUES ('not-a-date', 8.0, 'Corrupted row');"
+            )
+    finally:
+        conn.close()
+
+    with caplog.at_level(logging.WARNING, logger="models.time_clock_model"):
+        exceptions = model.get_date_exceptions()
+
+    assert len(exceptions) == 1
+    assert exceptions[0].date == date(2026, 12, 24)
+    assert any(
+        record.levelname == "WARNING" and "malformed" in record.message.lower()
+        for record in caplog.records
+    )
+
+
+def test_get_date_exceptions_skips_malformed_hours_and_logs_warning(
+    db: Database, event_bus: EventBus, caplog
+) -> None:
+    """A corrupted `hours` column value (e.g. from manual DB editing) must
+    not crash get_date_exceptions(). WorkDayException.__post_init__
+    (domain/types.py) rejects a negative or non-numeric hours value with a
+    ValueError; get_date_exceptions() must catch that and skip the row with
+    a logged warning, exactly like the malformed-date handling above."""
+    model = TimeClockModel(db, event_bus)
+
+    model.save_date_exception("2026-12-24", 4.0, "Christmas Eve")
+    conn = db.get_connection()
+    try:
+        with conn:
+            # The column has a CHECK(hours >= 0) constraint, but that only
+            # blocks a negative *number* -- it can't catch a non-numeric
+            # value. SQLite's cross-type comparison rules rank TEXT above
+            # INTEGER/REAL, so 'not-a-number' >= 0 evaluates true and the
+            # CHECK passes, letting this corrupted row insert cleanly (same
+            # class of gap the malformed-date test above exploits).
+            conn.execute(
+                "INSERT INTO work_day_exception (date, hours, label) "
+                "VALUES ('2026-12-25', 'not-a-number', 'Corrupted row');"
+            )
+    finally:
+        conn.close()
+
+    with caplog.at_level(logging.WARNING, logger="models.time_clock_model"):
+        exceptions = model.get_date_exceptions()
+
+    assert len(exceptions) == 1
+    assert exceptions[0].date == date(2026, 12, 24)
+    assert any(
+        record.levelname == "WARNING" and "malformed" in record.message.lower()
+        for record in caplog.records
+    )
+
+
+def test_get_records_by_date_skips_malformed_row_and_logs_warning(
+    db: Database, event_bus: EventBus, caplog
+) -> None:
+    """A row that violates a TimeRecord invariant at the DB level (e.g.
+    break_minutes exceeding the shift length -- something the DB's own
+    CHECK(break_minutes >= 0) constraint doesn't catch) must not crash the
+    whole read. It should be logged and skipped, exactly like the
+    malformed-date handling in get_date_exceptions()."""
+    model = TimeClockModel(db, event_bus)
+
+    good = TimeRecord(
+        None, date(2026, 6, 26), time(9, 0), time(17, 0), 30, WorkType.REMOTE
+    )
+    model.insert_record(good)
+
+    conn = db.get_connection()
+    try:
+        with conn:
+            conn.execute(
+                "INSERT INTO time_record "
+                "(date, start_time, end_time, break_minutes, work_type) "
+                "VALUES ('2026-06-26', '09:00', '10:00', 90, 'remote');"
+            )
+    finally:
+        conn.close()
+
+    with caplog.at_level(logging.WARNING, logger="models.time_clock_model"):
+        records = model.get_records_by_date(date(2026, 6, 26))
+
+    assert len(records) == 1
+    assert records[0].break_minutes == 30
+    assert model.last_skipped_count == 1
+    assert any(
+        record.levelname == "WARNING" and "malformed" in record.message.lower()
+        for record in caplog.records
+    )
+
+
+def test_get_time_ranges_by_date_skips_corrupt_time_row_and_logs_warning(
+    db: Database, event_bus: EventBus, caplog
+) -> None:
+    """A row whose start_time/end_time string is not a parseable HH:MM time
+    (corrupt data, a bad migration, a hand-edited DB) has no time to compare
+    for overlap, so it -- and only it -- is logged and skipped, while every
+    other record for the date must still come back (unlike
+    get_records_by_date(), this method must never silently drop a row just
+    for failing a TimeRecord invariant -- it feeds the overlap check in
+    TimeClockController.save_record()/clock_in()/clock_out())."""
+    model = TimeClockModel(db, event_bus)
+
+    good = TimeRecord(
+        None, date(2026, 6, 26), time(9, 0), time(17, 0), 30, WorkType.REMOTE
+    )
+    good_id = model.insert_record(good)
+
+    conn = db.get_connection()
+    try:
+        with conn:
+            # "not-a-time" has no ':' to split into hour/minute parts, so
+            # str_to_time() raises ValueError on it. There is no CHECK
+            # constraint on start_time's format, so the DB happily stores it
+            # as plain TEXT.
+            conn.execute(
+                "INSERT INTO time_record "
+                "(date, start_time, end_time, break_minutes, work_type) "
+                "VALUES ('2026-06-26', 'not-a-time', NULL, 0, 'remote');"
+            )
+    finally:
+        conn.close()
+
+    with caplog.at_level(logging.WARNING, logger="models.time_clock_model"):
+        ranges = model.get_time_ranges_by_date(date(2026, 6, 26))
+
+    assert len(ranges) == 1
+    assert ranges[0][0] == good_id
+    assert ranges[0][1] == time(9, 0)
+    assert ranges[0][2] == time(17, 0)
+    assert any(
+        record.levelname == "WARNING" and "unparseable" in record.message.lower()
+        for record in caplog.records
+    )
+
+
+def test_get_record_by_id_returns_none_for_malformed_row(
+    db: Database, event_bus: EventBus, caplog
+) -> None:
+    """A single malformed row fetched by ID must return None (not raise),
+    with a warning logged."""
+    model = TimeClockModel(db, event_bus)
+
+    conn = db.get_connection()
+    try:
+        with conn:
+            cursor = conn.execute(
+                "INSERT INTO time_record "
+                "(date, start_time, end_time, break_minutes, work_type) "
+                "VALUES ('2026-06-26', '09:00', '10:00', 90, 'remote');"
+            )
+            bad_id = cursor.lastrowid
+    finally:
+        conn.close()
+
+    with caplog.at_level(logging.WARNING, logger="models.time_clock_model"):
+        result = model.get_record_by_id(bad_id)
+
+    assert result is None
+    assert any(
+        record.levelname == "WARNING" and "malformed" in record.message.lower()
+        for record in caplog.records
+    )

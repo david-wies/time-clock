@@ -1,15 +1,28 @@
+"""Enumerated domain types shared across models, controllers, and views."""
+
 from enum import IntEnum, StrEnum
 
-__all__ = ["WorkType", "VacationType", "Weekday", "WarningCode", "PeriodType"]
+__all__ = [
+    "WorkType",
+    "VacationType",
+    "Weekday",
+    "WarningCode",
+    "PeriodType",
+    "OvertimePeriod",
+]
 
 
 class WorkType(StrEnum):
+    """Where a work shift was performed: on-site, on the road, or remote."""
+
     IN_SITE = "in_site"
     ROAD = "road"
     REMOTE = "remote"
 
 
 class VacationType(StrEnum):
+    """The category of a vacation day entry (annual leave, public holiday, etc.)."""
+
     ANNUAL_LEAVE = "annual_leave"
     PUBLIC_HOLIDAY = "public_holiday"
     SPECIAL_LEAVE = "special_leave"
@@ -18,6 +31,8 @@ class VacationType(StrEnum):
 
 
 class Weekday(IntEnum):
+    """A day of the week, Monday-first, matching Python's date.weekday() ordering."""
+
     MON = 0
     TUE = 1
     WED = 2
@@ -28,13 +43,37 @@ class Weekday(IntEnum):
 
 
 class WarningCode(StrEnum):
-    OVERNIGHT_SHIFT = "OVERNIGHT_SHIFT_WARNING"
-    OPEN_RECORD_EXISTS = "OPEN_RECORD_EXISTS"
-    MULTIPLE_OPEN_RECORDS = "MULTIPLE_OPEN_RECORDS"
-    OVER_BALANCE = "OVER_BALANCE_WARNING"
+    """A code identifying a non-fatal warning condition surfaced to the UI.
+
+    `blocking` marks whether this code requires a `force`/`confirm_*`
+    re-call to bypass (and therefore belongs in `Result.errors`), or is
+    purely informational (and belongs in `Result.warnings`)."""
+
+    blocking: bool
+
+    def __new__(cls, value: str, blocking: bool) -> WarningCode:
+        obj = str.__new__(cls, value)
+        obj._value_ = value
+        obj.blocking = blocking
+        return obj
+
+    OVERNIGHT_SHIFT = ("OVERNIGHT_SHIFT_WARNING", False)
+    OPEN_RECORD_EXISTS = ("OPEN_RECORD_EXISTS", True)
+    MULTIPLE_OPEN_RECORDS = ("MULTIPLE_OPEN_RECORDS", True)
+    OVER_BALANCE = ("OVER_BALANCE_WARNING", True)
 
 
 class PeriodType(StrEnum):
+    """The granularity of a reporting period: month, quarter, or year."""
+
     MONTH = "month"
     QUARTER = "quarter"
+    YEAR = "year"
+
+
+class OvertimePeriod(StrEnum):
+    """The window over which overtime is calculated: week, month, or year."""
+
+    WEEK = "week"
+    MONTH = "month"
     YEAR = "year"

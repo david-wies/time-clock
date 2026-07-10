@@ -2,30 +2,27 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import date
-from typing import Optional, Callable
-
-import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import messagebox, ttk
 
 from controllers.vacation_controller import VacationController
+from core.events import Event, EventBus
+from core.hebrew_date import to_hebrew_label as _safe_hebrew
+from core.timeutil import to_display_date
+from domain.enums import VacationType
+from domain.types import VacationRecord
 from models.vacation_model import VacationModel
 from settings import SettingsManager
-from core.events import EventBus, Event
-from core.timeutil import to_display_date
-from domain.types import VacationRecord
-from domain.enums import VacationType
-from theme.style import COLORS
-
-from core.hebrew_date import to_hebrew_label as _safe_hebrew
-from views.vacation_record_dialog import VacationRecordDialog
+from theme.style import COLORS, ThemeMode, resolve_theme_mode
 from views.carry_over_dialog import CarryOverDialog
-
-
-_MONTH_NAMES = [
-    "", "January", "February", "March", "April", "May", "June",
-    "July", "August", "September", "October", "November", "December",
-]
+from views.record_tab_common import RecordTabMixin
+from views.tab_widgets import (
+    build_action_bar,
+    build_add_edit_remove_buttons,
+    build_year_month_filter_bar,
+)
+from views.vacation_record_dialog import VacationRecordDialog
 
 _VTYPE_LABELS: dict[VacationType, str] = {
     VacationType.ANNUAL_LEAVE: "Annual Leave",
@@ -40,7 +37,7 @@ def _fmt_h(hours: float) -> str:
     return f"{hours:.1f}h"
 
 
-class VacationTab(ttk.Frame):
+class VacationTab(RecordTabMixin, ttk.Frame):
     """Vacation tab: balance display, record list, add/edit/delete/carry-over."""
 
     def __init__(
@@ -58,18 +55,27 @@ class VacationTab(ttk.Frame):
         self.settings = settings
         self.bus = bus
         self.root = root
+        self._theme_mode: ThemeMode = resolve_theme_mode(self.settings.get("theme"))
 
         today = date.today()
         self._selected_year: int = today.year
         self._selected_month: int = 0  # 0 = All months
         self._unsubs: list[Callable] = []
+        self._legend_labels: list[ttk.Label] = []
+
+        self._cbo_year: ttk.Combobox
+        self._cbo_month: ttk.Combobox
+        self._frm_balance: ttk.Frame
+        self._lbl_balance: ttk.Label
+        self._lbl_breakdown: ttk.Label
+        self._btn_add: ttk.Button
+        self._btn_carry_over: ttk.Button
+
         self._build_ui()
         self._refresh()
 
-        self._unsubs.append(bus.subscribe(
-            Event.VACATION_CHANGED, self._on_event))
-        self._unsubs.append(bus.subscribe(
-            Event.SETTINGS_CHANGED, self._on_event))
+        self._unsubs.append(bus.subscribe(Event.VACATION_CHANGED, self._on_event))
+        self._unsubs.append(bus.subscribe(Event.SETTINGS_CHANGED, self._on_event))
 
         self.bind("<Destroy>", self._on_destroy)
         self.pack(fill="both", expand=True)
@@ -84,29 +90,11 @@ class VacationTab(ttk.Frame):
         self._bind_shortcuts()
 
     def _build_filter_bar(self) -> None:
-        bar = ttk.Frame(self)
-        bar.pack(fill="x", padx=4, pady=(4, 0))
-
-        ttk.Label(bar, text="Year:").pack(side="left")
-        cur_year = date.today().year
-        self._var_year = tk.StringVar(value=str(self._selected_year))
-        self._cbo_year = ttk.Combobox(
-            bar, textvariable=self._var_year, width=6,
-            values=[str(y) for y in range(cur_year - 10, cur_year + 3)],
-            state="readonly",
+        self._var_year, self._var_month, self._cbo_year, self._cbo_month = (
+            build_year_month_filter_bar(
+                self, self._selected_year, self._on_period_changed
+            )
         )
-        self._cbo_year.pack(side="left", padx=(2, 10))
-        self._cbo_year.bind("<<ComboboxSelected>>", self._on_period_changed)
-
-        ttk.Label(bar, text="Month:").pack(side="left")
-        self._var_month = tk.StringVar(value="All")
-        self._cbo_month = ttk.Combobox(
-            bar, textvariable=self._var_month, width=11,
-            values=["All"] + _MONTH_NAMES[1:],
-            state="readonly",
-        )
-        self._cbo_month.pack(side="left", padx=(2, 0))
-        self._cbo_month.bind("<<ComboboxSelected>>", self._on_period_changed)
 
     def _build_balance_bar(self) -> None:
         self._frm_balance = ttk.Frame(self, style="Card.TFrame")
@@ -121,14 +109,13 @@ class VacationTab(ttk.Frame):
             side="left", fill="y", pady=5
         )
 
-        self._lbl_breakdown = ttk.Label(
-            self._frm_balance, text="", foreground="gray")
+        self._lbl_breakdown = ttk.Label(self._frm_balance, text="", foreground="gray")
         self._lbl_breakdown.pack(side="left", padx=10, pady=5)
 
         self._build_legend()
 
     def _build_legend(self) -> None:
-        c = COLORS.get("light", COLORS["light"])
+        c = COLORS.get(self._theme_mode, COLORS[ThemeMode.LIGHT])
         legend_frame = ttk.Frame(self)
         legend_frame.pack(fill="x", padx=10, pady=(2, 0))
 
@@ -138,13 +125,16 @@ class VacationTab(ttk.Frame):
             ("● Employer (Holiday)", c["success"], "normal"),
             ("● Unpaid", c["fg.muted"], "normal"),
         ]
+        self._legend_labels.clear()
         for text, color, style_modifier in items:
-            ttk.Label(
+            label = ttk.Label(
                 legend_frame,
                 text=text,
                 foreground=color,
                 font=("Helvetica", 8, style_modifier),
-            ).pack(side="left", padx=(0, 12))
+            )
+            label.pack(side="left", padx=(0, 12))
+            self._legend_labels.append(label)
 
     def _build_treeview(self) -> None:
         frame = ttk.Frame(self)
@@ -159,24 +149,21 @@ class VacationTab(ttk.Frame):
             selectmode="browse",
         )
 
-        self._tree.column("date", width=110, minwidth=90,
-                          stretch=False, anchor="w")
+        self._tree.column("date", width=110, minwidth=90, stretch=False, anchor="w")
         self._tree.heading("date", text="Date", anchor="center")
 
-        self._tree.column("hebrew_date", width=150,
-                          minwidth=120, stretch=False, anchor="w")
+        self._tree.column(
+            "hebrew_date", width=150, minwidth=120, stretch=False, anchor="w"
+        )
         self._tree.heading("hebrew_date", text="Hebrew Date", anchor="center")
 
-        self._tree.column("type", width=140, minwidth=100,
-                          stretch=False, anchor="w")
+        self._tree.column("type", width=140, minwidth=100, stretch=False, anchor="w")
         self._tree.heading("type", text="Type", anchor="center")
 
-        self._tree.column("hours", width=70, minwidth=50,
-                          stretch=False, anchor="e")
+        self._tree.column("hours", width=70, minwidth=50, stretch=False, anchor="e")
         self._tree.heading("hours", text="Hours", anchor="center")
 
-        self._tree.column("note", width=200, minwidth=80,
-                          stretch=True, anchor="w")
+        self._tree.column("note", width=200, minwidth=80, stretch=True, anchor="w")
         self._tree.heading("note", text="Note", anchor="center")
 
         vsb = ttk.Scrollbar(frame, orient="vertical", command=self._tree.yview)
@@ -187,39 +174,31 @@ class VacationTab(ttk.Frame):
         self._tree.bind("<Double-1>", self._on_double_click)
         self._tree.bind("<<TreeviewSelect>>", self._on_tree_select)
 
-        c = COLORS.get("light", COLORS["light"])
+        self._refresh_tree_tags()
+
+    def _refresh_tree_tags(self) -> None:
+        """(Re)applies the theme-dependent foreground/font for the semantic
+        row tags (``employer``/``planned``/``carry_over``/``unpaid``).
+
+        Called both at construction time and whenever the theme setting
+        changes at runtime, so row highlighting never goes stale relative
+        to the legend (see ``_on_event``).
+        """
+        c = COLORS.get(self._theme_mode, COLORS[ThemeMode.LIGHT])
         self._tree.tag_configure("employer", foreground=c["success"])
         self._tree.tag_configure(
-            "planned", foreground=c["accent"],
+            "planned",
+            foreground=c["accent"],
             font=("Helvetica", 9, "italic"),
         )
         self._tree.tag_configure("carry_over", foreground=c["accent"])
         self._tree.tag_configure("unpaid", foreground=c["fg.muted"])
 
     def _build_action_bar(self) -> None:
-        bar = ttk.Frame(self)
-        bar.pack(fill="x", padx=4, pady=(0, 6))
-
-        ttk.Separator(bar, orient="horizontal").pack(fill="x", pady=(0, 6))
-
-        inner = ttk.Frame(bar)
-        inner.pack(fill="x")
-
-        self._btn_add = ttk.Button(
-            inner, text="+ Add", command=self._do_add, width=12
+        inner = build_action_bar(self)
+        self._btn_add, self._btn_edit, self._btn_delete = build_add_edit_remove_buttons(
+            inner, self._do_add, self._do_edit, self._do_delete
         )
-        self._btn_add.pack(side="left", padx=(0, 4))
-
-        self._btn_edit = ttk.Button(
-            inner, text="✏ Edit", command=self._do_edit, width=12
-        )
-        self._btn_edit.pack(side="left", padx=(0, 4))
-
-        self._btn_delete = ttk.Button(
-            inner, text="🗑 Remove", style="Danger.TButton",
-            command=self._do_delete, width=12,
-        )
-        self._btn_delete.pack(side="left")
 
         ttk.Separator(inner, orient="vertical").pack(
             side="left", fill="y", padx=10, pady=2
@@ -231,40 +210,16 @@ class VacationTab(ttk.Frame):
         self._btn_carry_over.pack(side="left")
 
     def _bind_shortcuts(self) -> None:
-        def _guard(fn: Callable) -> Callable:
-            def _handler(_e=None) -> None:
-                try:
-                    if self.winfo_exists():
-                        fn()
-                except tk.TclError:
-                    pass
-            return _handler
-
-        self.root.bind_all("<Control-Shift-N>", _guard(self._do_add), add=True)
-        self.root.bind_all("<Control-e>", _guard(self._do_edit), add=True)
-        self.root.bind_all("<Delete>", _guard(self._do_delete), add=True)
-        self.root.bind_all("<F5>", _guard(self._refresh), add=True)
-
-    # ─────────────────────────── Period Filter ──────────────────────────────
-
-    def _on_period_changed(self, _event=None) -> None:
-        try:
-            self._selected_year = int(self._var_year.get())
-        except ValueError:
-            pass
-        month_name = self._var_month.get()
-        if month_name == "All":
-            self._selected_month = 0
-        elif month_name in _MONTH_NAMES:
-            idx = _MONTH_NAMES.index(month_name)
-            self._selected_month = idx if idx > 0 else 0
-        self._refresh()
+        self._bind_shortcut("<Control-Shift-N>", self._do_add)
+        self._bind_shortcut("<Control-e>", self._do_edit)
+        self._bind_shortcut("<Delete>", self._do_delete)
+        self._bind_shortcut("<F5>", self._refresh)
 
     # ─────────────────────────── Balance Bar ────────────────────────────────
 
-    def _refresh_balance(self) -> None:
+    def _refresh_balance(self, records: list[VacationRecord]) -> None:
         year = self._selected_year
-        summary = self.model.calculate_vacation_summary(year)
+        summary = self.model.calculate_vacation_summary(year, records=records)
 
         used = summary.used
         total_pool = summary.total_pool
@@ -272,7 +227,7 @@ class VacationTab(ttk.Frame):
         carry_over = summary.carry_over
         allowance = summary.allowance
 
-        c = COLORS.get("light", COLORS["light"])
+        c = COLORS.get(self._theme_mode, COLORS[ThemeMode.LIGHT])
         if remaining < 0:
             bal_color = c["warning"]
         elif remaining == 0:
@@ -280,8 +235,12 @@ class VacationTab(ttk.Frame):
         else:
             bal_color = c["success"]
 
+        balance_text = (
+            f"Vacation {year}: {_fmt_h(used)} / {_fmt_h(total_pool)} available"
+            f"  |  Remaining: {_fmt_h(remaining)}"
+        )
         self._lbl_balance.config(
-            text=f"Vacation {year}: {_fmt_h(used)} / {_fmt_h(total_pool)} available  |  Remaining: {_fmt_h(remaining)}",
+            text=balance_text,
             foreground=bal_color,
         )
 
@@ -297,10 +256,15 @@ class VacationTab(ttk.Frame):
         if children:
             self._tree.delete(*children)
 
-    def _refresh_tree(self) -> None:
+    def _refresh_tree(self, year_records: list[VacationRecord]) -> None:
         self._clear_tree()
         month = self._selected_month if self._selected_month > 0 else None
-        records = self.model.get_records_for_year(self._selected_year, month)
+        if month is None:
+            records = year_records
+        else:
+            # Filter the already-fetched full-year list in Python instead
+            # of issuing a second SQL query for the same year's data.
+            records = [r for r in year_records if r.date.month == month]
 
         total_hours = 0.0
         for rec in records:
@@ -309,17 +273,20 @@ class VacationTab(ttk.Frame):
 
         if records:
             self._tree.insert(
-                "", "end",
+                "",
+                "end",
                 iid="__total__",
-                values=self._make_row_values(
-                    None, f"Total: {_fmt_h(total_hours)}"),
+                values=self._make_row_values(None, f"Total: {_fmt_h(total_hours)}"),
                 tags=("total",),
             )
-            c = COLORS.get("light", COLORS["light"])
-            self._tree.tag_configure("total", foreground=c["fg.muted"],
-                                     font=("Helvetica", 9, "bold"))
+            c = COLORS.get(self._theme_mode, COLORS[ThemeMode.LIGHT])
+            self._tree.tag_configure(
+                "total", foreground=c["fg.muted"], font=("Helvetica", 9, "bold")
+            )
 
-    def _make_row_values(self, rec: Optional[VacationRecord], override_date: str = "") -> tuple:
+    def _make_row_values(
+        self, rec: VacationRecord | None, override_date: str = ""
+    ) -> tuple:
         if rec is None:
             return (override_date, "", "", "", "")
 
@@ -342,7 +309,8 @@ class VacationTab(ttk.Frame):
             tag = ""
 
         self._tree.insert(
-            "", "end",
+            "",
+            "end",
             iid=f"rec_{rec.id}",
             values=self._make_row_values(rec),
             tags=(tag,) if tag else (),
@@ -351,62 +319,57 @@ class VacationTab(ttk.Frame):
     # ─────────────────────────── Refresh ────────────────────────────────────
 
     def _refresh(self, **_kw) -> None:
-        self._refresh_balance()
-        self._refresh_tree()
+        # Fetch the full year's records once per refresh cycle and share
+        # them between the balance summary and the tree, instead of each
+        # independently querying get_records_for_year() for the same data.
+        year_records = self.model.get_records_for_year(self._selected_year)
+        self._refresh_balance(year_records)
+        self._refresh_tree(year_records)
+        self._append_skip_notice(self._lbl_breakdown, self.model.last_skipped_count)
         self._update_button_states()
 
+    def _refresh_legend(self) -> None:
+        c = COLORS.get(self._theme_mode, COLORS[ThemeMode.LIGHT])
+        colors = [c["fg.default"], c["accent"], c["success"], c["fg.muted"]]
+        for label, color in zip(self._legend_labels, colors):
+            label.configure(foreground=color)
+
     def _on_event(self, **_kw) -> None:
+        # Recompute theme mode in case the theme setting changed while this
+        # tab was open — otherwise row colors stay stale until rebuilt.
+        self._theme_mode = resolve_theme_mode(self.settings.get("theme"))
+        self._refresh_legend()
+        self._refresh_tree_tags()
         self._refresh()
-
-    # ─────────────────────────── Button State ───────────────────────────────
-
-    def _update_button_states(self) -> None:
-        state = "normal" if self._get_selected_record_id() is not None else "disabled"
-        self._btn_edit.config(state=state)
-        self._btn_delete.config(state=state)
-
-    def _get_selected_record_id(self) -> Optional[int]:
-        sel = self._tree.selection()
-        if not sel:
-            return None
-        iid = sel[0]
-        if iid.startswith("rec_"):
-            try:
-                return int(iid[4:])
-            except ValueError:
-                return None
-        return None
-
-    def _get_selected_record(self) -> Optional[VacationRecord]:
-        rec_id = self._get_selected_record_id()
-        return self.model.get_record_by_id(rec_id) if rec_id is not None else None
-
-    # ─────────────────────────── Tree Callbacks ─────────────────────────────
-
-    def _on_double_click(self, event: tk.Event) -> None:
-        iid = self._tree.identify_row(event.y)
-        if iid and iid.startswith("rec_"):
-            self._tree.selection_set(iid)
-            self._do_edit()
-
-    def _on_tree_select(self, _event=None) -> None:
-        state = "normal" if self._get_selected_record_id() is not None else "disabled"
-        self._btn_edit.config(state=state)
-        self._btn_delete.config(state=state)
 
     # ─────────────────────────── Actions ────────────────────────────────────
 
     def _do_add(self) -> None:
         VacationRecordDialog(
-            self, controller=self.controller, model=self.model, record=None,
+            self,
+            controller=self.controller,
+            model=self.model,
+            record=None,
         )
 
     def _do_edit(self) -> None:
-        rec = self._get_selected_record()
+        rec_id = self._get_selected_record_id()
+        if rec_id is None:
+            return
+        rec = self.model.get_record_by_id(rec_id)
         if rec is None:
+            messagebox.showwarning(
+                "Record Not Found",
+                "This record could no longer be loaded — it may have been "
+                "deleted or is corrupted. See the application log for details.",
+                parent=self,
+            )
             return
         VacationRecordDialog(
-            self, controller=self.controller, model=self.model, record=rec,
+            self,
+            controller=self.controller,
+            model=self.model,
+            record=rec,
         )
 
     def _do_delete(self) -> None:
@@ -422,21 +385,12 @@ class VacationTab(ttk.Frame):
             return
         result = self.controller.delete_record(rec_id)
         if not result.ok:
-            messagebox.showerror("Remove Failed", "\n".join(
-                result.errors), parent=self)
+            messagebox.showerror("Remove Failed", "\n".join(result.errors), parent=self)
 
     def _do_carry_over(self) -> None:
         CarryOverDialog(
-            self, controller=self.controller, model=self.model,
+            self,
+            controller=self.controller,
+            model=self.model,
             to_year=self._selected_year,
         )
-
-    # ─────────────────────────── Lifecycle ──────────────────────────────────
-
-    def _on_destroy(self, _event=None) -> None:
-        for unsub in self._unsubs:
-            try:
-                unsub()
-            except Exception:
-                pass
-        self._unsubs.clear()

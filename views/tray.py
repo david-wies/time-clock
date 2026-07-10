@@ -1,29 +1,33 @@
 """System tray icon with quick clock-in/out actions (§21.4)."""
 
+import logging
 import threading
 import tkinter as tk
-import tkinter.messagebox
 from datetime import date
 from pathlib import Path
-from typing import Optional
+from tkinter import messagebox
 
 import pystray
 from PIL import Image, ImageDraw
 
 from controllers.time_clock_controller import TimeClockController
 from core.events import Event, EventBus
+from domain.enums import WarningCode
 from models.time_clock_model import TimeClockModel
 from settings import SettingsManager
 
+logger = logging.getLogger(__name__)
 
 _ICON_SIZE = 64
-_BADGE_COLOR = (22, 163, 74, 255)   # success green
+_BADGE_COLOR = (22, 163, 74, 255)
 _PNG_PATH = Path(__file__).parent.parent / "resources" / "time-clock.png"
 
 
 def _load_base_icon() -> Image.Image:
-    return Image.open(_PNG_PATH).convert("RGBA").resize(
-        (_ICON_SIZE, _ICON_SIZE), Image.LANCZOS
+    return (
+        Image.open(_PNG_PATH)
+        .convert("RGBA")
+        .resize((_ICON_SIZE, _ICON_SIZE), Image.Resampling.LANCZOS)
     )
 
 
@@ -57,13 +61,22 @@ class SystemTray:
         self._controller = controller
         self._model = model
         self._settings = settings
-        self._icon: Optional[pystray.Icon] = None
+        self._icon: pystray.Icon | None = None
+        # Cached on the Tk main thread only -- pystray evaluates
+        # MenuItem(enabled=...) predicates lazily on its own background
+        # icon-rendering thread on backends that render menus (Windows,
+        # Linux GTK/AppIndicator), so those predicates must never query
+        # self._model (a shared, single-thread-affine sqlite3.Connection)
+        # directly. Refreshed in _on_records_changed(), which does run on
+        # the main thread.
+        self._clocked_in_cache: bool = False
         try:
             self._base_icon: Image.Image = _load_base_icon()
-        except (FileNotFoundError, OSError):
-            print(
-                f"[SystemTray] Warning: icon file not found at {_PNG_PATH!r};"
-                " using fallback icon."
+        except OSError as e:
+            logger.warning(
+                "Failed to load tray icon from %r: %s; using fallback icon.",
+                _PNG_PATH,
+                e,
             )
             self._base_icon = Image.new(
                 "RGBA", (_ICON_SIZE, _ICON_SIZE), (80, 120, 200, 255)
@@ -77,6 +90,7 @@ class SystemTray:
 
     def start(self) -> None:
         """Create and start the tray icon in a daemon thread."""
+        self._clocked_in_cache = self._is_clocked_in()
         self._icon = pystray.Icon(
             "time-clock",
             self._current_icon_image(),
@@ -101,22 +115,22 @@ class SystemTray:
         return bool(self._model.get_open_records_for_date(date.today()))
 
     def _current_icon_image(self) -> Image.Image:
-        return _make_icon(self._is_clocked_in(), self._base_icon)
+        return _make_icon(self._clocked_in_cache, self._base_icon)
 
     def _current_title(self) -> str:
-        return "Time Clock — Clocked In" if self._is_clocked_in() else "Time Clock"
+        return "Time Clock — Clocked In" if self._clocked_in_cache else "Time Clock"
 
     def _build_menu(self) -> pystray.Menu:
         return pystray.Menu(
             pystray.MenuItem(
                 "Clock In",
                 self._tray_clock_in,
-                enabled=lambda _: not self._is_clocked_in(),
+                enabled=lambda _: not self._clocked_in_cache,
             ),
             pystray.MenuItem(
                 "Clock Out",
                 self._tray_clock_out,
-                enabled=lambda _: self._is_clocked_in(),
+                enabled=lambda _: self._clocked_in_cache,
             ),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("Open", self._tray_open, default=True),
@@ -128,6 +142,7 @@ class SystemTray:
 
     def _on_records_changed(self, **_) -> None:
         """Called from tkinter main thread via synchronous EventBus."""
+        self._clocked_in_cache = self._is_clocked_in()
         if not self._icon:
             return
         self._icon.icon = self._current_icon_image()
@@ -135,40 +150,67 @@ class SystemTray:
 
     # ─────────────────── Tray callbacks (pystray thread) ───────────────────
 
-    def _tray_clock_in(self, icon, item) -> None:
+    def _tray_clock_in(self, _icon, _item) -> None:
         self._root.after(0, self._do_clock_in)
 
-    def _tray_clock_out(self, icon, item) -> None:
+    def _tray_clock_out(self, _icon, _item) -> None:
         self._root.after(0, self._do_clock_out)
 
-    def _tray_open(self, icon, item) -> None:
+    def _tray_open(self, _icon, _item) -> None:
         self._root.after(0, self._do_open)
 
-    def _tray_quit(self, icon, item) -> None:
+    def _tray_quit(self, _icon, _item) -> None:
         self._root.after(0, self._do_quit)
 
     # ─────────────────── Main-thread actions ───────────────────────────────
 
     def _do_clock_in(self) -> None:
         result = self._controller.clock_in()
-        if not result.ok and result.errors != ["OPEN_RECORD_EXISTS"]:
+        if not result.ok:
+            if result.errors == (WarningCode.OPEN_RECORD_EXISTS.value,):
+                # The tray menu's "Clock In" item is enabled based on
+                # self._clocked_in_cache, which is only refreshed on
+                # CLOCK_STATE_CHANGED/TIME_RECORDS_CHANGED events (see
+                # __init__). If the click reached the controller anyway
+                # (e.g. a stale cache on a backend that doesn't
+                # re-evaluate `enabled` before dispatching), the user is
+                # already clocked in -- surface that instead of silently
+                # dropping the click.
+                logger.warning(
+                    "Tray 'Clock In' invoked while already clocked in; "
+                    "tray-menu cache was stale."
+                )
+                self._root.after(
+                    0,
+                    lambda: messagebox.showinfo(
+                        "Already Clocked In",
+                        "You are already clocked in for today.",
+                    ),
+                )
+                return
             errors = result.errors
             self._root.after(
                 0,
-                lambda: tk.messagebox.showerror(
-                    "Clock In Failed", "\n".join(errors)
-                ),
+                lambda: messagebox.showerror("Clock In Failed", "\n".join(errors)),
             )
 
     def _do_clock_out(self) -> None:
         result = self._controller.clock_out()
         if not result.ok:
+            if result.errors == (WarningCode.MULTIPLE_OPEN_RECORDS.value,):
+                self._root.after(
+                    0,
+                    lambda: messagebox.showinfo(
+                        "Multiple Open Records",
+                        "Multiple open records exist for today.\n"
+                        "Open the main window to choose which one to clock out.",
+                    ),
+                )
+                return
             errors = result.errors
             self._root.after(
                 0,
-                lambda: tk.messagebox.showerror(
-                    "Clock Out Failed", "\n".join(errors)
-                ),
+                lambda: messagebox.showerror("Clock Out Failed", "\n".join(errors)),
             )
 
     def _do_open(self) -> None:

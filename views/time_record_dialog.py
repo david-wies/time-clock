@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
+import logging
 import tkinter as tk
+from datetime import date, datetime, time
 from tkinter import ttk
-from datetime import date, time, datetime
-from typing import Optional
 
 from controllers.time_clock_controller import TimeClockController
 from core.timeutil import duration
@@ -13,7 +13,10 @@ from domain.enums import WorkType
 from domain.types import TimeRecord
 from settings import SettingsManager
 from views.date_picker import make_date_picker
+from views.dialog_common import setup_modal_window, validate_note_length
 from views.document_attachment import make_document_picker
+
+logger = logging.getLogger(__name__)
 
 _OVERNIGHT_BG = "#FEF3C7"
 
@@ -56,13 +59,14 @@ def _preset_label(minutes: int) -> str:
 
 
 class TimeRecordDialog(tk.Toplevel):
+    """Modal Toplevel dialog for adding or editing a time clock record."""
 
     def __init__(
         self,
         parent,
         controller: TimeClockController,
         settings: SettingsManager,
-        record: Optional[TimeRecord] = None,
+        record: TimeRecord | None = None,
         **_kwargs,
     ) -> None:
         super().__init__(parent)
@@ -71,12 +75,12 @@ class TimeRecordDialog(tk.Toplevel):
         self._record = record
 
         editing = record is not None
-        self.title("Edit Time Record" if editing else "Add Time Record")
-        self.resizable(False, False)
-        self.minsize(420, 380)
-        self.transient(parent)
-        self.grab_set()
-        self.bind("<Escape>", lambda e: self.destroy())
+        setup_modal_window(
+            self,
+            parent,
+            "Edit Time Record" if editing else "Add Time Record",
+            minsize=(420, 380),
+        )
 
         self._build_ui()
         self._populate(record)
@@ -94,18 +98,15 @@ class TimeRecordDialog(tk.Toplevel):
         # ── Date ──────────────────────────────────────────────────────────────
         date_row = ttk.Frame(outer)
         date_row.pack(fill="x", pady=(0, 6))
-        ttk.Label(date_row, text="Date:", width=8,
-                  anchor="e").pack(side="left")
+        ttk.Label(date_row, text="Date:", width=8, anchor="e").pack(side="left")
 
-        self._date_widget, self._get_date, self._set_date = make_date_picker(
-            date_row)
+        self._date_widget, self._get_date, self._set_date = make_date_picker(date_row)
         self._date_widget.pack(side="left", padx=(4, 0))
 
         # ── Start / End ───────────────────────────────────────────────────────
         self._time_row = ttk.Frame(outer)
         self._time_row.pack(fill="x", pady=(0, 6))
-        ttk.Label(self._time_row, text="Start:",
-                  width=8, anchor="e").pack(side="left")
+        ttk.Label(self._time_row, text="Start:", width=8, anchor="e").pack(side="left")
         self._var_start = tk.StringVar()
         ttk.Entry(self._time_row, textvariable=self._var_start, width=8).pack(
             side="left", padx=(4, 12)
@@ -130,8 +131,7 @@ class TimeRecordDialog(tk.Toplevel):
         # ── Break + Net duration ──────────────────────────────────────────────
         break_row = ttk.Frame(outer)
         break_row.pack(fill="x", pady=(0, 4))
-        ttk.Label(break_row, text="Break:", width=8,
-                  anchor="e").pack(side="left")
+        ttk.Label(break_row, text="Break:", width=8, anchor="e").pack(side="left")
         self._var_break = tk.StringVar(value="00:00")
         ttk.Entry(break_row, textvariable=self._var_break, width=8).pack(
             side="left", padx=(4, 6)
@@ -146,8 +146,7 @@ class TimeRecordDialog(tk.Toplevel):
         presets_row = ttk.Frame(outer)
         presets_row.pack(fill="x", pady=(0, 8))
         ttk.Label(presets_row, text="", width=8).pack(side="left")
-        presets: list[int] = self._settings.get(
-            "break_presets") or [15, 30, 45, 60]
+        presets: list[int] = self._settings.get("break_presets") or [15, 30, 45, 60]
         for mins in presets:
             ttk.Button(
                 presets_row,
@@ -159,8 +158,7 @@ class TimeRecordDialog(tk.Toplevel):
         # ── Work type ─────────────────────────────────────────────────────────
         type_row = ttk.Frame(outer)
         type_row.pack(fill="x", pady=(0, 6))
-        ttk.Label(type_row, text="Type:", width=8,
-                  anchor="e").pack(side="left")
+        ttk.Label(type_row, text="Type:", width=8, anchor="e").pack(side="left")
         self._var_work_type = tk.StringVar(value=str(WorkType.IN_SITE))
         for wt, label in _WORK_TYPE_OPTIONS:
             ttk.Radiobutton(
@@ -175,8 +173,7 @@ class TimeRecordDialog(tk.Toplevel):
         self._frm_office = ttk.Frame(outer)
         office_row = self._frm_office
         office_row.pack(fill="x", pady=(0, 6))
-        ttk.Label(office_row, text="Office:", width=8,
-                  anchor="e").pack(side="left")
+        ttk.Label(office_row, text="Office:", width=8, anchor="e").pack(side="left")
         offices: list[str] = self._settings.get("offices") or []
         self._var_office = tk.StringVar()
         self._cbo_office = ttk.Combobox(
@@ -190,17 +187,18 @@ class TimeRecordDialog(tk.Toplevel):
 
         # ── Document (Road only, hidden until Road selected) ──────────────────
         self._frm_doc = ttk.Frame(outer)
-        ttk.Label(self._frm_doc, text="Document:", width=8,
-                  anchor="e").pack(side="left")
+        ttk.Label(self._frm_doc, text="Document:", width=8, anchor="e").pack(
+            side="left"
+        )
         self._doc_widget, self._get_doc_path, self._set_doc_path = make_document_picker(
-            self._frm_doc)
+            self._frm_doc
+        )
         self._doc_widget.pack(side="left", padx=(4, 0))
 
         # ── Note ──────────────────────────────────────────────────────────────
         note_row = ttk.Frame(outer)
         note_row.pack(fill="x", pady=(0, 10))
-        ttk.Label(note_row, text="Note:", width=8,
-                  anchor="e").pack(side="left")
+        ttk.Label(note_row, text="Note:", width=8, anchor="e").pack(side="left")
         vcmd = (self.register(self._validate_note), "%P")
         self._var_note = tk.StringVar()
         ttk.Entry(
@@ -223,8 +221,7 @@ class TimeRecordDialog(tk.Toplevel):
         ttk.Button(btn_row, text="Cancel", command=self.destroy).pack(
             side="right", padx=(6, 0)
         )
-        ttk.Button(btn_row, text="Save",
-                   command=self._on_save).pack(side="right")
+        ttk.Button(btn_row, text="Save", command=self._on_save).pack(side="right")
 
         # ── Live-update traces ────────────────────────────────────────────────
         for var in (self._var_start, self._var_end, self._var_break):
@@ -232,14 +229,15 @@ class TimeRecordDialog(tk.Toplevel):
 
     # ─────────────────────────── Data Population ────────────────────────────
 
-    def _populate(self, record: Optional[TimeRecord]) -> None:
+    def _populate(self, record: TimeRecord | None) -> None:
         if record is None:
             self._set_date(date.today())
             self._var_start.set(datetime.now().strftime("%H:%M"))
             self._var_end.set("")
             self._var_break.set("00:00")
-            default_wt = self._settings.get(
-                "default_work_type") or str(WorkType.IN_SITE)
+            default_wt = self._settings.get("default_work_type") or str(
+                WorkType.IN_SITE
+            )
             self._var_work_type.set(str(default_wt))
             offices: list[str] = self._settings.get("offices") or []
             if offices:
@@ -248,8 +246,9 @@ class TimeRecordDialog(tk.Toplevel):
         else:
             self._set_date(record.date)
             self._var_start.set(record.start_time.strftime("%H:%M"))
-            self._var_end.set(record.end_time.strftime(
-                "%H:%M") if record.end_time else "")
+            self._var_end.set(
+                record.end_time.strftime("%H:%M") if record.end_time else ""
+            )
             self._var_break.set(_minutes_to_hhmm(record.break_minutes))
             self._var_work_type.set(str(record.work_type))
             self._var_office.set(record.office or "")
@@ -259,7 +258,7 @@ class TimeRecordDialog(tk.Toplevel):
     # ─────────────────────────── Widget Callbacks ────────────────────────────
 
     def _validate_note(self, proposed: str) -> bool:
-        return len(proposed) <= 500
+        return validate_note_length(proposed)
 
     def _apply_break_preset(self, minutes: int) -> None:
         self._var_break.set(_minutes_to_hhmm(minutes))
@@ -291,8 +290,7 @@ class TimeRecordDialog(tk.Toplevel):
 
         is_mapped = self._frm_overnight.winfo_ismapped()
         if show_overnight and not is_mapped:
-            self._frm_overnight.pack(
-                fill="x", pady=(0, 4), after=self._time_row)
+            self._frm_overnight.pack(fill="x", pady=(0, 4), after=self._time_row)
         elif not show_overnight and is_mapped:
             self._frm_overnight.pack_forget()
 
@@ -307,7 +305,7 @@ class TimeRecordDialog(tk.Toplevel):
                 t_end = time(now.hour, now.minute)
             hours = duration(t_start, t_end, break_m)
             self._lbl_duration.config(text=f"Net: {hours:.1f}h")
-        except (ValueError, TypeError):
+        except (ValueError, TypeError):  # fmt: skip
             self._lbl_duration.config(text="Net: --")
 
     # ─────────────────────────── Save ────────────────────────────────────────
@@ -317,26 +315,29 @@ class TimeRecordDialog(tk.Toplevel):
         field_errors: list[str] = []
 
         try:
-            rec_date: Optional[date] = self._get_date()
-        except Exception:
+            rec_date: date | None = self._get_date()
+        except (ValueError, IndexError) as exc:
+            logger.warning(
+                "Could not parse date %r for time record: %s",
+                self._date_widget.get(),
+                exc,
+            )
             field_errors.append("Invalid date.")
             rec_date = None
 
-        start_time: Optional[time] = None
+        start_time: time | None = None
         try:
             start_time = _parse_hhmm(self._var_start.get())
         except ValueError:
-            field_errors.append(
-                "Start time must be in HH:MM format (00:00–23:59).")
+            field_errors.append("Start time must be in HH:MM format (00:00–23:59).")
 
-        end_time: Optional[time] = None
+        end_time: time | None = None
         end_s = self._var_end.get().strip()
         if end_s:
             try:
                 end_time = _parse_hhmm(end_s)
             except ValueError:
-                field_errors.append(
-                    "End time must be in HH:MM format (00:00–23:59).")
+                field_errors.append("End time must be in HH:MM format (00:00–23:59).")
 
         try:
             break_minutes = _break_to_minutes(self._var_break.get())
@@ -355,29 +356,33 @@ class TimeRecordDialog(tk.Toplevel):
             self._lbl_error.config(text=f"Invalid work type: {wt_val!r}")
             return
 
-        office: Optional[str] = None
+        office: str | None = None
         if work_type == WorkType.IN_SITE:
             o = self._var_office.get().strip()
             office = o or None
 
-        document_path: Optional[str] = None
+        document_path: str | None = None
         if work_type == WorkType.ROAD:
             document_path = self._get_doc_path()
 
         note_s = self._var_note.get().strip()
-        note: Optional[str] = note_s or None
+        note: str | None = note_s or None
 
-        record = TimeRecord(
-            id=self._record.id if self._record is not None else None,
-            date=rec_date,
-            start_time=start_time,
-            end_time=end_time,
-            break_minutes=break_minutes,
-            work_type=work_type,
-            office=office,
-            note=note,
-            document_path=document_path,
-        )
+        try:
+            record = TimeRecord(
+                id=self._record.id if self._record is not None else None,
+                date=rec_date,
+                start_time=start_time,
+                end_time=end_time,
+                break_minutes=break_minutes,
+                work_type=work_type,
+                office=office,
+                note=note,
+                document_path=document_path,
+            )
+        except ValueError as exc:
+            self._lbl_error.config(text=str(exc))
+            return
 
         result = self._controller.save_record(record)
         if result.ok:

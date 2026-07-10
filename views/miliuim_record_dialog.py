@@ -2,26 +2,30 @@
 
 from __future__ import annotations
 
+import logging
 import tkinter as tk
-from tkinter import ttk
 from datetime import date
-from typing import Optional
+from tkinter import ttk
 
 from controllers.miliuim_controller import MiliuimController
-from models.miliuim_model import MiliuimModel
 from domain.types import MiliuimRecord
+from models.miliuim_model import MiliuimModel
 from views.date_picker import make_date_picker
+from views.dialog_common import setup_modal_window, validate_note_length
 from views.document_attachment import make_document_picker
+
+logger = logging.getLogger(__name__)
 
 
 class MiliuimRecordDialog(tk.Toplevel):
+    """Modal Toplevel dialog for adding or editing a miliuim record."""
 
     def __init__(
         self,
         parent,
         controller: MiliuimController,
         model: MiliuimModel,
-        record: Optional[MiliuimRecord] = None,
+        record: MiliuimRecord | None = None,
         **_kwargs,
     ) -> None:
         super().__init__(parent)
@@ -30,12 +34,12 @@ class MiliuimRecordDialog(tk.Toplevel):
         self._record = record
 
         editing = record is not None
-        self.title("Edit Miliuim Period" if editing else "Add Miliuim Period")
-        self.resizable(False, False)
-        self.minsize(420, 280)
-        self.transient(parent)
-        self.grab_set()
-        self.bind("<Escape>", lambda e: self.destroy())
+        setup_modal_window(
+            self,
+            parent,
+            "Edit Miliuim Period" if editing else "Add Miliuim Period",
+            minsize=(420, 280),
+        )
 
         self._build_ui()
         self._populate(record)
@@ -49,40 +53,40 @@ class MiliuimRecordDialog(tk.Toplevel):
         # ── Start Date ────────────────────────────────────────────────────────
         start_row = ttk.Frame(outer)
         start_row.pack(fill="x", pady=(0, 6))
-        ttk.Label(start_row, text="Start date:",
-                  width=11, anchor="e").pack(side="left")
-        self._date_widget, self._get_date, self._set_date = make_date_picker(
-            start_row)
+        ttk.Label(start_row, text="Start date:", width=11, anchor="e").pack(side="left")
+        self._date_widget, self._get_date, self._set_date = make_date_picker(start_row)
         self._date_widget.pack(side="left", padx=(4, 0))
 
         # ── End Date ──────────────────────────────────────────────────────────
         end_row = ttk.Frame(outer)
         end_row.pack(fill="x", pady=(0, 6))
-        ttk.Label(end_row, text="End date:", width=11,
-                  anchor="e").pack(side="left")
-        self._end_date_widget, self._get_end_date, self._set_end_date = make_date_picker(
-            end_row)
+        ttk.Label(end_row, text="End date:", width=11, anchor="e").pack(side="left")
+        self._end_date_widget, self._get_end_date, self._set_end_date = (
+            make_date_picker(end_row)
+        )
         self._end_date_widget.pack(side="left", padx=(4, 0))
 
         # ── Note ──────────────────────────────────────────────────────────────
         note_row = ttk.Frame(outer)
         note_row.pack(fill="x", pady=(0, 6))
-        ttk.Label(note_row, text="Note:", width=11,
-                  anchor="e").pack(side="left")
+        ttk.Label(note_row, text="Note:", width=11, anchor="e").pack(side="left")
         vcmd = (self.register(self._validate_note), "%P")
         self._var_note = tk.StringVar()
         ttk.Entry(
-            note_row, textvariable=self._var_note, width=36,
-            validate="key", validatecommand=vcmd,
+            note_row,
+            textvariable=self._var_note,
+            width=36,
+            validate="key",
+            validatecommand=vcmd,
         ).pack(side="left", padx=(4, 0), fill="x", expand=True)
 
         # ── Document ──────────────────────────────────────────────────────────
         doc_row = ttk.Frame(outer)
         doc_row.pack(fill="x", pady=(0, 6))
-        ttk.Label(doc_row, text="Document:", width=11,
-                  anchor="e").pack(side="left")
+        ttk.Label(doc_row, text="Document:", width=11, anchor="e").pack(side="left")
         self._doc_widget, self._get_doc_path, self._set_doc_path = make_document_picker(
-            doc_row)
+            doc_row
+        )
         self._doc_widget.pack(side="left", padx=(4, 0))
 
         # ── Error label ───────────────────────────────────────────────────────
@@ -95,11 +99,11 @@ class MiliuimRecordDialog(tk.Toplevel):
         btn_row = ttk.Frame(outer)
         btn_row.pack(fill="x", pady=(4, 0))
         ttk.Button(btn_row, text="Cancel", command=self.destroy).pack(
-            side="right", padx=(6, 0))
-        ttk.Button(btn_row, text="Save",
-                   command=self._on_save).pack(side="right")
+            side="right", padx=(6, 0)
+        )
+        ttk.Button(btn_row, text="Save", command=self._on_save).pack(side="right")
 
-    def _populate(self, record: Optional[MiliuimRecord]) -> None:
+    def _populate(self, record: MiliuimRecord | None) -> None:
         today = date.today()
         if record is None:
             self._set_date(today)
@@ -113,21 +117,31 @@ class MiliuimRecordDialog(tk.Toplevel):
         self._set_doc_path(doc)
 
     def _validate_note(self, proposed: str) -> bool:
-        return len(proposed) <= 500
+        return validate_note_length(proposed)
 
     def _on_save(self) -> None:
         self._lbl_error.config(text="")
         field_errors: list[str] = []
 
         try:
-            start_date: Optional[date] = self._get_date()
-        except Exception:
+            start_date: date | None = self._get_date()
+        except (ValueError, IndexError) as exc:
+            logger.warning(
+                "Could not parse start date %r for miliuim record: %s",
+                self._date_widget.get(),
+                exc,
+            )
             field_errors.append("Invalid start date.")
             start_date = None
 
         try:
-            end_date: Optional[date] = self._get_end_date()
-        except Exception:
+            end_date: date | None = self._get_end_date()
+        except (ValueError, IndexError) as exc:
+            logger.warning(
+                "Could not parse end date %r for miliuim record: %s",
+                self._end_date_widget.get(),
+                exc,
+            )
             field_errors.append("Invalid end date.")
             end_date = None
 
@@ -135,15 +149,24 @@ class MiliuimRecordDialog(tk.Toplevel):
             self._lbl_error.config(text="\n".join(field_errors))
             return
 
+        # field_errors is empty here, so neither except branch above (the
+        # only places that assign None) was taken.
+        if start_date is None or end_date is None:
+            return
+
         note_s = self._var_note.get().strip() or None
 
-        record = MiliuimRecord(
-            id=self._record.id if self._record is not None else None,
-            start_date=start_date,
-            end_date=end_date,
-            note=note_s,
-            document_path=self._get_doc_path(),
-        )
+        try:
+            record = MiliuimRecord(
+                id=self._record.id if self._record is not None else None,
+                start_date=start_date,
+                end_date=end_date,
+                note=note_s,
+                document_path=self._get_doc_path(),
+            )
+        except ValueError as exc:
+            self._lbl_error.config(text=str(exc))
+            return
         result = self._controller.save_record(record)
 
         if result.ok:

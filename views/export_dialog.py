@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import csv
+import logging
+import os
 import tkinter as tk
 from datetime import date
 from tkinter import filedialog, messagebox, ttk
-from typing import Union
 
 import pandas as pd
 from reportlab.lib import colors
@@ -21,6 +22,8 @@ from reportlab.platypus import (
     TableStyle,
 )
 
+from core.hebrew_date import to_hebrew_label as _safe_hebrew
+from core.timeutil import MONTH_NAMES as _MONTH_NAMES
 from core.timeutil import duration, to_display_date
 from domain.enums import VacationType, WorkType
 from domain.types import SicknessRecord, TimeRecord, VacationRecord
@@ -28,8 +31,10 @@ from models.sickness_model import SicknessModel
 from models.time_clock_model import TimeClockModel
 from models.vacation_model import VacationModel
 from views.date_picker import make_date_picker
+from views.dialog_common import setup_modal_window
+from views.enums import ExportFormat, ExportTab
 
-from core.hebrew_date import to_hebrew_label as _safe_hebrew
+logger = logging.getLogger(__name__)
 
 # ── Label maps ───────────────────────────────────────────────────────────────
 
@@ -48,16 +53,13 @@ _WTYPE_LABELS: dict[WorkType, str] = {
     WorkType.REMOTE: "Remote",
 }
 
-_MONTH_NAMES = [
-    "", "January", "February", "March", "April", "May", "June",
-    "July", "August", "September", "October", "November", "December",
-]
-
-_AnyRecord = Union[TimeRecord, VacationRecord, SicknessRecord]
+_AnyRecord = TimeRecord | VacationRecord | SicknessRecord
 
 
 class ExportDialog(tk.Toplevel):
-    """Dialog for exporting Time, Vacation, or Sickness records to CSV, Excel, or PDF."""
+    """Dialog for exporting Time, Vacation, or Sickness records to CSV, Excel,
+    or PDF.
+    """
 
     def __init__(
         self,
@@ -65,26 +67,21 @@ class ExportDialog(tk.Toplevel):
         model_tc: TimeClockModel,
         model_vacation: VacationModel,
         model_sickness: SicknessModel,
-        tab: str = "time",  # "time" | "vacation" | "sickness"
+        tab: ExportTab = ExportTab.TIME,
     ) -> None:
         super().__init__(parent)
         self._model_tc = model_tc
         self._model_vacation = model_vacation
         self._model_sickness = model_sickness
 
-        self.title("Export Records")
-        self.resizable(False, False)
-        self.minsize(400, 320)
-        self.transient(parent)
-        self.grab_set()
-        self.bind("<Escape>", lambda e: self.destroy())
+        setup_modal_window(self, parent, "Export Records", minsize=(400, 320))
 
         today = date.today()
         self._default_from = date(today.year, 1, 1)
         self._default_to = today
 
-        self._var_data = tk.StringVar(value=tab)
-        self._var_fmt = tk.StringVar(value="csv")
+        self._var_data = tk.StringVar(value=str(tab))
+        self._var_fmt = tk.StringVar(value=str(ExportFormat.CSV))
         self._var_group = tk.BooleanVar(value=True)
 
         self._build_ui()
@@ -99,25 +96,22 @@ class ExportDialog(tk.Toplevel):
         # ── Data radio buttons ────────────────────────────────────────────────
         data_frame = ttk.Frame(outer)
         data_frame.pack(fill="x", pady=(0, 8))
-        ttk.Label(data_frame, text="Data:", width=10,
-                  anchor="w").pack(side="left")
+        ttk.Label(data_frame, text="Data:", width=10, anchor="w").pack(side="left")
         for value, label in (
-            ("time", "Time Records"),
-            ("vacation", "Vacation"),
-            ("sickness", "Sickness"),
+            (ExportTab.TIME, "Time Records"),
+            (ExportTab.VACATION, "Vacation"),
+            (ExportTab.SICKNESS, "Sickness"),
         ):
             ttk.Radiobutton(
-                data_frame, text=label, variable=self._var_data, value=value
+                data_frame, text=label, variable=self._var_data, value=str(value)
             ).pack(side="left", padx=(0, 8))
 
         # ── Date range ───────────────────────────────────────────────────────
         date_frame = ttk.Frame(outer)
         date_frame.pack(fill="x", pady=(0, 8))
 
-        ttk.Label(date_frame, text="From:", width=10,
-                  anchor="w").pack(side="left")
-        self._dp_from, self._get_from, self._set_from = make_date_picker(
-            date_frame)
+        ttk.Label(date_frame, text="From:", width=10, anchor="w").pack(side="left")
+        self._dp_from, self._get_from, self._set_from = make_date_picker(date_frame)
         self._dp_from.pack(side="left", padx=(0, 12))
         self._set_from(self._default_from)
 
@@ -129,19 +123,21 @@ class ExportDialog(tk.Toplevel):
         # ── Format radio buttons ─────────────────────────────────────────────
         fmt_frame = ttk.Frame(outer)
         fmt_frame.pack(fill="x", pady=(0, 8))
-        ttk.Label(fmt_frame, text="Format:", width=10,
-                  anchor="w").pack(side="left")
+        ttk.Label(fmt_frame, text="Format:", width=10, anchor="w").pack(side="left")
 
         ttk.Radiobutton(
-            fmt_frame, text="CSV", variable=self._var_fmt, value="csv"
+            fmt_frame, text="CSV", variable=self._var_fmt, value=str(ExportFormat.CSV)
         ).pack(side="left", padx=(0, 8))
 
         ttk.Radiobutton(
-            fmt_frame, text="Excel", variable=self._var_fmt, value="excel"
+            fmt_frame,
+            text="Excel",
+            variable=self._var_fmt,
+            value=str(ExportFormat.EXCEL),
         ).pack(side="left", padx=(0, 8))
 
         ttk.Radiobutton(
-            fmt_frame, text="PDF", variable=self._var_fmt, value="pdf"
+            fmt_frame, text="PDF", variable=self._var_fmt, value=str(ExportFormat.PDF)
         ).pack(side="left")
 
         # ── Options ──────────────────────────────────────────────────────────
@@ -168,9 +164,13 @@ class ExportDialog(tk.Toplevel):
         try:
             from_date = self._get_from()
             to_date = self._get_to()
-        except Exception as exc:
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            # date-entry widgets (tkcalendar/manual parsing) can raise
+            # ValueError, tkinter errors, etc.; surfaced to the user below.
+            logger.warning("Could not read export date range", exc_info=True)
             messagebox.showerror(
-                "Invalid Date", f"Could not read date: {exc}", parent=self)
+                "Invalid Date", f"Could not read date: {exc}", parent=self
+            )
             return
 
         if from_date > to_date:
@@ -181,9 +181,9 @@ class ExportDialog(tk.Toplevel):
             )
             return
 
-        records = self._fetch_records(from_date, to_date)
+        records, skipped_count = self._fetch_records(from_date, to_date)
 
-        fmt = self._var_fmt.get()
+        fmt = ExportFormat(self._var_fmt.get())
         filetypes, default_ext = self._file_dialog_params(fmt)
 
         path = filedialog.asksaveasfilename(
@@ -195,64 +195,118 @@ class ExportDialog(tk.Toplevel):
         if not path:
             return
 
+        # Write to a temp file next to the final path and rename into place
+        # only on success, so a mid-export failure can never leave a
+        # truncated/partial file at `path` that could be mistaken for a
+        # complete payroll/hours record.
+        tmp_path = path + ".tmp"
         try:
-            if fmt == "csv":
-                self._export_csv(records, path)
-            elif fmt == "excel":
-                self._export_excel(records, path)
-            elif fmt == "pdf":
-                self._export_pdf(records, path)
+            if fmt == ExportFormat.CSV:
+                self._export_csv(records, tmp_path)
+            elif fmt == ExportFormat.EXCEL:
+                self._export_excel(records, tmp_path)
+            elif fmt == ExportFormat.PDF:
+                self._export_pdf(records, tmp_path)
             else:
                 raise ValueError(f"Unknown format: {fmt!r}")
-        except Exception as exc:
+            os.replace(tmp_path, path)
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            # export libraries (pandas/reportlab) and file I/O can raise many
+            # different error types (disk full, permission denied, malformed
+            # data); logged and surfaced to the user below.
+            logger.exception("Export failed for format=%s path=%s", fmt, path)
+            if os.path.exists(tmp_path):
+                try:
+                    os.remove(tmp_path)
+                except OSError:
+                    logger.warning(
+                        "Could not remove partial export temp file %s", tmp_path
+                    )
             messagebox.showerror("Export Failed", str(exc), parent=self)
             return
 
-        messagebox.showinfo("Export Complete",
-                            f"Records exported to:\n{path}", parent=self)
+        if skipped_count > 0:
+            messagebox.showwarning(
+                "Export Complete (With Warnings)",
+                f"Records exported to:\n{path}\n\n"
+                f"{skipped_count} record(s) skipped due to data errors.",
+                parent=self,
+            )
+        else:
+            messagebox.showinfo(
+                "Export Complete", f"Records exported to:\n{path}", parent=self
+            )
         self.destroy()
 
     # ─────────────────────────── Data Fetching ───────────────────────────────
 
-    def _fetch_records(self, from_date: date, to_date: date) -> list[_AnyRecord]:
-        """Query the selected model for all records that fall within the date range."""
-        tab = self._var_data.get()
+    def _fetch_records(
+        self, from_date: date, to_date: date
+    ) -> tuple[list[_AnyRecord], int]:
+        """Query the selected model for all records that fall within the date
+        range.
+
+        Returns `(records, skipped_count)`, where `skipped_count` is the
+        total number of malformed DB rows silently dropped by the
+        underlying model(s) while fetching -- see
+        models/_row_mapping.py:rows_to_records() and each model's
+        `last_skipped_count` attribute. Each per-year fetch call below is
+        immediately followed by reading that model's `last_skipped_count`,
+        before the next iteration's fetch call overwrites it, mirroring the
+        pattern in views/time_clock_tab.py:_refresh_header_and_tree(). This
+        is the more important of the two report/export call sites to get
+        right: the temp-file/rename dance in `_on_export()` exists so a
+        partial export can never be mistaken for a complete payroll/hours
+        record, and a silently-dropped row here would produce exactly that
+        failure mode without this count being surfaced to the caller.
+        """
+        tab = ExportTab(self._var_data.get())
         all_records: list[_AnyRecord] = []
+        skipped_count = 0
 
         for year in range(from_date.year, to_date.year + 1):
-            if tab == "time":
+            if tab == ExportTab.TIME:
                 all_records.extend(self._model_tc.get_records_for_period(year))
-            elif tab == "vacation":
-                all_records.extend(
-                    self._model_vacation.get_records_for_year(year))
+                skipped_count += self._model_tc.last_skipped_count
+            elif tab == ExportTab.VACATION:
+                all_records.extend(self._model_vacation.get_records_for_year(year))
+                skipped_count += self._model_vacation.last_skipped_count
             else:  # sickness
-                all_records.extend(
-                    self._model_sickness.get_records_for_year(year))
+                all_records.extend(self._model_sickness.get_records_for_year(year))
+                skipped_count += self._model_sickness.last_skipped_count
 
         filtered = [r for r in all_records if from_date <= r.date <= to_date]
         filtered.sort(key=lambda r: r.date)
-        return filtered
+        return filtered, skipped_count
 
     # ─────────────────────────── Column / Row Helpers ────────────────────────
 
-    def _columns(self, tab: str) -> list[str]:
+    def _columns(self, tab: ExportTab) -> list[str]:
         """Return ordered column header list for the given data type."""
-        if tab == "time":
-            cols = ["Date", "Hebrew Date", "Start", "End",
-                    "Break (min)", "Type", "Office", "Note", "Net Hours"]
-        elif tab == "vacation":
+        if tab == ExportTab.TIME:
+            cols = [
+                "Date",
+                "Hebrew Date",
+                "Start",
+                "End",
+                "Break (min)",
+                "Type",
+                "Office",
+                "Note",
+                "Net Hours",
+            ]
+        elif tab == ExportTab.VACATION:
             cols = ["Date", "Hebrew Date", "Hours", "Type", "Note"]
         else:  # sickness
             cols = ["Date", "Hebrew Date", "Hours", "Note"]
         return cols
 
-    def _record_to_values(self, rec: _AnyRecord, tab: str) -> list:
+    def _record_to_values(self, rec: _AnyRecord, tab: ExportTab) -> list:
         """Convert a single record to a flat list of cell values (strings / numbers)."""
         hebrew = _safe_hebrew(rec.date)
-        if tab == "time":
+        if tab == ExportTab.TIME:
             if not isinstance(rec, TimeRecord):
-                raise TypeError(
-                    f"Expected TimeRecord, got {type(rec).__name__}")
+                raise TypeError(f"Expected TimeRecord, got {type(rec).__name__}")
             net: str = (
                 f"{duration(rec.start_time, rec.end_time, rec.break_minutes):.2f}"
                 if rec.end_time
@@ -269,10 +323,9 @@ class ExportDialog(tk.Toplevel):
                 rec.note or "",
                 net,
             ]
-        elif tab == "vacation":
+        if tab == ExportTab.VACATION:
             if not isinstance(rec, VacationRecord):
-                raise TypeError(
-                    f"Expected VacationRecord, got {type(rec).__name__}")
+                raise TypeError(f"Expected VacationRecord, got {type(rec).__name__}")
             return [
                 to_display_date(rec.date),
                 hebrew,
@@ -280,47 +333,46 @@ class ExportDialog(tk.Toplevel):
                 _VTYPE_LABELS.get(rec.vtype, str(rec.vtype)),
                 rec.note or "",
             ]
-        else:  # sickness
-            if not isinstance(rec, SicknessRecord):
-                raise TypeError(
-                    f"Expected SicknessRecord, got {type(rec).__name__}")
-            return [
-                to_display_date(rec.date),
-                hebrew,
-                rec.hours,
-                rec.note or "",
-            ]
+        # sickness
+        if not isinstance(rec, SicknessRecord):
+            raise TypeError(f"Expected SicknessRecord, got {type(rec).__name__}")
+        return [
+            to_display_date(rec.date),
+            hebrew,
+            rec.hours,
+            rec.note or "",
+        ]
 
-    def _compute_total(self, records: list[_AnyRecord], tab: str) -> float:
+    def _compute_total(self, records: list[_AnyRecord], tab: ExportTab) -> float:
         """Return total net hours (time) or total hours (vacation/sickness)."""
         total = 0.0
         for rec in records:
-            if tab == "time":
+            if tab == ExportTab.TIME:
                 if not isinstance(rec, TimeRecord):
-                    raise TypeError(
-                        f"Expected TimeRecord, got {type(rec).__name__}")
+                    raise TypeError(f"Expected TimeRecord, got {type(rec).__name__}")
                 if rec.end_time:
-                    total += duration(rec.start_time,
-                                      rec.end_time, rec.break_minutes)
+                    total += duration(rec.start_time, rec.end_time, rec.break_minutes)
             else:
                 if not isinstance(rec, (VacationRecord, SicknessRecord)):
                     raise TypeError(
-                        f"Expected VacationRecord or SicknessRecord, got {type(rec).__name__}")
+                        "Expected VacationRecord or SicknessRecord, got "
+                        f"{type(rec).__name__}"
+                    )
                 total += rec.hours
         return total
 
     @staticmethod
-    def _file_dialog_params(fmt: str) -> tuple[list[tuple[str, str]], str]:
-        if fmt == "excel":
+    def _file_dialog_params(fmt: ExportFormat) -> tuple[list[tuple[str, str]], str]:
+        if fmt == ExportFormat.EXCEL:
             return [("Excel files", "*.xlsx"), ("All files", "*.*")], ".xlsx"
-        if fmt == "pdf":
+        if fmt == ExportFormat.PDF:
             return [("PDF files", "*.pdf"), ("All files", "*.*")], ".pdf"
         return [("CSV files", "*.csv"), ("All files", "*.*")], ".csv"
 
     # ─────────────────────────── CSV Export ─────────────────────────────────
 
     def _export_csv(self, records: list[_AnyRecord], path: str) -> None:
-        tab = self._var_data.get()
+        tab = ExportTab(self._var_data.get())
         group_by_month = bool(self._var_group.get())
 
         with open(path, "w", newline="", encoding="utf-8-sig") as f:
@@ -341,7 +393,7 @@ class ExportDialog(tk.Toplevel):
 
     def _export_excel(self, records: list[_AnyRecord], path: str) -> None:
 
-        tab = self._var_data.get()
+        tab = ExportTab(self._var_data.get())
         columns = self._columns(tab)
         rows = [self._record_to_values(rec, tab) for rec in records]
 
@@ -352,12 +404,12 @@ class ExportDialog(tk.Toplevel):
 
     def _export_pdf(self, records: list[_AnyRecord], path: str) -> None:
 
-        tab = self._var_data.get()
+        tab = ExportTab(self._var_data.get())
         group_by_month = bool(self._var_group.get())
         columns = self._columns(tab)
 
         # Time records have more columns — use landscape
-        page_size = landscape(A4) if tab == "time" else A4
+        page_size = landscape(A4) if tab == ExportTab.TIME else A4
 
         doc = SimpleDocTemplate(
             path,
@@ -372,9 +424,9 @@ class ExportDialog(tk.Toplevel):
         flowables = []
 
         title_text = {
-            "time": "Time Records",
-            "vacation": "Vacation Records",
-            "sickness": "Sickness Records",
+            ExportTab.TIME: "Time Records",
+            ExportTab.VACATION: "Vacation Records",
+            ExportTab.SICKNESS: "Sickness Records",
         }.get(tab, "Records")
         flowables.append(Paragraph(title_text, styles["Heading1"]))
         flowables.append(Spacer(1, 0.4 * cm))
@@ -398,21 +450,22 @@ class ExportDialog(tk.Toplevel):
 
             table_data.append(self._record_to_values(rec, tab))
 
-            if tab == "time":
+            if tab == ExportTab.TIME:
                 if not isinstance(rec, TimeRecord):
-                    raise TypeError(
-                        f"Expected TimeRecord, got {type(rec).__name__}")
+                    raise TypeError(f"Expected TimeRecord, got {type(rec).__name__}")
                 if rec.end_time:
-                    total += duration(rec.start_time,
-                                      rec.end_time, rec.break_minutes)
+                    total += duration(rec.start_time, rec.end_time, rec.break_minutes)
             else:
                 if not isinstance(rec, (VacationRecord, SicknessRecord)):
                     raise TypeError(
-                        f"Expected VacationRecord or SicknessRecord, got {type(rec).__name__}")
+                        "Expected VacationRecord or SicknessRecord, got "
+                        f"{type(rec).__name__}"
+                    )
                 total += rec.hours
 
         # ── Total row ────────────────────────────────────────────────────────
-        total_str = f"Total: {total:.2f}h" if tab == "time" else f"Total: {total:.1f}h"
+        decimals = 2 if tab == ExportTab.TIME else 1
+        total_str = f"Total: {total:.{decimals}f}h"
         total_row: list = [""] * len(columns)
         total_row[0] = total_str
         total_row_idx = len(table_data)
@@ -438,8 +491,12 @@ class ExportDialog(tk.Toplevel):
             ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
             # Total row
             ("FONTNAME", (0, total_row_idx), (-1, total_row_idx), "Helvetica-Bold"),
-            ("BACKGROUND", (0, total_row_idx),
-             (-1, total_row_idx), colors.HexColor("#e0e0e0")),
+            (
+                "BACKGROUND",
+                (0, total_row_idx),
+                (-1, total_row_idx),
+                colors.HexColor("#e0e0e0"),
+            ),
         ]
 
         # Alternating row backgrounds for data rows
@@ -452,8 +509,7 @@ class ExportDialog(tk.Toplevel):
         # Month header row styling
         for row_idx in month_header_rows:
             style_cmds += [
-                ("BACKGROUND", (0, row_idx), (-1, row_idx),
-                 colors.HexColor("#4682b4")),
+                ("BACKGROUND", (0, row_idx), (-1, row_idx), colors.HexColor("#4682b4")),
                 ("TEXTCOLOR", (0, row_idx), (-1, row_idx), colors.white),
                 ("FONTNAME", (0, row_idx), (-1, row_idx), "Helvetica-Bold"),
                 ("FONTSIZE", (0, row_idx), (-1, row_idx), 9),

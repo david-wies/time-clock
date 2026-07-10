@@ -1,5 +1,23 @@
-from datetime import date, time, datetime
-from typing import Union
+"""Time/date helpers shared across models, controllers, and views."""
+
+import calendar
+from datetime import date, datetime, time
+
+MONTH_NAMES = [
+    "",
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
+]
 
 
 def now_hm() -> str:
@@ -31,7 +49,7 @@ def str_to_time(s: str) -> time:
     raise ValueError(f"Invalid time format: {s}")
 
 
-def time_to_minutes(t: Union[time, str]) -> int:
+def time_to_minutes(t: time | str) -> int:
     """Converts a time object or HH:MM string to minutes since midnight."""
     if isinstance(t, str):
         t_obj = str_to_time(t)
@@ -45,7 +63,23 @@ def to_display_date(d: date) -> str:
     return d.strftime("%d/%m/%Y")
 
 
-def duration(start: Union[time, str], end: Union[time, str], break_minutes: int) -> float:
+def period_bounds(year: int, month: int | None = None) -> tuple[str, str]:
+    """Returns (start_date, end_date) ISO-8601 strings bounding the given
+    year, or a single month of that year if `month` is given.
+
+    When `month` is given, the end-of-month bound comes from
+    `calendar.monthrange`, never a hardcoded "-31" (a bug that previously
+    slipped into three near-identical copies of this computation across the
+    model layer independently). The year-only path hardcodes "12-31" for
+    the end of December, which is always correct and not an instance of
+    that bug."""
+    if month is not None:
+        last_day = calendar.monthrange(year, month)[1]
+        return f"{year:04d}-{month:02d}-01", f"{year:04d}-{month:02d}-{last_day:02d}"
+    return f"{year:04d}-01-01", f"{year:04d}-12-31"
+
+
+def duration(start: time | str, end: time | str, break_minutes: int) -> float:
     """
     Calculates the net duration of a shift in hours.
     If end < start, it is treated as an overnight shift.
