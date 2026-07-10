@@ -1,6 +1,5 @@
 import dataclasses
 import logging
-import sqlite3
 from datetime import date
 
 import pytest
@@ -8,6 +7,7 @@ import pytest
 from core.events import Event, EventBus
 from db.database import Database
 from domain.types import MiliuimRecord
+from models.errors import RecordNotFoundError
 from models.miliuim_model import MiliuimModel
 
 
@@ -105,7 +105,7 @@ def test_delete_record_nonexistent_id_raises(db: Database, event_bus: EventBus) 
     event_bus.subscribe(Event.MILIUIM_CHANGED, on_change)
 
     with pytest.raises(
-        sqlite3.DatabaseError, match="No Miliuim record with id=999 exists to delete"
+        RecordNotFoundError, match="No Miliuim record with id=999 exists to delete"
     ):
         model.delete_record(999)
 
@@ -137,7 +137,7 @@ def test_update_record_on_since_deleted_record_raises(
 
     stale = dataclasses.replace(fetched, note="too late")
     with pytest.raises(
-        sqlite3.DatabaseError,
+        RecordNotFoundError,
         match=f"No Miliuim record with id={rec_id} exists to update",
     ):
         model.update_record(stale)

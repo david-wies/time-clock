@@ -16,7 +16,7 @@ from domain.types import (
     VacationSummary,
 )
 from models._row_mapping import rows_to_records
-from models.errors import RecordNotFoundError
+from models.errors import raise_if_no_rows
 
 logger = logging.getLogger(__name__)
 
@@ -127,10 +127,7 @@ class VacationModel:
                         record.id,
                     ),
                 )
-                if cursor.rowcount == 0:
-                    raise RecordNotFoundError(
-                        f"No vacation record with id={record.id} exists to update"
-                    )
+                raise_if_no_rows(cursor, "vacation record", record.id, "update")
             self.bus.publish(Event.VACATION_CHANGED)
 
     def delete_record(self, record_id: int) -> None:
@@ -140,10 +137,7 @@ class VacationModel:
                 cursor = conn.execute(
                     "DELETE FROM vacation_record WHERE id = ?;", (record_id,)
                 )
-                if cursor.rowcount == 0:
-                    raise RecordNotFoundError(
-                        f"No vacation_record with id={record_id} exists to delete"
-                    )
+                raise_if_no_rows(cursor, "vacation_record", record_id, "delete")
             self.bus.publish(Event.VACATION_CHANGED)
 
     # --- Vacation Settings Queries ---

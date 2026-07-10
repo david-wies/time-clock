@@ -9,7 +9,7 @@ from core.timeutil import date_to_iso, iso_to_date, period_bounds
 from db.database import Database
 from domain.types import SicknessRecord, SicknessSummary
 from models._row_mapping import rows_to_records
-from models.errors import RecordNotFoundError
+from models.errors import raise_if_no_rows
 
 logger = logging.getLogger(__name__)
 
@@ -185,10 +185,7 @@ class SicknessModel:
                         record.id,
                     ),
                 )
-                if cursor.rowcount == 0:
-                    raise RecordNotFoundError(
-                        f"No sickness record with id={record.id} exists to update"
-                    )
+                raise_if_no_rows(cursor, "sickness record", record.id, "update")
             self.bus.publish(Event.SICKNESS_CHANGED)
 
     def delete_record(self, record_id: int) -> None:
@@ -198,10 +195,7 @@ class SicknessModel:
                 cursor = conn.execute(
                     "DELETE FROM sickness_record WHERE id = ?;", (record_id,)
                 )
-                if cursor.rowcount == 0:
-                    raise RecordNotFoundError(
-                        f"No sickness record with id={record_id} exists to delete"
-                    )
+                raise_if_no_rows(cursor, "sickness record", record_id, "delete")
             self.bus.publish(Event.SICKNESS_CHANGED)
 
     # --- Sickness Settings Queries ---

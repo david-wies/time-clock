@@ -40,6 +40,12 @@ class DatabaseErrorGuard(AbstractContextManager[None]):
     caught sqlite3.Error is now logged via `logger.exception(...)` before
     being converted, which the original bare `except Exception` never did.
 
+    `RecordNotFoundError` (a `sqlite3.DatabaseError` subclass — see
+    `models/errors.py`) is special-cased ahead of the generic sqlite3.Error
+    branch: it's an expected "record already deleted" race, not a genuine
+    DB failure, so it's logged at INFO (no traceback) and converted to a
+    distinct, friendlier Result message instead of the generic one.
+
     The `with` block is expected to `return` on its success path, so code
     after the `with` statement is reached only when an error was caught —
     at which point `.unwrap()` is guaranteed to return the captured Result:
@@ -77,7 +83,7 @@ class DatabaseErrorGuard(AbstractContextManager[None]):
         tb: TracebackType | None,
     ) -> bool:
         if exc_type is not None and issubclass(exc_type, RecordNotFoundError):
-            self._log.exception(self._message, *self._args)
+            self._log.info(self._message, *self._args)
             self.result = Result(
                 ok=False,
                 errors=(
@@ -87,7 +93,7 @@ class DatabaseErrorGuard(AbstractContextManager[None]):
             return True
         if exc_type is not None and issubclass(exc_type, sqlite3.Error):
             self._log.exception(self._message, *self._args)
-            self.result = Result(ok=False, errors=(f"Database error: {exc}",))
+            self.result = Result(ok=False, errors=("Database error",))
             return True
         return False
 

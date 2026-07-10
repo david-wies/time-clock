@@ -728,6 +728,7 @@ SicknessController:
 
 - `validate_*` functions live beside each controller and are **pure** (record + context → error list) so §5.6 / §6.5 / §7.3 tables are enforced in one tested place, independent of any dialog.
 - `Result` is a small `@dataclass(frozen=True)(ok: bool, errors: tuple[str, ...], warnings: tuple[str, ...])` — no exceptions for expected validation failures; exceptions reserved for true faults (DB error). Frozen so the `ok=False ⟺ errors non-empty` invariant can't be broken post-construction.
+- `DatabaseErrorGuard` (`controllers/time_clock_controller.py`) is the shared `sqlite3.Error → Result` translation used by every controller mutation. `RecordNotFoundError` (`models/errors.py`, a narrower `sqlite3.DatabaseError` subclass) is what `update_record()`/`delete_record()` raise when the row affected is zero — an expected stale-record race (double-click delete, stale UI), not a true DB fault — and the guard special-cases it into a distinct, friendlier `Result` message instead of the generic "Database error" one.
 - Views render `Result.errors`; they never re-implement validation.
 
 ## 20. Testing

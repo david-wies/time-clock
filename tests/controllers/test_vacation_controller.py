@@ -537,6 +537,31 @@ def test_save_record_update_on_since_deleted_record_returns_error_result(
     assert "This record no longer exists" in res.errors[0]
 
 
+def test_delete_record_on_since_deleted_record_returns_error_result(
+    controller: VacationController,
+) -> None:
+    """End-to-end exercise of the rowcount-based guard in
+    VacationModel.delete_record(): save a real record, delete it once via
+    the controller's own delete_record(), then delete the same now-stale id
+    again through the controller. The second delete_record() call raises
+    sqlite3.DatabaseError on the zero-rowcount DELETE, which
+    DatabaseErrorGuard must catch and turn into Result(ok=False, ...) --
+    not a mocked generic exception, the real rowcount mechanism exercised by
+    test_save_record_update_on_since_deleted_record_returns_error_result
+    above."""
+    controller.model.save_settings(2026, 160.0, 40.0)
+    rec = VacationRecord(None, date(2026, 7, 15), 8.0, VacationType.ANNUAL_LEAVE)
+    assert controller.save_record(rec).ok is True
+    assert rec.id is not None
+
+    assert controller.delete_record(rec.id).ok is True
+
+    res = controller.delete_record(rec.id)
+
+    assert res.ok is False
+    assert "This record no longer exists" in res.errors[0]
+
+
 def test_delete_record_non_sqlite_error_propagates(
     controller: VacationController, monkeypatch: pytest.MonkeyPatch
 ) -> None:

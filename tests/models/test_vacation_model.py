@@ -1,6 +1,5 @@
 import dataclasses
 import logging
-import sqlite3
 from datetime import date, datetime
 
 import pytest
@@ -9,6 +8,7 @@ from core.events import Event, EventBus
 from db.database import Database
 from domain.enums import VacationType
 from domain.types import VacationRecord
+from models.errors import RecordNotFoundError
 from models.time_clock_model import TimeClockModel
 from models.vacation_model import VacationModel
 
@@ -279,7 +279,7 @@ def test_delete_record_nonexistent_id_raises(db: Database, event_bus: EventBus) 
     event_bus.subscribe(Event.VACATION_CHANGED, on_change)
 
     with pytest.raises(
-        sqlite3.DatabaseError, match="No vacation_record with id=999 exists to delete"
+        RecordNotFoundError, match="No vacation_record with id=999 exists to delete"
     ):
         model.delete_record(999)
 
@@ -311,7 +311,7 @@ def test_update_record_on_since_deleted_record_raises(
 
     stale = dataclasses.replace(fetched, hours=4.0)
     with pytest.raises(
-        sqlite3.DatabaseError,
+        RecordNotFoundError,
         match=f"No vacation record with id={rec_id} exists to update",
     ):
         model.update_record(stale)

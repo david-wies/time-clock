@@ -84,6 +84,29 @@ def test_save_record_on_since_deleted_record_returns_error_result(
     assert "This record no longer exists" in res.errors[0]
 
 
+def test_delete_record_on_since_deleted_record_returns_error_result(
+    controller: TimeClockController,
+) -> None:
+    """delete_record() called twice on the same id: the first call really
+    deletes the row, and the second call must hit the same zero-rowcount
+    guard exercised by test_save_record_on_since_deleted_record_returns_error_result
+    above, converting the resulting sqlite3.DatabaseError into
+    Result(ok=False, ...) via DatabaseErrorGuard rather than propagating
+    or silently reporting success on a no-op delete."""
+    rec = TimeRecord(
+        None, date(2026, 6, 26), time(9, 0), time(17, 0), 30, WorkType.REMOTE
+    )
+    assert controller.save_record(rec).ok is True
+    assert rec.id is not None
+
+    assert controller.delete_record(rec.id).ok is True
+
+    res = controller.delete_record(rec.id)
+
+    assert res.ok is False
+    assert "This record no longer exists" in res.errors[0]
+
+
 def test_save_overlapping_record(controller: TimeClockController) -> None:
     # Save first record: 09:00 - 17:00
     r1 = TimeRecord(

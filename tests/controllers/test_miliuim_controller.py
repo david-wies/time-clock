@@ -343,3 +343,26 @@ def test_save_record_update_after_real_delete_returns_result(
 
     assert res.ok is False
     assert "This record no longer exists" in res.errors[0]
+
+
+def test_delete_record_on_since_deleted_record_returns_error_result(
+    controller: MiliuimController,
+) -> None:
+    """End-to-end exercise of the model's rowcount-based staleness check
+    (not a mocked-raise): insert a real record, delete it once via the
+    controller's own delete_record(), then call delete_record() again for
+    the same now-stale id. The second call should hit cursor.rowcount == 0,
+    raise sqlite3.DatabaseError, and DatabaseErrorGuard should convert that
+    into a Result(ok=False, ...) rather than letting it propagate -- mirrors
+    test_save_record_update_after_real_delete_returns_result above but for
+    the delete path."""
+    rec = MiliuimRecord(None, date(2026, 6, 22), date(2026, 6, 26))
+    assert controller.save_record(rec).ok is True
+    assert rec.id is not None
+
+    assert controller.delete_record(rec.id).ok is True
+
+    res = controller.delete_record(rec.id)
+
+    assert res.ok is False
+    assert "This record no longer exists" in res.errors[0]

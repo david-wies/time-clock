@@ -421,6 +421,30 @@ def test_save_record_update_on_since_deleted_record_returns_error_result(
     assert "This record no longer exists" in res.errors[0]
 
 
+def test_delete_record_on_since_deleted_record_returns_error_result(
+    controller: SicknessController,
+) -> None:
+    """End-to-end exercise of the model's rowcount-based staleness check
+    (not a monkeypatched generic exception): a record is saved, deleted once
+    via the controller's own delete_record(), and then deleted again through
+    the controller for the same now-stale id. The second delete_record()
+    call matches zero rows, raises sqlite3.DatabaseError, and
+    DatabaseErrorGuard must convert that into an ok=False Result rather than
+    letting it propagate -- mirrors
+    test_save_record_update_on_since_deleted_record_returns_error_result
+    above but for the delete path."""
+    rec = SicknessRecord(None, date(2026, 2, 15), 8.0, "Flu")
+    assert controller.save_record(rec).ok is True
+    assert rec.id is not None
+
+    assert controller.delete_record(rec.id).ok is True
+
+    res = controller.delete_record(rec.id)
+
+    assert res.ok is False
+    assert "This record no longer exists" in res.errors[0]
+
+
 def test_save_range_sqlite_error_is_caught_and_returned(
     controller: SicknessController, monkeypatch: pytest.MonkeyPatch
 ) -> None:

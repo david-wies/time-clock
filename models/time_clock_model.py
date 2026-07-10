@@ -16,7 +16,7 @@ from db.database import Database
 from domain.enums import WorkType
 from domain.types import TimeRecord, WorkDayException
 from models._row_mapping import rows_to_records
-from models.errors import RecordNotFoundError
+from models.errors import raise_if_no_rows
 
 logger = logging.getLogger(__name__)
 
@@ -246,10 +246,7 @@ class TimeClockModel:
                         record.id,
                     ),
                 )
-                if cursor.rowcount == 0:
-                    raise RecordNotFoundError(
-                        f"No time record with id={record.id} exists to update"
-                    )
+                raise_if_no_rows(cursor, "time record", record.id, "update")
             self.bus.publish(Event.TIME_RECORDS_CHANGED)
 
     def delete_record(self, record_id: int) -> None:
@@ -259,10 +256,7 @@ class TimeClockModel:
                 cursor = conn.execute(
                     "DELETE FROM time_record WHERE id = ?;", (record_id,)
                 )
-                if cursor.rowcount == 0:
-                    raise RecordNotFoundError(
-                        f"No time_record with id={record_id} exists to delete"
-                    )
+                raise_if_no_rows(cursor, "time_record", record_id, "delete")
             self.bus.publish(Event.TIME_RECORDS_CHANGED)
 
     # --- Target Hours & Exceptions Queries ---
