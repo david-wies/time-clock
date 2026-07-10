@@ -345,6 +345,30 @@ def test_save_record_update_after_real_delete_returns_result(
     assert "This record no longer exists" in res.errors[0]
 
 
+def test_save_record_update_sqlite_error_is_caught_and_returned(
+    controller: MiliuimController, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A genuine (non-not-found) sqlite3.Error raised by update_record() on
+    the edit path must still produce the old generic "Database error: ..."
+    message, not be misrouted into the "record no longer exists" branch
+    exercised by test_save_record_update_after_real_delete_returns_result
+    above."""
+    rec = MiliuimRecord(None, date(2026, 6, 22), date(2026, 6, 26))
+    assert controller.save_record(rec).ok is True
+    assert rec.id is not None
+
+    def _boom(_record: MiliuimRecord) -> None:
+        raise sqlite3.Error("db error")
+
+    monkeypatch.setattr(controller.model, "update_record", _boom)
+
+    edited = dataclasses.replace(rec, note="edited")
+    res = controller.save_record(edited)
+
+    assert res.ok is False
+    assert "Database error" in res.errors[0]
+
+
 def test_delete_record_on_since_deleted_record_returns_error_result(
     controller: MiliuimController,
 ) -> None:

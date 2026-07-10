@@ -249,7 +249,7 @@ def test_delete_record_nonexistent_id_raises_and_does_not_publish(
 
     event_bus.subscribe(Event.SICKNESS_CHANGED, on_change)
 
-    with pytest.raises(RecordNotFoundError, match="No sickness record with id=999"):
+    with pytest.raises(RecordNotFoundError, match="No sickness_record with id=999"):
         model.delete_record(999)
 
     assert published is False
@@ -279,7 +279,7 @@ def test_update_record_on_since_deleted_record_raises_and_does_not_publish(
     event_bus.subscribe(Event.SICKNESS_CHANGED, on_change)
 
     with pytest.raises(
-        RecordNotFoundError, match=f"No sickness record with id={rec_id}"
+        RecordNotFoundError, match=f"No sickness_record with id={rec_id}"
     ):
         model.update_record(fetched)
 

@@ -174,7 +174,7 @@ class MiliuimModel:
                         record.id,
                     ),
                 )
-                raise_if_no_rows(cursor, "Miliuim record", record.id, "update")
+                raise_if_no_rows(cursor, "miliuim_record", record.id, "update")
             self.bus.publish(Event.MILIUIM_CHANGED)
 
     def delete_record(self, record_id: int) -> None:
@@ -184,7 +184,7 @@ class MiliuimModel:
                 cursor = conn.execute(
                     "DELETE FROM miliuim_period WHERE id = ?;", (record_id,)
                 )
-                raise_if_no_rows(cursor, "Miliuim record", record_id, "delete")
+                raise_if_no_rows(cursor, "miliuim_record", record_id, "delete")
             self.bus.publish(Event.MILIUIM_CHANGED)
 
     @staticmethod

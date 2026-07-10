@@ -105,7 +105,7 @@ def test_delete_record_nonexistent_id_raises(db: Database, event_bus: EventBus) 
     event_bus.subscribe(Event.MILIUIM_CHANGED, on_change)
 
     with pytest.raises(
-        RecordNotFoundError, match="No Miliuim record with id=999 exists to delete"
+        RecordNotFoundError, match="No miliuim_record with id=999 exists to delete"
     ):
         model.delete_record(999)
 
@@ -138,7 +138,7 @@ def test_update_record_on_since_deleted_record_raises(
     stale = dataclasses.replace(fetched, note="too late")
     with pytest.raises(
         RecordNotFoundError,
-        match=f"No Miliuim record with id={rec_id} exists to update",
+        match=f"No miliuim_record with id={rec_id} exists to update",
     ):
         model.update_record(stale)
 

@@ -40,11 +40,16 @@ class DatabaseErrorGuard(AbstractContextManager[None]):
     caught sqlite3.Error is now logged via `logger.exception(...)` before
     being converted, which the original bare `except Exception` never did.
 
-    `RecordNotFoundError` (a `sqlite3.DatabaseError` subclass — see
-    `models/errors.py`) is special-cased ahead of the generic sqlite3.Error
-    branch: it's an expected "record already deleted" race, not a genuine
-    DB failure, so it's logged at INFO (no traceback) and converted to a
-    distinct, friendlier Result message instead of the generic one.
+    `RecordNotFoundError` (a distinct exception type, unrelated to
+    `sqlite3.Error` — see `models/errors.py`) is special-cased ahead of the
+    generic sqlite3.Error branch: it's an expected "record already deleted"
+    race, not a genuine DB failure, so it's logged at INFO (no traceback)
+    and converted to a distinct, friendlier Result message instead of the
+    generic one. It must be caught explicitly here, since it is not a
+    sqlite3.Error subclass and the generic branch below would not catch
+    it; checking it first remains good practice for clarity, though
+    ordering is no longer load-bearing now that the two exception
+    hierarchies are disjoint.
 
     The `with` block is expected to `return` on its success path, so code
     after the `with` statement is reached only when an error was caught —
@@ -82,8 +87,13 @@ class DatabaseErrorGuard(AbstractContextManager[None]):
         exc: BaseException | None,
         tb: TracebackType | None,
     ) -> bool:
-        if exc_type is not None and issubclass(exc_type, RecordNotFoundError):
-            self._log.info("%s", exc)
+        if isinstance(exc, RecordNotFoundError):
+            self._log.info(
+                "record not found: entity=%s record_id=%s action=%s",
+                exc.entity,
+                exc.record_id,
+                exc.action,
+            )
             self.result = Result(
                 ok=False,
                 errors=(

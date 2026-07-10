@@ -107,6 +107,41 @@ def test_delete_record_on_since_deleted_record_returns_error_result(
     assert "This record no longer exists" in res.errors[0]
 
 
+def test_delete_record_on_since_deleted_record_logs_info_with_no_traceback(
+    controller: TimeClockController, caplog: pytest.LogCaptureFixture
+) -> None:
+    """DatabaseErrorGuard.__exit__ special-cases RecordNotFoundError: per its
+    docstring, this is an expected "record already deleted" race (e.g. a
+    double-click delete), not a genuine DB failure, so it must be logged at
+    INFO with no traceback -- unlike a real sqlite3.Error, which is logged
+    via logger.exception(...) (ERROR level, with traceback). This pins down
+    that distinction, which is currently only documented in the class
+    docstring and would not otherwise be caught by a regression (e.g.
+    swapping .info() for .exception(), or downgrading to .debug())."""
+    rec = TimeRecord(
+        None, date(2026, 6, 26), time(9, 0), time(17, 0), 30, WorkType.REMOTE
+    )
+    assert controller.save_record(rec).ok is True
+    assert rec.id is not None
+
+    assert controller.delete_record(rec.id).ok is True
+
+    with caplog.at_level(logging.INFO):
+        res = controller.delete_record(rec.id)
+
+    assert res.ok is False
+    not_found_records = [
+        record for record in caplog.records if "record not found" in record.message
+    ]
+    assert len(not_found_records) == 1
+    record = not_found_records[0]
+    assert record.levelname == "INFO"
+    assert record.exc_info is None
+    assert f"record_id={rec.id}" in record.message
+    assert "entity=time_record" in record.message
+    assert "action=delete" in record.message
+
+
 def test_save_overlapping_record(controller: TimeClockController) -> None:
     # Save first record: 09:00 - 17:00
     r1 = TimeRecord(

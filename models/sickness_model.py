@@ -185,7 +185,7 @@ class SicknessModel:
                         record.id,
                     ),
                 )
-                raise_if_no_rows(cursor, "sickness record", record.id, "update")
+                raise_if_no_rows(cursor, "sickness_record", record.id, "update")
             self.bus.publish(Event.SICKNESS_CHANGED)
 
     def delete_record(self, record_id: int) -> None:
@@ -195,7 +195,7 @@ class SicknessModel:
                 cursor = conn.execute(
                     "DELETE FROM sickness_record WHERE id = ?;", (record_id,)
                 )
-                raise_if_no_rows(cursor, "sickness record", record_id, "delete")
+                raise_if_no_rows(cursor, "sickness_record", record_id, "delete")
             self.bus.publish(Event.SICKNESS_CHANGED)
 
     # --- Sickness Settings Queries ---

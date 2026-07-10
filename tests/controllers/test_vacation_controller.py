@@ -537,6 +537,32 @@ def test_save_record_update_on_since_deleted_record_returns_error_result(
     assert "This record no longer exists" in res.errors[0]
 
 
+def test_save_record_update_sqlite_error_is_caught_and_returned(
+    controller: VacationController, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A genuine (non-not-found) sqlite3.Error raised by update_record() on
+    the edit path must still produce the old generic "Database error: ..."
+    message, not be misrouted into the "record no longer exists" branch
+    exercised by
+    test_save_record_update_on_since_deleted_record_returns_error_result
+    above."""
+    controller.model.save_settings(2026, 160.0, 40.0)
+    rec = VacationRecord(None, date(2026, 7, 15), 8.0, VacationType.ANNUAL_LEAVE)
+    assert controller.save_record(rec).ok is True
+    assert rec.id is not None
+
+    def _boom(_record: VacationRecord) -> None:
+        raise sqlite3.Error("db error")
+
+    monkeypatch.setattr(controller.model, "update_record", _boom)
+
+    edited = dataclasses.replace(rec, hours=4.0)
+    res = controller.save_record(edited)
+
+    assert res.ok is False
+    assert "Database error" in res.errors[0]
+
+
 def test_delete_record_on_since_deleted_record_returns_error_result(
     controller: VacationController,
 ) -> None:
