@@ -16,6 +16,7 @@ from domain.types import (
     set_generated_id,
     time_record_invariant_errors,
 )
+from models.errors import RecordNotFoundError
 from models.time_clock_model import TimeClockModel
 from settings import SettingsManager
 
@@ -75,6 +76,15 @@ class DatabaseErrorGuard(AbstractContextManager[None]):
         exc: BaseException | None,
         tb: TracebackType | None,
     ) -> bool:
+        if exc_type is not None and issubclass(exc_type, RecordNotFoundError):
+            self._log.exception(self._message, *self._args)
+            self.result = Result(
+                ok=False,
+                errors=(
+                    "This record no longer exists — it may have already been deleted.",
+                ),
+            )
+            return True
         if exc_type is not None and issubclass(exc_type, sqlite3.Error):
             self._log.exception(self._message, *self._args)
             self.result = Result(ok=False, errors=(f"Database error: {exc}",))

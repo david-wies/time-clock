@@ -418,7 +418,7 @@ def test_save_record_update_on_since_deleted_record_returns_error_result(
     res = controller.save_record(rec)
 
     assert res.ok is False
-    assert "Database error" in res.errors[0]
+    assert "This record no longer exists" in res.errors[0]
 
 
 def test_save_range_sqlite_error_is_caught_and_returned(

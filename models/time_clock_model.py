@@ -16,6 +16,7 @@ from db.database import Database
 from domain.enums import WorkType
 from domain.types import TimeRecord, WorkDayException
 from models._row_mapping import rows_to_records
+from models.errors import RecordNotFoundError
 
 logger = logging.getLogger(__name__)
 
@@ -246,7 +247,7 @@ class TimeClockModel:
                     ),
                 )
                 if cursor.rowcount == 0:
-                    raise sqlite3.DatabaseError(
+                    raise RecordNotFoundError(
                         f"No time record with id={record.id} exists to update"
                     )
             self.bus.publish(Event.TIME_RECORDS_CHANGED)
@@ -259,7 +260,7 @@ class TimeClockModel:
                     "DELETE FROM time_record WHERE id = ?;", (record_id,)
                 )
                 if cursor.rowcount == 0:
-                    raise sqlite3.DatabaseError(
+                    raise RecordNotFoundError(
                         f"No time_record with id={record_id} exists to delete"
                     )
             self.bus.publish(Event.TIME_RECORDS_CHANGED)

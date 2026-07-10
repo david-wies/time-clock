@@ -16,6 +16,7 @@ from domain.types import (
     VacationSummary,
 )
 from models._row_mapping import rows_to_records
+from models.errors import RecordNotFoundError
 
 logger = logging.getLogger(__name__)
 
@@ -127,7 +128,7 @@ class VacationModel:
                     ),
                 )
                 if cursor.rowcount == 0:
-                    raise sqlite3.DatabaseError(
+                    raise RecordNotFoundError(
                         f"No vacation record with id={record.id} exists to update"
                     )
             self.bus.publish(Event.VACATION_CHANGED)
@@ -140,7 +141,7 @@ class VacationModel:
                     "DELETE FROM vacation_record WHERE id = ?;", (record_id,)
                 )
                 if cursor.rowcount == 0:
-                    raise sqlite3.DatabaseError(
+                    raise RecordNotFoundError(
                         f"No vacation_record with id={record_id} exists to delete"
                     )
             self.bus.publish(Event.VACATION_CHANGED)

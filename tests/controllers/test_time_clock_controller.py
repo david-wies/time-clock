@@ -81,7 +81,7 @@ def test_save_record_on_since_deleted_record_returns_error_result(
     res = controller.save_record(stale)
 
     assert res.ok is False
-    assert "Database error" in res.errors[0]
+    assert "This record no longer exists" in res.errors[0]
 
 
 def test_save_overlapping_record(controller: TimeClockController) -> None:

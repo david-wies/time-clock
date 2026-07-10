@@ -9,6 +9,7 @@ from core.timeutil import date_to_iso, iso_to_date, period_bounds
 from db.database import Database
 from domain.types import SicknessRecord, SicknessSummary
 from models._row_mapping import rows_to_records
+from models.errors import RecordNotFoundError
 
 logger = logging.getLogger(__name__)
 
@@ -185,7 +186,7 @@ class SicknessModel:
                     ),
                 )
                 if cursor.rowcount == 0:
-                    raise sqlite3.DatabaseError(
+                    raise RecordNotFoundError(
                         f"No sickness record with id={record.id} exists to update"
                     )
             self.bus.publish(Event.SICKNESS_CHANGED)
@@ -198,7 +199,7 @@ class SicknessModel:
                     "DELETE FROM sickness_record WHERE id = ?;", (record_id,)
                 )
                 if cursor.rowcount == 0:
-                    raise sqlite3.DatabaseError(
+                    raise RecordNotFoundError(
                         f"No sickness record with id={record_id} exists to delete"
                     )
             self.bus.publish(Event.SICKNESS_CHANGED)

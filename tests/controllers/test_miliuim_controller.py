@@ -342,4 +342,4 @@ def test_save_record_update_after_real_delete_returns_result(
     res = controller.save_record(stale)
 
     assert res.ok is False
-    assert "Database error" in res.errors[0]
+    assert "This record no longer exists" in res.errors[0]
