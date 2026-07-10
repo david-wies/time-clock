@@ -41,7 +41,8 @@ def sum_day_worked(day_records: list[TimeRecord], today: date, now_time: time) -
     open_today_records = [
         rec for rec in day_records if rec.end_time is None and rec.date == today
     ]
-    other_records = [rec for rec in day_records if rec not in open_today_records]
+    open_ids = {id(rec) for rec in open_today_records}
+    other_records = [rec for rec in day_records if id(rec) not in open_ids]
 
     total = sum(get_record_duration(rec, today, now_time) for rec in other_records)
 
