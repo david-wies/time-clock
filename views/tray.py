@@ -210,6 +210,18 @@ class SystemTray:
                     "Open the main window to choose which one to clock out.",
                 )
                 return
+            if WarningCode.RECORD_NOT_FOUND.value in result.errors:
+                # Stale-record race: the open record was already deleted
+                # elsewhere, so there is nothing left to clock out. No
+                # mutation event was published, so re-sync the tray icon
+                # and title from the DB explicitly.
+                messagebox.showinfo(
+                    "Nothing to Clock Out",
+                    "The open clock-in record no longer exists — it may "
+                    "have already been deleted elsewhere.",
+                )
+                self._on_records_changed()
+                return
             messagebox.showerror("Clock Out Failed", "\n".join(result.errors))
 
     def _do_open(self) -> None:

@@ -93,6 +93,11 @@ def test_do_edit_with_valid_selection_opens_edit_dialog(
         mock.patch("views.miliuim_tab.messagebox") as messagebox_mock,
         mock.patch("views.miliuim_tab.MiliuimRecordDialog") as dialog_mock,
     ):
+        # The real dialog sets record_vanished=False unless its save hit
+        # the RECORD_NOT_FOUND stale-record race; a bare MagicMock
+        # attribute is truthy and would wrongly trigger the tab's
+        # post-dialog refresh path.
+        dialog_mock.return_value.record_vanished = False
         tab._do_edit()
 
     lookup_spy.assert_called_once_with(rec_id)

@@ -7,7 +7,7 @@ import pytest
 from controllers.vacation_controller import VacationController
 from core.events import EventBus
 from db.database import Database
-from domain.enums import VacationType
+from domain.enums import VacationType, WarningCode
 from domain.types import VacationRecord
 from models.time_clock_model import TimeClockModel
 from models.vacation_model import VacationModel
@@ -534,7 +534,7 @@ def test_save_record_update_on_since_deleted_record_returns_error_result(
     res = controller.save_record(stale)
 
     assert res.ok is False
-    assert "This record no longer exists" in res.errors[0]
+    assert res.errors == (WarningCode.RECORD_NOT_FOUND.value,)
 
 
 def test_save_record_update_sqlite_error_is_caught_and_returned(
@@ -542,7 +542,7 @@ def test_save_record_update_sqlite_error_is_caught_and_returned(
 ) -> None:
     """A genuine (non-not-found) sqlite3.Error raised by update_record() on
     the edit path must still produce the old generic "Database error: ..."
-    message, not be misrouted into the "record no longer exists" branch
+    message, not be misrouted into the RECORD_NOT_FOUND branch
     exercised by
     test_save_record_update_on_since_deleted_record_returns_error_result
     above."""
@@ -585,7 +585,7 @@ def test_delete_record_on_since_deleted_record_returns_error_result(
     res = controller.delete_record(rec.id)
 
     assert res.ok is False
-    assert "This record no longer exists" in res.errors[0]
+    assert res.errors == (WarningCode.RECORD_NOT_FOUND.value,)
 
 
 def test_delete_record_non_sqlite_error_propagates(

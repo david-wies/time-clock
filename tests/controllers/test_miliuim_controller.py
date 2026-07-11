@@ -7,6 +7,7 @@ import pytest
 from controllers.miliuim_controller import MiliuimController
 from core.events import EventBus
 from db.database import Database
+from domain.enums import WarningCode
 from domain.types import MiliuimRecord
 from models.miliuim_model import MiliuimModel
 
@@ -342,7 +343,7 @@ def test_save_record_update_after_real_delete_returns_result(
     res = controller.save_record(stale)
 
     assert res.ok is False
-    assert "This record no longer exists" in res.errors[0]
+    assert res.errors == (WarningCode.RECORD_NOT_FOUND.value,)
 
 
 def test_save_record_update_sqlite_error_is_caught_and_returned(
@@ -350,7 +351,7 @@ def test_save_record_update_sqlite_error_is_caught_and_returned(
 ) -> None:
     """A genuine (non-not-found) sqlite3.Error raised by update_record() on
     the edit path must still produce the old generic "Database error: ..."
-    message, not be misrouted into the "record no longer exists" branch
+    message, not be misrouted into the RECORD_NOT_FOUND branch
     exercised by test_save_record_update_after_real_delete_returns_result
     above."""
     rec = MiliuimRecord(None, date(2026, 6, 22), date(2026, 6, 26))
@@ -389,4 +390,4 @@ def test_delete_record_on_since_deleted_record_returns_error_result(
     res = controller.delete_record(rec.id)
 
     assert res.ok is False
-    assert "This record no longer exists" in res.errors[0]
+    assert res.errors == (WarningCode.RECORD_NOT_FOUND.value,)

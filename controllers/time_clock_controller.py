@@ -25,8 +25,9 @@ logger = logging.getLogger(__name__)
 
 class DatabaseErrorGuard(AbstractContextManager[None]):
     """Shared implementation of this codebase's "controllers return Result,
-    never raise for expected validation failures" rule, specifically for
-    sqlite3 errors raised by model calls.
+    never raise for expected validation failures" rule, translating the
+    exceptions raised by model calls — sqlite3 errors and the (deliberately
+    non-sqlite3) `RecordNotFoundError` stale-record race — into Results.
 
     Every controller `save_record()`/`delete_record()`/etc. method used to
     hand-copy the same `except Exception as e: return Result(ok=False,
@@ -44,12 +45,12 @@ class DatabaseErrorGuard(AbstractContextManager[None]):
     `sqlite3.Error` — see `models/errors.py`) is special-cased ahead of the
     generic sqlite3.Error branch: it's an expected "record already deleted"
     race, not a genuine DB failure, so it's logged at INFO (no traceback)
-    and converted to a distinct, friendlier Result message instead of the
-    generic one. It must be caught explicitly here, since it is not a
-    sqlite3.Error subclass and the generic branch below would not catch
-    it; checking it first remains good practice for clarity, though
-    ordering is no longer load-bearing now that the two exception
-    hierarchies are disjoint.
+    and converted to a Result carrying the machine-readable
+    `WarningCode.RECORD_NOT_FOUND` code instead of the generic "Database
+    error" message — views match on the code, own the user-facing wording,
+    and reload their data. It must be caught explicitly here, since it is
+    not a sqlite3.Error subclass and the generic branch below would not
+    catch it.
 
     The `with` block is expected to `return` on its success path, so code
     after the `with` statement is reached only when an error was caught —
@@ -102,19 +103,17 @@ class DatabaseErrorGuard(AbstractContextManager[None]):
     ) -> bool:
         if isinstance(exc, RecordNotFoundError):
             self._log.info(
-                "record not found: entity=%s record_id=%s action=%s",
+                "record not found: entity=%s record_id=%s action=%s (context: "
+                + self._message
+                + ")",
                 exc.entity,
                 exc.record_id,
                 exc.action,
+                *self._args,
             )
-            self.result = Result(
-                ok=False,
-                errors=(
-                    "This record no longer exists — it may have already been deleted.",
-                ),
-            )
+            self.result = Result(ok=False, errors=(WarningCode.RECORD_NOT_FOUND.value,))
             return True
-        if exc_type is not None and issubclass(exc_type, sqlite3.Error):
+        if isinstance(exc, sqlite3.Error):
             self._log.exception(self._message, *self._args)
             self.result = Result(ok=False, errors=(f"Database error: {exc}",))
             return True

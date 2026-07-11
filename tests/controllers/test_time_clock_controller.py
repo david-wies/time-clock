@@ -6,9 +6,9 @@ from datetime import date, time
 import pytest
 
 from controllers.time_clock_controller import DatabaseErrorGuard, TimeClockController
-from core.events import EventBus
+from core.events import Event, EventBus
 from db.database import Database
-from domain.enums import WorkType
+from domain.enums import WarningCode, WorkType
 from domain.types import TimeRecord
 from models.time_clock_model import TimeClockModel
 from settings import SettingsManager
@@ -81,7 +81,7 @@ def test_save_record_on_since_deleted_record_returns_error_result(
     res = controller.save_record(stale)
 
     assert res.ok is False
-    assert "This record no longer exists" in res.errors[0]
+    assert res.errors == (WarningCode.RECORD_NOT_FOUND.value,)
 
 
 def test_delete_record_on_since_deleted_record_returns_error_result(
@@ -104,7 +104,7 @@ def test_delete_record_on_since_deleted_record_returns_error_result(
     res = controller.delete_record(rec.id)
 
     assert res.ok is False
-    assert "This record no longer exists" in res.errors[0]
+    assert res.errors == (WarningCode.RECORD_NOT_FOUND.value,)
 
 
 def test_delete_record_on_since_deleted_record_logs_info_with_no_traceback(
@@ -140,6 +140,64 @@ def test_delete_record_on_since_deleted_record_logs_info_with_no_traceback(
     assert f"record_id={rec.id}" in record.message
     assert "entity=time_record" in record.message
     assert "action=delete" in record.message
+    # The INFO line must also carry the guard's contextual message/args
+    # (what operation was being attempted), just like the generic
+    # sqlite3.Error branch does — entity/id/action alone drops that context.
+    assert (
+        f"(context: Database error while deleting time record id={rec.id})"
+        in record.message
+    )
+
+
+def test_clock_out_on_since_deleted_open_record_returns_record_not_found(
+    controller: TimeClockController,
+    event_bus: EventBus,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """clock_out() fetches today's open record and then update_record()s it
+    with end_time set. If that record is deleted out from under it inside
+    that window (deleted "elsewhere" — e.g. another window or the tray
+    acting on the same DB), the UPDATE affects zero rows and raises
+    RecordNotFoundError, which must surface as the machine-readable
+    RECORD_NOT_FOUND code (the view owns clock-out-appropriate wording),
+    and no mutation event may be published — the clock-out never happened.
+
+    The race window is real but too narrow to hit from test code without a
+    hook, so the deletion is injected via a wrapper around
+    get_time_ranges_by_date() — the last read clock_out() performs before
+    the guarded update. The UPDATE itself then runs unmocked against the
+    really-deleted row, exercising the genuine rowcount mechanism
+    end-to-end. The delete goes through a second model instance with its
+    own EventBus (simulating "another window"), so the controller's bus
+    stays silent throughout and the no-event assertion is meaningful."""
+    open_rec = TimeRecord(None, date(2026, 6, 26), time(8, 0), None, 0, WorkType.REMOTE)
+    record_id = controller.model.insert_record(open_rec)
+
+    other_window_model = TimeClockModel(controller.model.db, EventBus())
+    original = controller.model.get_time_ranges_by_date
+
+    def fetch_then_lose_race(d: date) -> list[tuple[int, time, time | None]]:
+        ranges = original(d)
+        other_window_model.delete_record(record_id)
+        return ranges
+
+    monkeypatch.setattr(
+        controller.model, "get_time_ranges_by_date", fetch_then_lose_race
+    )
+
+    published: list[Event] = []
+    event_bus.subscribe(
+        Event.TIME_RECORDS_CHANGED,
+        lambda **_kw: published.append(Event.TIME_RECORDS_CHANGED),
+    )
+
+    res = controller.clock_out()
+
+    assert res.ok is False
+    assert res.errors == (WarningCode.RECORD_NOT_FOUND.value,)
+    assert published == []
+    # The record really is gone — nothing was resurrected or half-updated.
+    assert controller.model.get_record_by_id(record_id) is None
 
 
 def test_save_overlapping_record(controller: TimeClockController) -> None:

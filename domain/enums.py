@@ -45,9 +45,10 @@ class Weekday(IntEnum):
 class WarningCode(StrEnum):
     """A code identifying a non-fatal warning condition surfaced to the UI.
 
-    `blocking` marks whether this code requires a `force`/`confirm_*`
-    re-call to bypass (and therefore belongs in `Result.errors`), or is
-    purely informational (and belongs in `Result.warnings`)."""
+    `blocking` marks whether this code belongs in `Result.errors` — the
+    view must handle it specially (a `force`/`confirm_*` re-call, or a
+    data reload for `RECORD_NOT_FOUND`) — or is purely informational
+    (and belongs in `Result.warnings`)."""
 
     blocking: bool
 
@@ -61,6 +62,11 @@ class WarningCode(StrEnum):
     OPEN_RECORD_EXISTS = ("OPEN_RECORD_EXISTS", True)
     MULTIPLE_OPEN_RECORDS = ("MULTIPLE_OPEN_RECORDS", True)
     OVER_BALANCE = ("OVER_BALANCE_WARNING", True)
+    # The record targeted by an update/delete no longer exists (a stale-UI
+    # race: it was already deleted elsewhere). Views own the user-facing
+    # wording; on this code they should inform the user, reload their data
+    # so the phantom row disappears, and close any edit dialog.
+    RECORD_NOT_FOUND = ("RECORD_NOT_FOUND", True)
 
 
 class PeriodType(StrEnum):

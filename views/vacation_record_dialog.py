@@ -45,6 +45,10 @@ class VacationRecordDialog(tk.Toplevel):
         self._controller = controller
         self._model = model
         self._record = record
+        # Set by _on_save() when the save hit the RECORD_NOT_FOUND
+        # stale-record race. The dialog is modal, so the opening tab reads
+        # this after wait_window() returns to trigger a data reload.
+        self.record_vanished = False
 
         editing = record is not None
         setup_modal_window(
@@ -243,5 +247,18 @@ class VacationRecordDialog(tk.Toplevel):
                 parent=self,
             ):
                 self._on_save(confirm_over_balance=True)
+        elif WarningCode.RECORD_NOT_FOUND.value in result.errors:
+            # Stale-record race: the record being edited was already
+            # deleted elsewhere, so this save can never succeed — inform
+            # the user and close (the opening tab reloads via
+            # record_vanished).
+            messagebox.showwarning(
+                "Record No Longer Exists",
+                "This record no longer exists — it may have already been "
+                "deleted elsewhere. The list will refresh.",
+                parent=self,
+            )
+            self.record_vanished = True
+            self.destroy()
         else:
             self._lbl_error.config(text="\n".join(result.errors))

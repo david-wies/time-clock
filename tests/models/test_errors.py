@@ -1,3 +1,4 @@
+import pickle
 import sqlite3
 
 import pytest
@@ -63,3 +64,46 @@ def test_record_not_found_error_is_not_a_sqlite3_error() -> None:
     err = RecordNotFoundError("miliuim_record", 1, "update")
 
     assert not isinstance(err, sqlite3.Error)
+
+
+def test_record_not_found_error_rejects_invalid_entity() -> None:
+    """The entity Literal is only checked by mypy at strictly-typed call
+    sites; the model modules themselves are excluded from strict checking,
+    so the runtime guard in __init__ must reject a bad entity string."""
+    with pytest.raises(ValueError, match="Invalid entity"):
+        RecordNotFoundError("bogus_entity", 1, "update")  # type: ignore[arg-type]
+
+
+def test_record_not_found_error_rejects_invalid_action() -> None:
+    """Same runtime guard as for entity: an action outside "update"/"delete"
+    must raise ValueError rather than flow into diagnostic logs."""
+    with pytest.raises(ValueError, match="Invalid action"):
+        RecordNotFoundError("time_record", 1, "insert")  # type: ignore[arg-type]
+
+
+def test_raise_if_no_rows_raises_runtime_error_after_select(
+    cursor: sqlite3.Cursor,
+) -> None:
+    """After a real SELECT, sqlite3 leaves cursor.rowcount == -1 (unavailable).
+    raise_if_no_rows() must raise RuntimeError there instead of silently
+    passing, which would mask a misplaced call."""
+    cursor.execute("SELECT id FROM dummy")
+
+    with pytest.raises(RuntimeError, match="rowcount is unavailable"):
+        raise_if_no_rows(cursor, "time_record", 1, "update")
+
+
+def test_record_not_found_error_pickle_round_trip() -> None:
+    """Exception's default __reduce__ replays self.args (the single formatted
+    message) into the three-argument __init__, so unpickling would raise
+    TypeError without the __reduce__ override — pin the round-trip here."""
+    err = RecordNotFoundError("vacation_record", 42, "delete")
+
+    # Safe: round-tripping bytes we just produced in-process, not loading
+    # pickle data from an external source.
+    restored = pickle.loads(pickle.dumps(err))
+
+    assert restored.entity == "vacation_record"
+    assert restored.record_id == 42
+    assert restored.action == "delete"
+    assert str(restored) == str(err)
