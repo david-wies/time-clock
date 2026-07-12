@@ -12,9 +12,10 @@ from core.report import (
     _period_label,
     _period_range,
     _quarter_months,
+    fetch_with_skip_count,
     period_summary,
 )
-from domain.enums import WorkType
+from domain.enums import PeriodType, WorkType
 from domain.types import TimeRecord
 from models.miliuim_model import MiliuimModel
 from models.sickness_model import SicknessModel
@@ -197,7 +198,7 @@ def test_monthly_row_positive_balance():
 def test_period_summary_month_empty_db_zeroes(period_models):
     tc, vac, sick, sm = period_models
     data = period_summary(
-        "month",
+        PeriodType.MONTH,
         2026,
         month=6,
         quarter=None,
@@ -215,7 +216,7 @@ def test_period_summary_month_empty_db_zeroes(period_models):
 def test_period_summary_month_stores_metadata(period_models):
     tc, vac, sick, sm = period_models
     data = period_summary(
-        "month",
+        PeriodType.MONTH,
         2026,
         month=3,
         quarter=None,
@@ -236,7 +237,7 @@ def test_period_summary_month_stores_metadata(period_models):
 def test_period_summary_quarter_row_count_and_months(period_models):
     tc, vac, sick, sm = period_models
     data = period_summary(
-        "quarter",
+        PeriodType.QUARTER,
         2026,
         month=None,
         quarter=2,
@@ -256,7 +257,7 @@ def test_period_summary_quarter_row_count_and_months(period_models):
 def test_period_summary_quarter_row_year_field(period_models):
     tc, vac, sick, sm = period_models
     data = period_summary(
-        "quarter",
+        PeriodType.QUARTER,
         2026,
         month=None,
         quarter=1,
@@ -272,7 +273,7 @@ def test_period_summary_quarter_row_year_field(period_models):
 def test_period_summary_quarter_empty_db_rows_zero(period_models):
     tc, vac, sick, sm = period_models
     data = period_summary(
-        "quarter",
+        PeriodType.QUARTER,
         2026,
         month=None,
         quarter=3,
@@ -295,7 +296,7 @@ def test_period_summary_quarter_missing_quarter_raises(period_models):
     tc, vac, sick, sm = period_models
     with pytest.raises(ValueError, match="quarter is required"):
         period_summary(
-            "quarter",
+            PeriodType.QUARTER,
             2026,
             month=None,
             quarter=None,
@@ -326,7 +327,7 @@ def test_period_summary_monthly_breakdown_guard_raises_independently_of_period_r
 
     with pytest.raises(ValueError, match="quarter is required"):
         period_summary(
-            "quarter",
+            PeriodType.QUARTER,
             2026,
             month=None,
             quarter=None,
@@ -340,7 +341,7 @@ def test_period_summary_monthly_breakdown_guard_raises_independently_of_period_r
 def test_period_summary_year_has_twelve_rows(period_models):
     tc, vac, sick, sm = period_models
     data = period_summary(
-        "year",
+        PeriodType.YEAR,
         2026,
         month=None,
         quarter=None,
@@ -398,7 +399,7 @@ def test_period_summary_year_monthly_rows_match_independent_per_month_balance(
     )
 
     data = period_summary(
-        "year",
+        PeriodType.YEAR,
         2026,
         month=None,
         quarter=None,
@@ -447,7 +448,7 @@ def test_period_summary_year_monthly_rows_match_independent_per_month_balance(
 def test_period_summary_vac_defaults_with_no_settings(period_models):
     tc, vac, sick, sm = period_models
     data = period_summary(
-        "month",
+        PeriodType.MONTH,
         2026,
         month=6,
         quarter=None,
@@ -465,6 +466,59 @@ def test_period_summary_vac_defaults_with_no_settings(period_models):
     assert data.sick_used_hours == pytest.approx(0.0)
 
 
+# ─────────── fetch_with_skip_count() helper ──────────────────────────────────
+
+
+class _FakeSkipModel:
+    """Minimal stand-in exposing just the ``last_skipped_count`` attribute
+    the helper reads, so the helper's contract can be tested without a DB."""
+
+    def __init__(self, records, skipped):
+        self._records = records
+        self.last_skipped_count = skipped
+
+    def fetch(self):
+        return list(self._records)
+
+
+def test_fetch_with_skip_count_returns_records_and_count():
+    """The helper must hand back the fetch's records *and* the model's
+    current last_skipped_count as one explicit tuple."""
+    model = _FakeSkipModel(records=["a", "b", "c"], skipped=2)
+    records, skipped = fetch_with_skip_count(model, model.fetch)
+    assert records == ["a", "b", "c"]
+    assert skipped == 2
+
+
+def test_fetch_with_skip_count_reads_count_after_fetch(period_models):
+    """Against a real model, the count returned must be the one produced by
+    the fetch that was just run -- i.e. the read is adjacent to that fetch,
+    not stale from an earlier call."""
+    tc, _vac, _sick, _sm = period_models
+    conn = tc.db.get_connection()
+    try:
+        with conn:
+            # One good row + one malformed row (break_minutes exceeds shift).
+            conn.execute(
+                "INSERT INTO time_record "
+                "(date, start_time, end_time, break_minutes, work_type) "
+                "VALUES ('2026-06-26', '09:00', '17:00', 30, 'remote');"
+            )
+            conn.execute(
+                "INSERT INTO time_record "
+                "(date, start_time, end_time, break_minutes, work_type) "
+                "VALUES ('2026-06-26', '09:00', '10:00', 600, 'remote');"
+            )
+    finally:
+        conn.close()
+
+    records, skipped = fetch_with_skip_count(
+        tc, lambda: tc.get_records_for_period(2026)
+    )
+    assert len(records) == 1
+    assert skipped == 1
+
+
 # ─────────── skipped_record_count ────────────────────────────────────────────
 
 
@@ -478,7 +532,7 @@ def test_period_summary_no_skipped_records_is_zero(period_models):
     tc.insert_record(good)
 
     data = period_summary(
-        "month",
+        PeriodType.MONTH,
         2026,
         month=6,
         quarter=None,
@@ -510,7 +564,37 @@ def test_period_summary_counts_malformed_time_clock_row(period_models):
         conn.close()
 
     data = period_summary(
-        "month",
+        PeriodType.MONTH,
+        2026,
+        month=6,
+        quarter=None,
+        model_tc=tc,
+        model_vacation=vac,
+        model_sickness=sick,
+        settings=sm,
+    )
+    assert data.skipped_record_count == 1
+
+
+def test_period_summary_counts_malformed_vacation_row_alone(period_models):
+    """A malformed vacation row with *no* other bad rows must still be
+    counted: the vacation summary's skip count is read right after its own
+    fetch and must not be clobbered by the later (zero) sickness read."""
+    tc, vac, sick, sm = period_models
+    conn = tc.db.get_connection()
+    try:
+        with conn:
+            # vacation_record: note exceeds the 500-char limit.
+            conn.execute(
+                "INSERT INTO vacation_record (date, hours, vtype, note) "
+                "VALUES ('2026-06-01', 4.0, 'annual_leave', ?);",
+                ("x" * 501,),
+            )
+    finally:
+        conn.close()
+
+    data = period_summary(
+        PeriodType.MONTH,
         2026,
         month=6,
         quarter=None,
@@ -567,7 +651,7 @@ def test_period_summary_sums_skipped_records_across_all_four_models(
         conn.close()
 
     data = period_summary(
-        "year",
+        PeriodType.YEAR,
         2026,
         month=None,
         quarter=None,

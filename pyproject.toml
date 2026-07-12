@@ -31,3 +31,42 @@ ignore_errors = true
 [[tool.mypy.overrides]]
 module = ["views.*"]
 ignore_errors = true
+
+# Pylint runs as a CI + local gate alongside ruff/mypy. source-roots lets it
+# resolve intra-project imports despite the space in the repo directory name
+# (otherwise every `from core.x import ...` reports a false import-error).
+#
+# The disabled set baselines pylint to the codebase's current state: these
+# categories already occur throughout the pre-existing code (docstring style,
+# design-metric "too-many-*", tkinter's build-UI attribute pattern, pytest
+# fixture shadowing, duplicate-code) and are deliberately out of scope here.
+# Error-level checks and real correctness warnings stay ON, so new code is
+# still caught. Trim this list in a dedicated cleanup PR (tracked in #42),
+# not incidentally.
+[tool.pylint.main]
+source-roots = ["."]
+
+[tool.pylint."messages control"]
+disable = [
+    "duplicate-code",
+    "missing-module-docstring",
+    "missing-class-docstring",
+    "missing-function-docstring",
+    "too-many-arguments",
+    "too-many-positional-arguments",
+    "too-many-locals",
+    "too-many-instance-attributes",
+    "too-many-return-statements",
+    "too-many-branches",
+    "too-many-statements",
+    "too-many-ancestors",
+    "too-many-lines",
+    "too-few-public-methods",
+    "redefined-outer-name",
+    "protected-access",
+    "attribute-defined-outside-init",
+    "unused-argument",
+    "broad-exception-caught",
+    "cell-var-from-loop",
+    "use-implicit-booleaness-not-comparison",
+]

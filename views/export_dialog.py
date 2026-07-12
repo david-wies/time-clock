@@ -23,6 +23,7 @@ from reportlab.platypus import (
 )
 
 from core.hebrew_date import to_hebrew_label as _safe_hebrew
+from core.report import fetch_with_skip_count
 from core.timeutil import MONTH_NAMES as _MONTH_NAMES
 from core.timeutil import duration, to_display_date
 from domain.enums import VacationType, WorkType
@@ -250,30 +251,46 @@ class ExportDialog(tk.Toplevel):
         total number of malformed DB rows silently dropped by the
         underlying model(s) while fetching -- see
         models/_row_mapping.py:rows_to_records() and each model's
-        `last_skipped_count` attribute. Each per-year fetch call below is
-        immediately followed by reading that model's `last_skipped_count`,
-        before the next iteration's fetch call overwrites it, mirroring the
-        pattern in views/time_clock_tab.py:_refresh_header_and_tree(). This
-        is the more important of the two report/export call sites to get
-        right: the temp-file/rename dance in `_on_export()` exists so a
-        partial export can never be mistaken for a complete payroll/hours
-        record, and a silently-dropped row here would produce exactly that
-        failure mode without this count being surfaced to the caller.
+        `last_skipped_count` attribute. Each per-year fetch is routed through
+        core.report.fetch_with_skip_count(), which reads that model's
+        `last_skipped_count` immediately adjacent to the fetch and returns an
+        explicit `(records, skipped)` tuple; the count is then accumulated by
+        value, so no later fetch (this iteration's or the next year's) can
+        detach it from the fetch it describes. This is the more important of
+        the two report/export call sites to get right: the temp-file/rename
+        dance in `_on_export()` exists so a partial export can never be
+        mistaken for a complete payroll/hours record, and a silently-dropped
+        row here would produce exactly that failure mode without this count
+        being surfaced to the caller.
         """
         tab = ExportTab(self._var_data.get())
         all_records: list[_AnyRecord] = []
         skipped_count = 0
 
         for year in range(from_date.year, to_date.year + 1):
+            # Initialized before the branch so the `skipped_count +=` below is
+            # never reached with year_skipped unbound -- guards against a future
+            # ExportTab member that no branch here assigns.
+            year_skipped = 0
             if tab == ExportTab.TIME:
-                all_records.extend(self._model_tc.get_records_for_period(year))
-                skipped_count += self._model_tc.last_skipped_count
+                tc_records, year_skipped = fetch_with_skip_count(
+                    self._model_tc,
+                    lambda: self._model_tc.get_records_for_period(year),
+                )
+                all_records.extend(tc_records)
             elif tab == ExportTab.VACATION:
-                all_records.extend(self._model_vacation.get_records_for_year(year))
-                skipped_count += self._model_vacation.last_skipped_count
+                vac_records, year_skipped = fetch_with_skip_count(
+                    self._model_vacation,
+                    lambda: self._model_vacation.get_records_for_year(year),
+                )
+                all_records.extend(vac_records)
             else:  # sickness
-                all_records.extend(self._model_sickness.get_records_for_year(year))
-                skipped_count += self._model_sickness.last_skipped_count
+                sick_records, year_skipped = fetch_with_skip_count(
+                    self._model_sickness,
+                    lambda: self._model_sickness.get_records_for_year(year),
+                )
+                all_records.extend(sick_records)
+            skipped_count += year_skipped
 
         filtered = [r for r in all_records if from_date <= r.date <= to_date]
         filtered.sort(key=lambda r: r.date)

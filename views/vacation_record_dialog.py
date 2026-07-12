@@ -239,6 +239,12 @@ class VacationRecordDialog(tk.Toplevel):
             record, confirm_over_balance=confirm_over_balance
         )
         if result.ok:
+            if WarningCode.OVER_BALANCE.value in result.warnings:
+                messagebox.showwarning(
+                    "Balance Exceeded",
+                    "Saved, but this exceeds your remaining vacation balance.",
+                    parent=self,
+                )
             self.destroy()
         elif WarningCode.OVER_BALANCE.value in result.errors:
             if messagebox.askyesno(

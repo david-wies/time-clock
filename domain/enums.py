@@ -130,8 +130,16 @@ class PeriodType(StrEnum):
     YEAR = "year"
 
 
+# UI-only for now (not load-bearing): this enum only supplies the choices for
+# the settings dialog's overtime-period dropdown. SettingsManager.get/set store
+# the "overtime_period" key as a raw JSON string with no enum validation, and no
+# balance/overtime logic consults these members yet — don't assume a stored
+# value is guaranteed to be one of them.
 class OvertimePeriod(StrEnum):
-    """The window over which overtime is calculated: week, month, or year."""
+    """Choices offered by the settings dialog's overtime-period dropdown:
+    week, month, or year. UI-only for now (see the module comment above) --
+    no balance/overtime logic consults these members yet, so this does not
+    define or validate an actual overtime-calculation window."""
 
     WEEK = "week"
     MONTH = "month"

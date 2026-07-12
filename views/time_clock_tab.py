@@ -372,7 +372,7 @@ class TimeClockTab(RecordTabMixin, ttk.Frame):
         self._view_mode = mode
         self.settings.set("view_mode", mode)
         self._refresh_toolbar()
-        self._refresh_tree()
+        self._refresh_header_and_tree()
 
     def _refresh_toolbar(self) -> None:
         is_week = self._view_mode == ViewMode.WEEK
@@ -397,12 +397,12 @@ class TimeClockTab(RecordTabMixin, ttk.Frame):
     def _prev_week(self) -> None:
         self._selected_week_start -= timedelta(days=7)
         self._update_week_label()
-        self._refresh_tree()
+        self._refresh_header_and_tree()
 
     def _next_week(self) -> None:
         self._selected_week_start += timedelta(days=7)
         self._update_week_label()
-        self._refresh_tree()
+        self._refresh_header_and_tree()
 
     def _on_period_changed(self, _event: object = None) -> None:
         try:
@@ -417,7 +417,7 @@ class TimeClockTab(RecordTabMixin, ttk.Frame):
             idx = _MONTH_NAMES.index(month_name)
             if idx > 0:
                 self._selected_month = idx
-        self._refresh_tree()
+        self._refresh_header_and_tree()
 
     # ─────────────────────────── Shared fetch cache ─────────────────────────
 
@@ -439,7 +439,16 @@ class TimeClockTab(RecordTabMixin, ttk.Frame):
         self,
         targets: dict[int, float] | None = None,
         exc_cache: dict[int, dict[date, float]] | None = None,
-    ) -> None:
+    ) -> int:
+        """Refreshes the header labels and returns the number of malformed
+        rows the today-records fetch silently dropped.
+
+        The count is captured from ``model.last_skipped_count`` immediately
+        after ``get_records_by_date(today)`` -- the one list-fetch this
+        method issues -- and returned by value, so the caller
+        (``_refresh_header_and_tree``) sums it as an explicit return rather
+        than re-reading the mutable attribute after the fact.
+        """
         today = date.today()
         now_t = _now_time()
         if targets is None:
@@ -449,7 +458,9 @@ class TimeClockTab(RecordTabMixin, ttk.Frame):
         exceptions = self._exceptions_for_year(today.year, exc_cache)
 
         target_h = get_daily_target(today, targets, exceptions)
-        worked_h = sum_day_worked(self.model.get_records_by_date(today), today, now_t)
+        day_records = self.model.get_records_by_date(today)
+        skipped = self.model.last_skipped_count
+        worked_h = sum_day_worked(day_records, today, now_t)
         remaining = target_h - worked_h
 
         self._lbl_today.config(text=f"Today: {to_display_date(today)}")
@@ -470,6 +481,8 @@ class TimeClockTab(RecordTabMixin, ttk.Frame):
                 foreground=c["overtime"],
             )
 
+        return skipped
+
     # ─────────────────────────── Tree Population ────────────────────────────
 
     def _clear_tree(self) -> None:
@@ -481,28 +494,40 @@ class TimeClockTab(RecordTabMixin, ttk.Frame):
         self,
         targets: dict[int, float] | None = None,
         exc_cache: dict[int, dict[date, float]] | None = None,
-    ) -> None:
+    ) -> int:
+        """Repopulates the tree and returns the number of malformed rows the
+        period fetch silently dropped (captured immediately after that fetch
+        inside _populate_week/_populate_month and threaded back by value).
+
+        Every caller reaches this through _refresh_header_and_tree() (the
+        navigation handlers _prev_week/_next_week/_on_period_changed/
+        _set_view_mode included), which consumes the return to surface the
+        data-integrity notice for the newly selected period.
+        """
         self._clear_tree()
         if targets is None:
             targets = self.model.get_work_day_targets()
         if exc_cache is None:
             exc_cache = {}
         if self._view_mode == ViewMode.WEEK:
-            self._populate_week(targets, exc_cache)
-        else:
-            self._populate_month(targets, exc_cache)
+            return self._populate_week(targets, exc_cache)
+        return self._populate_month(targets, exc_cache)
 
     def _populate_month(
         self,
         targets: dict[int, float],
         exc_cache: dict[int, dict[date, float]],
-    ) -> None:
+    ) -> int:
+        """Populates the month view and returns the number of malformed rows
+        the period fetch dropped (model.last_skipped_count captured
+        immediately after that fetch, before any later fetch overwrites it)."""
         year = self._selected_year
         month = self._selected_month
         today = date.today()
         now_t = _now_time()
 
         records = self.model.get_records_for_period(year, month)
+        skipped = self.model.last_skipped_count
         exceptions = self._exceptions_for_year(year, exc_cache)
         period_start, period_end = get_month_range(date(year, month, 1))
         overtime_rate: float = self.settings.get("overtime_rate") or 1.0
@@ -550,11 +575,16 @@ class TimeClockTab(RecordTabMixin, ttk.Frame):
             for rec in day_recs_sorted:
                 self._insert_record_row(day_node, rec, today, now_t, is_overtime_day)
 
+        return skipped
+
     def _populate_week(
         self,
         targets: dict[int, float],
         exc_cache: dict[int, dict[date, float]],
-    ) -> None:
+    ) -> int:
+        """Populates the week view and returns the number of malformed rows
+        the date-range fetch dropped (model.last_skipped_count captured
+        immediately after that fetch, before any later fetch overwrites it)."""
         week_start = self._selected_week_start
         week_end = week_start + timedelta(days=6)
         today = date.today()
@@ -562,6 +592,7 @@ class TimeClockTab(RecordTabMixin, ttk.Frame):
 
         # Fetch records — single date-range query handles cross-month weeks correctly
         records = self.model.get_records_for_date_range(week_start, week_end)
+        skipped = self.model.last_skipped_count
 
         exceptions = dict(self._exceptions_for_year(week_start.year, exc_cache))
         if week_end.year != week_start.year:
@@ -616,6 +647,8 @@ class TimeClockTab(RecordTabMixin, ttk.Frame):
             values=("", "", "", "", ""),
             tags=("header",),
         )
+
+        return skipped
 
     def _insert_day_header(
         self, parent: str, day: date, worked: float, target: float
@@ -690,18 +723,36 @@ class TimeClockTab(RecordTabMixin, ttk.Frame):
         _refresh_header() and _refresh_tree() — both independently called
         get_work_day_targets()/get_date_exceptions() before this fix, so
         every refresh cycle (including the 60s auto-refresh tick) queried
-        the DB twice for the same data."""
+        the DB twice for the same data.
+
+        Each helper captures its own fetch's model.last_skipped_count
+        immediately (adjacent to the fetch, before any later fetch can
+        overwrite it) and returns it, so this method combines explicit return
+        values — summing them but de-duplicating the today-rows both fetches
+        share (see below) — rather than re-reading the mutable
+        last_skipped_count attribute after the fact, no longer relying on which
+        fetch happened to run last."""
         targets = self.model.get_work_day_targets()
         exc_cache: dict[int, dict[date, float]] = {}
-        self._refresh_header(targets, exc_cache)
-        # get_records_by_date() inside _refresh_header() is the last
-        # list-fetch call before this point, so last_skipped_count reflects
-        # it here -- captured before _refresh_tree() issues its own
-        # list-fetch call and overwrites it.
-        skipped = self.model.last_skipped_count
-        self._refresh_tree(targets, exc_cache)
-        skipped += self.model.last_skipped_count
+        header_skipped = self._refresh_header(targets, exc_cache)
+        tree_skipped = self._refresh_tree(targets, exc_cache)
+        # The header's today-fetch and the tree's period-fetch drop the SAME
+        # malformed rows for any day both cover. Whenever the displayed period
+        # includes today, the tree fetch already counts today's dropped rows,
+        # so adding the header's count would double-count them; only add it
+        # when today falls outside the displayed period (e.g. a past month).
+        skipped = tree_skipped
+        if not self._period_includes(date.today()):
+            skipped += header_skipped
         self._append_skip_notice(self._lbl_today, skipped)
+
+    def _period_includes(self, d: date) -> bool:
+        """True when ``d`` falls within the currently displayed tree period
+        (the selected week in week mode, or the selected month in month mode)."""
+        if self._view_mode == ViewMode.WEEK:
+            week_end = self._selected_week_start + timedelta(days=6)
+            return self._selected_week_start <= d <= week_end
+        return d.year == self._selected_year and d.month == self._selected_month
 
     def _on_event(self, **_kw: object) -> None:
         # Re-anchor week start in case week_first_day setting changed.
