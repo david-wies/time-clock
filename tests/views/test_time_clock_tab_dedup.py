@@ -254,30 +254,32 @@ def test_standalone_refresh_tree_still_works_without_prefetch(
     assert len(tab._tree._rows) >= 1
 
 
-def test_refresh_threads_skip_count_from_both_header_and_tree(
-    db: Database, event_bus: EventBus, settings_manager: SettingsManager
-) -> None:
-    """_refresh_header() and _refresh_tree() each capture their own fetch's
-    skip count and return it; _refresh_header_and_tree() must sum both
-    returns and surface the total via _append_skip_notice(). A malformed row
-    on "today" is dropped by both the header's get_records_by_date(today)
-    fetch and the tree's get_records_for_period(year, month) fetch, so the
-    surfaced count is 2 -- proving both returns are threaded, not just one."""
-    model = TimeClockModel(db, event_bus)
-    today = date.today()
+def _insert_malformed_row(db: Database, d: date) -> None:
+    """Insert a row that fails the TimeRecord invariant (break_minutes 600
+    exceeds the shift length) so _row_to_record() silently drops it on d."""
     conn = db.get_connection()
     try:
         with conn:
-            # break_minutes (600) exceeds the shift length -> fails the
-            # TimeRecord invariant and is dropped by _row_to_record().
             conn.execute(
                 "INSERT INTO time_record "
                 "(date, start_time, end_time, break_minutes, work_type) "
                 "VALUES (?, '09:00', '10:00', 600, 'remote');",
-                (today.isoformat(),),
+                (d.isoformat(),),
             )
     finally:
         conn.close()
+
+
+def test_refresh_dedups_today_skip_when_period_includes_today(
+    db: Database, event_bus: EventBus, settings_manager: SettingsManager
+) -> None:
+    """When the displayed period includes today, the header's today-fetch and
+    the tree's period-fetch both drop the same malformed today-row. The tree
+    fetch already covers today, so the surfaced count must be 1 (the single
+    bad row) -- _refresh_header_and_tree() must not double-count it as 2."""
+    model = TimeClockModel(db, event_bus)
+    today = date.today()
+    _insert_malformed_row(db, today)
 
     tab = _make_tab(
         model,
@@ -291,4 +293,63 @@ def test_refresh_threads_skip_count_from_both_header_and_tree(
 
     tab._refresh_header_and_tree()
 
+    assert "1 record(s) skipped due to data errors" in tab._lbl_today.text
+
+
+def test_refresh_sums_header_and_tree_skips_for_disjoint_periods(
+    db: Database, event_bus: EventBus, settings_manager: SettingsManager
+) -> None:
+    """When the displayed month does NOT include today, the header's today
+    fetch and the tree's period fetch drop disjoint rows, so both returns must
+    be summed. A bad row on today (header) plus a bad row in the displayed past
+    month (tree) => surfaced count 2, proving both returns are threaded."""
+    model = TimeClockModel(db, event_bus)
+    today = date.today()
+    # A month in the same year guaranteed not to be today's month.
+    other_month = 1 if today.month != 1 else 2
+    _insert_malformed_row(db, today)
+    _insert_malformed_row(db, date(today.year, other_month, 15))
+
+    tab = _make_tab(
+        model,
+        settings_manager,
+        view_mode="month",
+        selected_year=today.year,
+        selected_month=other_month,
+        selected_week_start=today,
+    )
+    tab._lbl_today = _CaptureLabel()
+
+    tab._refresh_header_and_tree()
+
     assert "2 record(s) skipped due to data errors" in tab._lbl_today.text
+
+
+def test_navigation_surfaces_skip_notice_for_new_period(
+    db: Database, event_bus: EventBus, settings_manager: SettingsManager
+) -> None:
+    """A navigation refresh (here _prev_week, a tree-only path before this fix)
+    must surface the data-integrity notice for the newly selected period. A
+    malformed row in the target week is dropped by the tree fetch, so the
+    notice must appear on _lbl_today after navigating there."""
+    model = TimeClockModel(db, event_bus)
+    today = date.today()
+    # Row three days back -- inside the previous week, not "today".
+    _insert_malformed_row(db, today - timedelta(days=3))
+
+    tab = _make_tab(
+        model,
+        settings_manager,
+        view_mode="week",
+        selected_year=today.year,
+        selected_month=today.month,
+        selected_week_start=today,
+    )
+    tab._lbl_today = _CaptureLabel()
+    tab._lbl_week_range = _FakeWidget()
+
+    # Navigate to the previous week [today-7, today-1], which contains the bad
+    # row but not today, so the count is the tree fetch's single drop.
+    tab._prev_week()
+
+    assert "1 record(s) skipped due to data errors" in tab._lbl_today.text

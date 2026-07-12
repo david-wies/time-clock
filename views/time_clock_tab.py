@@ -372,7 +372,7 @@ class TimeClockTab(RecordTabMixin, ttk.Frame):
         self._view_mode = mode
         self.settings.set("view_mode", mode)
         self._refresh_toolbar()
-        self._refresh_tree()
+        self._refresh_header_and_tree()
 
     def _refresh_toolbar(self) -> None:
         is_week = self._view_mode == ViewMode.WEEK
@@ -397,12 +397,12 @@ class TimeClockTab(RecordTabMixin, ttk.Frame):
     def _prev_week(self) -> None:
         self._selected_week_start -= timedelta(days=7)
         self._update_week_label()
-        self._refresh_tree()
+        self._refresh_header_and_tree()
 
     def _next_week(self) -> None:
         self._selected_week_start += timedelta(days=7)
         self._update_week_label()
-        self._refresh_tree()
+        self._refresh_header_and_tree()
 
     def _on_period_changed(self, _event: object = None) -> None:
         try:
@@ -417,7 +417,7 @@ class TimeClockTab(RecordTabMixin, ttk.Frame):
             idx = _MONTH_NAMES.index(month_name)
             if idx > 0:
                 self._selected_month = idx
-        self._refresh_tree()
+        self._refresh_header_and_tree()
 
     # ─────────────────────────── Shared fetch cache ─────────────────────────
 
@@ -499,9 +499,10 @@ class TimeClockTab(RecordTabMixin, ttk.Frame):
         period fetch silently dropped (captured immediately after that fetch
         inside _populate_week/_populate_month and threaded back by value).
 
-        Standalone callers (_prev_week/_next_week/_on_period_changed/
-        _set_view_mode) ignore the return; only _refresh_header_and_tree()
-        consumes it, to surface the data-integrity notice.
+        Every caller reaches this through _refresh_header_and_tree() (the
+        navigation handlers _prev_week/_next_week/_on_period_changed/
+        _set_view_mode included), which consumes the return to surface the
+        data-integrity notice for the newly selected period.
         """
         self._clear_tree()
         if targets is None:
@@ -732,9 +733,25 @@ class TimeClockTab(RecordTabMixin, ttk.Frame):
         to run last."""
         targets = self.model.get_work_day_targets()
         exc_cache: dict[int, dict[date, float]] = {}
-        skipped = self._refresh_header(targets, exc_cache)
-        skipped += self._refresh_tree(targets, exc_cache)
+        header_skipped = self._refresh_header(targets, exc_cache)
+        tree_skipped = self._refresh_tree(targets, exc_cache)
+        # The header's today-fetch and the tree's period-fetch drop the SAME
+        # malformed rows for any day both cover. Whenever the displayed period
+        # includes today, the tree fetch already counts today's dropped rows,
+        # so adding the header's count would double-count them; only add it
+        # when today falls outside the displayed period (e.g. a past month).
+        skipped = tree_skipped
+        if not self._period_includes(date.today()):
+            skipped += header_skipped
         self._append_skip_notice(self._lbl_today, skipped)
+
+    def _period_includes(self, d: date) -> bool:
+        """True when ``d`` falls within the currently displayed tree period
+        (the selected week in week mode, or the selected month in month mode)."""
+        if self._view_mode == ViewMode.WEEK:
+            week_end = self._selected_week_start + timedelta(days=6)
+            return self._selected_week_start <= d <= week_end
+        return d.year == self._selected_year and d.month == self._selected_month
 
     def _on_event(self, **_kw: object) -> None:
         # Re-anchor week start in case week_first_day setting changed.

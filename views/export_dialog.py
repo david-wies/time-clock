@@ -268,6 +268,10 @@ class ExportDialog(tk.Toplevel):
         skipped_count = 0
 
         for year in range(from_date.year, to_date.year + 1):
+            # Initialized before the branch so the `skipped_count +=` below is
+            # never reached with year_skipped unbound -- guards against a future
+            # ExportTab member that no branch here assigns.
+            year_skipped = 0
             if tab == ExportTab.TIME:
                 tc_records, year_skipped = fetch_with_skip_count(
                     self._model_tc,

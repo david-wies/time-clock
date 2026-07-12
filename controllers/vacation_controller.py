@@ -2,7 +2,10 @@
 
 import logging
 
-from controllers.time_clock_controller import DatabaseErrorGuard, over_balance_block
+from controllers.time_clock_controller import (
+    DatabaseErrorGuard,
+    over_balance_decision,
+)
 from domain.enums import VacationType
 from domain.types import (
     Result,
@@ -97,6 +100,9 @@ class VacationController:
             # unpaid leave)
             is_debit = record.vtype in _DEBIT_VACATION_TYPES
 
+            # Non-blocking over-balance (a future flip of OVER_BALANCE.blocking)
+            # must still surface on the success Result; carry it through here.
+            over_balance_warnings: tuple[str, ...] = ()
             if is_debit:
                 year = record.date.year
                 summary = self.model.calculate_vacation_summary(year)
@@ -116,9 +122,10 @@ class VacationController:
                 projected_remaining = summary.remaining + old_hours - record.hours
 
                 if projected_remaining < 0 and not confirm_over_balance:
-                    blocked = over_balance_block()
-                    if blocked is not None:
-                        return blocked
+                    decision = over_balance_decision()
+                    if not decision.ok:
+                        return decision
+                    over_balance_warnings = decision.warnings
 
             if record.id is None:
                 record_id = self.model.insert_record(record)
@@ -126,7 +133,7 @@ class VacationController:
                 set_generated_id(record, record_id)
             else:
                 self.model.update_record(record)
-            return Result(ok=True, errors=())
+            return Result(ok=True, warnings=over_balance_warnings)
         return guard.unwrap()
 
     def add_carry_over(self, from_year: int, to_year: int, hours: float) -> Result:

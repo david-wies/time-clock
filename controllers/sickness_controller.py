@@ -3,7 +3,10 @@
 import logging
 from datetime import date, timedelta
 
-from controllers.time_clock_controller import DatabaseErrorGuard, over_balance_block
+from controllers.time_clock_controller import (
+    DatabaseErrorGuard,
+    over_balance_decision,
+)
 from core.timeutil import to_display_date
 from domain.types import (
     Hours,
@@ -78,10 +81,14 @@ class SicknessController:
             projected_used = summary.used_hours - old_hours + record.hours
             projected_remaining = summary.allowance_hours - projected_used
 
+            # Non-blocking over-balance (a future flip of OVER_BALANCE.blocking)
+            # must still surface on the success Result; carry it through here.
+            over_balance_warnings: tuple[str, ...] = ()
             if projected_remaining < 0 and not confirm_over_balance:
-                blocked = over_balance_block()
-                if blocked is not None:
-                    return blocked
+                decision = over_balance_decision()
+                if not decision.ok:
+                    return decision
+                over_balance_warnings = decision.warnings
 
             if record.id is None:
                 record_id = self.model.insert_record(record)
@@ -89,7 +96,7 @@ class SicknessController:
                 set_generated_id(record, record_id)
             else:
                 self.model.update_record(record)
-            return Result(ok=True, errors=())
+            return Result(ok=True, warnings=over_balance_warnings)
         return guard.unwrap()
 
     def delete_record(self, record_id: int) -> Result:
@@ -152,6 +159,7 @@ class SicknessController:
                 dates.append(cur)
                 cur += timedelta(days=1)
 
+            over_balance_warnings: tuple[str, ...] = ()
             if not confirm_over_balance:
                 year_date_counts: dict[int, int] = {}
                 for d in dates:
@@ -159,9 +167,10 @@ class SicknessController:
                 for yr, count in year_date_counts.items():
                     summary = self.model.calculate_sickness_summary(yr)
                     if summary.remaining_hours - hours * count < 0:
-                        blocked = over_balance_block()
-                        if blocked is not None:
-                            return blocked
+                        decision = over_balance_decision()
+                        if not decision.ok:
+                            return decision
+                        over_balance_warnings = decision.warnings
 
             # Note-length (and non-negative-hours) validity is a
             # context-free invariant enforced unconditionally by
@@ -185,5 +194,5 @@ class SicknessController:
                 return Result(ok=False, errors=(str(e),))
 
             self.model.insert_records_bulk(records)
-            return Result(ok=True, errors=())
+            return Result(ok=True, warnings=over_balance_warnings)
         return guard.unwrap()

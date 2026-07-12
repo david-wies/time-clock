@@ -149,28 +149,27 @@ def _is_blocking(code: str) -> bool:
     return True
 
 
-def over_balance_block() -> Result | None:
-    """The Result to return when a debit would exceed the available balance
-    and the caller hasn't confirmed — or None to let the save proceed.
+def over_balance_decision() -> Result:
+    """Outcome of an over-balance debit the caller hasn't had confirmed.
 
     Single source of truth for the vacation/sickness over-balance sites so
-    they stay in lockstep with WarningCode.OVER_BALANCE.blocking instead of
-    each hardcoding `Result(ok=False, errors=(OVER_BALANCE.value,))`. The
-    hardcoded form is correct only while OVER_BALANCE is blocking; routing
-    through here derives the behavior from `.blocking` the same way
-    `_is_blocking()` does for the time-clock codes, so a future flip of that
-    member is honored at every call site rather than silently ignored.
+    they derive their behavior from WarningCode.OVER_BALANCE.blocking -- the
+    same way `_is_blocking()` does for the time-clock codes -- instead of each
+    hardcoding a Result, so a future flip of that member is honored at every
+    call site rather than silently ignored.
 
-    Today OVER_BALANCE is blocking, so this returns the ok=False error the
-    view handles with a `confirm_over_balance` re-call. Were the member ever
-    flipped to non-blocking, this returns None and the save proceeds —
-    mirroring how `_is_blocking()` lets non-blocking codes through instead of
-    turning them into errors.
+    Blocking (today): `ok=False` carrying OVER_BALANCE in `errors`, which the
+    view handles with a `confirm_over_balance` re-call. Non-blocking: `ok=True`
+    carrying OVER_BALANCE in `warnings`, so the save proceeds *and* the warning
+    rides along on the success Result -- a non-blocking code belongs in
+    `Result.warnings` and must not be dropped (see the Result contract in
+    domain/types.py). Callers return the `ok=False` as-is, or merge the
+    returned `.warnings` into their own success Result.
     """
     code = WarningCode.OVER_BALANCE
     if code.blocking:
         return Result(ok=False, errors=(code.value,))
-    return None
+    return Result(ok=True, warnings=(code.value,))
 
 
 def times_overlap(s1: time, e1: time | None, s2: time, e2: time | None) -> bool:

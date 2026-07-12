@@ -87,21 +87,25 @@ def test_over_balance_stays_in_lockstep_with_warning_code_blocking(
     controller: SicknessController, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Both over-balance sites (save_record and save_range) route their
-    decision through over_balance_block(), so a flip of
+    decision through over_balance_decision(), so a flip of
     WarningCode.OVER_BALANCE.blocking is honored rather than ignored by a
     hardcoded ok=False. With the member forced non-blocking, an over-balance
-    save must proceed (ok=True) without a confirm_over_balance re-call."""
+    save must proceed (ok=True) without a confirm_over_balance re-call, and the
+    OVER_BALANCE warning must ride along on the successful result."""
     controller.model.save_settings(2026, 8.0)
 
     monkeypatch.setattr(WarningCode.OVER_BALANCE, "blocking", False)
 
     # save_record: 16h against an 8h allowance would normally block.
     rec = SicknessRecord(None, date(2026, 6, 22), 16.0, "Over balance, allowed")
-    assert controller.save_record(rec).ok is True
+    res_record = controller.save_record(rec)
+    assert res_record.ok is True
+    assert WarningCode.OVER_BALANCE.value in res_record.warnings
 
     # save_range: another 8h day still exceeds the allowance but is allowed.
     res = controller.save_range(date(2026, 7, 6), date(2026, 7, 6), 8.0, "Sick")
     assert res.ok is True
+    assert WarningCode.OVER_BALANCE.value in res.warnings
 
 
 def test_edit_path_over_balance_warning(controller: SicknessController) -> None:

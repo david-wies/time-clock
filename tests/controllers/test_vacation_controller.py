@@ -168,10 +168,11 @@ def test_over_balance_stays_in_lockstep_with_warning_code_blocking(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """save_record() routes its over-balance decision through
-    over_balance_block(), so a flip of WarningCode.OVER_BALANCE.blocking is
+    over_balance_decision(), so a flip of WarningCode.OVER_BALANCE.blocking is
     honored here instead of being ignored by a hardcoded ok=False. With the
     member forced non-blocking, an over-balance save must proceed (ok=True)
-    without a confirm_over_balance re-call."""
+    without a confirm_over_balance re-call, and the OVER_BALANCE warning must
+    ride along on the successful result."""
     controller.model.save_settings(2026, 16.0, 10.0)
     tc_model = TimeClockModel(controller.model.db, event_bus)
     tc_model.save_work_day_targets({i: 24.0 for i in range(7)})
@@ -183,6 +184,7 @@ def test_over_balance_stays_in_lockstep_with_warning_code_blocking(
     rec = VacationRecord(None, date(2026, 7, 15), 20.0, VacationType.ANNUAL_LEAVE)
     res = controller.save_record(rec)
     assert res.ok is True
+    assert WarningCode.OVER_BALANCE.value in res.warnings
 
 
 def test_edit_path_over_balance_warning(

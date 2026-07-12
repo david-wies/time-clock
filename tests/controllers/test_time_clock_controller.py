@@ -721,28 +721,32 @@ def test_delete_record_non_sqlite_error_propagates(
         controller.delete_record(1)
 
 
-# ─────────────────────── over_balance_block() (shared helper) ─────────────────
+# ─────────────────────── over_balance_decision() (shared helper) ──────────────
 
 
-def test_over_balance_block_derives_from_warning_code_blocking(
+def test_over_balance_decision_derives_from_warning_code_blocking(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """over_balance_block() must stay in lockstep with
-    WarningCode.OVER_BALANCE.blocking rather than hardcoding ok=False. Today
-    the member is blocking, so the helper returns the ok=False error the
-    vacation/sickness views handle with a confirm_over_balance re-call; were
-    the member ever flipped to non-blocking, the helper must return None so
-    the save proceeds instead of silently blocking forever."""
-    from controllers.time_clock_controller import over_balance_block
+    """over_balance_decision() must stay in lockstep with
+    WarningCode.OVER_BALANCE.blocking rather than hardcoding its outcome.
+    Today the member is blocking, so it returns the ok=False error the
+    vacation/sickness views handle with a confirm_over_balance re-call. Were
+    the member ever flipped to non-blocking, it must instead return an ok=True
+    result that still carries OVER_BALANCE in warnings (a non-blocking code
+    belongs in Result.warnings and must not be silently dropped)."""
+    from controllers.time_clock_controller import over_balance_decision
 
-    # Blocking today: exactly the Result the three sites used to hardcode.
+    # Blocking today: the ok=False error the three sites route through.
     assert WarningCode.OVER_BALANCE.blocking is True
-    blocked = over_balance_block()
-    assert blocked is not None
-    assert blocked.ok is False
-    assert blocked.errors == (WarningCode.OVER_BALANCE.value,)
+    blocking = over_balance_decision()
+    assert blocking.ok is False
+    assert blocking.errors == (WarningCode.OVER_BALANCE.value,)
+    assert blocking.warnings == ()
 
-    # Simulate a future flip of the enum's .blocking property: the helper —
-    # and therefore every call site routed through it — stops blocking.
+    # Simulate a future flip of the enum's .blocking property: the save
+    # proceeds (ok=True) but the warning still rides along on the result.
     monkeypatch.setattr(WarningCode.OVER_BALANCE, "blocking", False)
-    assert over_balance_block() is None
+    non_blocking = over_balance_decision()
+    assert non_blocking.ok is True
+    assert non_blocking.warnings == (WarningCode.OVER_BALANCE.value,)
+    assert non_blocking.errors == ()
