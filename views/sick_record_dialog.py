@@ -245,6 +245,12 @@ class SickRecordDialog(tk.Toplevel):
             )
 
         if result.ok:
+            if WarningCode.OVER_BALANCE.value in result.warnings:
+                messagebox.showwarning(
+                    "Balance Exceeded",
+                    "Saved, but this exceeds your remaining sick hour balance.",
+                    parent=self,
+                )
             self.destroy()
         elif WarningCode.OVER_BALANCE.value in result.errors:
             if messagebox.askyesno(

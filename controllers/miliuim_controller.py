@@ -52,9 +52,10 @@ class MiliuimController:
             # one with a None date, which makes the `end_date < start_date`
             # comparison inside miliuim_record_invariant_errors() raise
             # TypeError instead of producing a clean validation error.
-            # Log with a traceback (matching DatabaseErrorGuard's
-            # logger.exception() sibling in this file) before converting to a
-            # Result, so this typing-bypass leaves an audit trail.
+            # Log with a traceback (matching the logger.exception() that
+            # DatabaseErrorGuard emits for the sqlite3 errors guarded below)
+            # before converting to a Result, so this typing-bypass leaves an
+            # audit trail.
             logger.exception(
                 "Invalid Miliuim record: start_date/end_date comparison raised "
                 "TypeError (a required date field was None) for record %r",

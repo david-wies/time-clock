@@ -33,11 +33,15 @@ def fetch_with_skip_count[R](
     ``(records, model.last_skipped_count)`` as an explicit tuple.
 
     This is the single audited place that reads the mutable
-    ``last_skipped_count`` attribute at the report/export call sites: it does
-    so immediately after the fetch that set it, then hands the count back by
-    value. Callers thread that returned int onward instead of re-reading the
-    attribute at a distance, so a later fetch on the same model can never
-    silently detach the surfaced count from the fetch it describes.
+    ``last_skipped_count`` attribute for the time-clock records fetch -- the
+    one fetch on ``model_tc`` whose count a later ``model_tc`` call could
+    otherwise silently detach: it reads the count immediately after the fetch
+    that set it, then hands it back by value. Callers thread that returned int
+    onward instead of re-reading the attribute at a distance. (The
+    vacation/sickness/miliuim summaries in ``period_summary()`` read their own
+    distinct models' ``last_skipped_count`` directly, but each targets a
+    separate model instance with no shared-attribute overwrite window, so they
+    do not need this wrapper.)
 
     (Making the count travel *with* the records for real -- i.e. having the
     public model methods return the ``(records, skipped)`` tuple that

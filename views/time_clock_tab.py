@@ -727,10 +727,11 @@ class TimeClockTab(RecordTabMixin, ttk.Frame):
 
         Each helper captures its own fetch's model.last_skipped_count
         immediately (adjacent to the fetch, before any later fetch can
-        overwrite it) and returns it, so this method sums explicit return
-        values rather than re-reading the mutable last_skipped_count
-        attribute after the fact — no longer relying on which fetch happened
-        to run last."""
+        overwrite it) and returns it, so this method combines explicit return
+        values — summing them but de-duplicating the today-rows both fetches
+        share (see below) — rather than re-reading the mutable
+        last_skipped_count attribute after the fact, no longer relying on which
+        fetch happened to run last."""
         targets = self.model.get_work_day_targets()
         exc_cache: dict[int, dict[date, float]] = {}
         header_skipped = self._refresh_header(targets, exc_cache)

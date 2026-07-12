@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import logging
 import os
-import shutil
-import tempfile
 import tkinter as tk
 from datetime import date
 from pathlib import Path
@@ -538,8 +536,16 @@ class ReportDialog(tk.Toplevel):
             )
             return t
 
+        # Build the whole document into a temp file alongside the destination
+        # and only os.replace() it into `filepath` once everything (including
+        # any attachment merge) has succeeded. Writing straight to `filepath`
+        # would leave a complete-looking report there even when a later step
+        # (e.g. the attachment merge) fails — a "failed" export that still
+        # dropped a real file. Keeping the temp in the destination directory
+        # guarantees os.replace() stays on one filesystem, so the swap is atomic.
+        tmp_path = filepath + ".tmp"
         doc = SimpleDocTemplate(
-            filepath,
+            tmp_path,
             pagesize=A4,
             title=f"Time Clock Report — {data.period_label}",
             rightMargin=2.5 * cm,
@@ -683,7 +689,69 @@ class ReportDialog(tk.Toplevel):
                 story.append(Spacer(1, 0.2 * cm))
                 story.append(img)
 
-        doc.build(story)
+        source_path = tmp_path
+        merged_path: str | None = None
+        failed_attachments: list[str] = []
+        try:
+            doc.build(story)
+
+            # ── Attached Documents (PDF pages appended) ───────────────────────
+            if pdf_docs:
+                writer = PdfWriter()
+                # Open the freshly built report body through an explicit file
+                # handle and fully consume it (copy all pages into the writer)
+                # inside the `with` block, so the OS file handle is released
+                # before the merged output is written. Passing a path straight
+                # to PdfReader() keeps the file open for lazy page/content-stream
+                # access, which can raise PermissionError on Windows when the
+                # source file is later removed while still open.
+                with open(tmp_path, "rb") as f:
+                    main_reader = PdfReader(f)
+                    for page in main_reader.pages:
+                        writer.add_page(page)
+                for _type_label, _rec_date, doc_path in pdf_docs:
+                    try:
+                        with open(doc_path, "rb") as f:
+                            att_reader = PdfReader(f)
+                            for page in att_reader.pages:
+                                writer.add_page(page)
+                    except Exception as exc:  # pylint: disable=broad-exception-caught
+                        # A single corrupt/unreadable attachment shouldn't abort
+                        # the whole report; log it and surface a warning after
+                        # export.
+                        logger.exception(
+                            "Failed to append PDF attachment %s (%s dated %s) "
+                            "to report %s",
+                            doc_path,
+                            _type_label,
+                            _rec_date,
+                            filepath,
+                        )
+                        failed_attachments.append(
+                            f"{os.path.basename(doc_path)}: {exc}"
+                        )
+                merged_path = filepath + ".merge.tmp"
+                with open(merged_path, "wb") as f:
+                    writer.write(f)
+                source_path = merged_path
+
+            # Atomically move the fully assembled document (report body plus any
+            # merged attachment pages) into place as the very last step. Nothing
+            # is written to `filepath` before this, so any earlier failure leaves
+            # no partial — nor misleading complete-looking — report at the
+            # destination for the user to mistake for a finished export.
+            os.replace(source_path, filepath)
+        finally:
+            # Remove any temp artifact that wasn't renamed into place — whether
+            # we succeeded (the build temp survives a successful merge) or
+            # failed partway. os.replace() consumes source_path, so it is gone
+            # here on the success path.
+            for leftover in (tmp_path, merged_path):
+                if leftover and os.path.exists(leftover):
+                    try:
+                        os.remove(leftover)
+                    except OSError:
+                        logger.warning("Could not remove temp PDF file %s", leftover)
 
         if failed_images:
             messagebox.showwarning(
@@ -693,60 +761,10 @@ class ReportDialog(tk.Toplevel):
                 parent=self,
             )
 
-        # ── Attached Documents (PDF pages appended) ───────────────────────────
-        if pdf_docs:
-            writer = PdfWriter()
-            # Open each source through an explicit file handle and fully
-            # consume it (copy all pages into the writer) inside the `with`
-            # block, so the OS file handle is released before shutil.move()
-            # below replaces `filepath`. Passing a path straight to
-            # PdfReader() keeps the file open for lazy page/content-stream
-            # access, which can raise PermissionError on Windows when the
-            # source file is later moved/renamed while still open.
-            with open(filepath, "rb") as f:
-                main_reader = PdfReader(f)
-                for page in main_reader.pages:
-                    writer.add_page(page)
-            failed_attachments: list[str] = []
-            for _type_label, _rec_date, doc_path in pdf_docs:
-                try:
-                    with open(doc_path, "rb") as f:
-                        att_reader = PdfReader(f)
-                        for page in att_reader.pages:
-                            writer.add_page(page)
-                except Exception as exc:  # pylint: disable=broad-exception-caught
-                    # A single corrupt/unreadable attachment shouldn't abort the
-                    # whole report; log it and surface a warning after export.
-                    logger.exception(
-                        "Failed to append PDF attachment %s (%s dated %s) to report %s",
-                        doc_path,
-                        _type_label,
-                        _rec_date,
-                        filepath,
-                    )
-                    failed_attachments.append(f"{os.path.basename(doc_path)}: {exc}")
-            tmp_fd, tmp_path = tempfile.mkstemp(suffix=".pdf")
-            try:
-                os.close(tmp_fd)
-                with open(tmp_path, "wb") as f:
-                    writer.write(f)
-                shutil.move(tmp_path, filepath)
-            except Exception:  # pylint: disable=broad-exception-caught
-                try:
-                    os.unlink(tmp_path)
-                except Exception:  # pylint: disable=broad-exception-caught
-                    # Best-effort cleanup of the temp file; log rather than
-                    # silently swallow so a leaked temp file is traceable, and
-                    # don't let a cleanup failure mask the original error below.
-                    logger.exception(
-                        "Failed to clean up temp file %s after PDF write failure",
-                        tmp_path,
-                    )
-                raise
-            if failed_attachments:
-                messagebox.showwarning(
-                    "Attachment Warning",
-                    "Some attachments could not be merged:\n"
-                    + "\n".join(failed_attachments),
-                    parent=self,
-                )
+        if failed_attachments:
+            messagebox.showwarning(
+                "Attachment Warning",
+                "Some attachments could not be merged:\n"
+                + "\n".join(failed_attachments),
+                parent=self,
+            )
