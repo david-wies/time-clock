@@ -18,7 +18,7 @@ repos:
     rev: v2.1.0
     hooks:
       - id: mypy
-        # Mirror the CI check: always scan all three source trees, not just
+        # Mirror the CI check: always scan the gated source trees, not just
         # changed files, so the gate is identical locally and in CI.
-        args: [--strict, domain/, core/, controllers/]
+        args: [--strict, domain/, core/, controllers/, models/]
         pass_filenames: false
