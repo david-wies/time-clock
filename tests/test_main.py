@@ -9,11 +9,14 @@ main window is already built.
 
 import logging
 import logging.handlers
+from datetime import date, time
 from unittest import mock
 
 import pytest
 
 import main
+from domain.enums import WarningCode, WorkType
+from domain.types import Result, TimeRecord
 from main import _configure_logging
 
 
@@ -125,11 +128,14 @@ def test_main_shows_dialog_and_exits_when_configure_logging_fails(monkeypatch) -
     main.sys.exit.assert_called_once_with(1)
 
 
-def _patch_successful_boot(monkeypatch) -> mock.Mock:
+def _patch_successful_boot(monkeypatch) -> tuple[mock.Mock, mock.Mock, mock.Mock]:
     """Patches every collaborator main() touches while building the main
     window so it can run start-to-finish under pytest's headless/no-X
-    environment, and returns the mocked ``root`` (a stand-in ``tk.Tk()``
-    instance) so tests can assert on ``mainloop``/``destroy`` calls.
+    environment, and returns ``(root, show_error, show_warning)`` -- the
+    mocked ``root`` (a stand-in ``tk.Tk()`` instance) and the two
+    ``messagebox`` mocks -- so tests can assert on ``mainloop``/``destroy``/
+    dialog calls without re-reading ``main.messagebox.*`` after a call
+    (which loses type-narrowing back to the undecorated function).
     """
     root = mock.MagicMock(name="root")
     monkeypatch.setattr(main.tk, "Tk", mock.Mock(return_value=root))
@@ -154,9 +160,11 @@ def _patch_successful_boot(monkeypatch) -> mock.Mock:
     monkeypatch.setattr(main, "SystemTray", mock.Mock())
     monkeypatch.setattr(main, "_boot_checks", mock.Mock())
     monkeypatch.setattr(main, "_configure_logging", mock.Mock())
-    monkeypatch.setattr(main.messagebox, "showerror", mock.Mock())
-    monkeypatch.setattr(main.messagebox, "showwarning", mock.Mock())
-    return root
+    show_error = mock.Mock()
+    show_warning = mock.Mock()
+    monkeypatch.setattr(main.messagebox, "showerror", show_error)
+    monkeypatch.setattr(main.messagebox, "showwarning", show_warning)
+    return root, show_error, show_warning
 
 
 @pytest.mark.parametrize("failing_target", ["_boot_checks", "SystemTray"])
@@ -168,7 +176,7 @@ def test_main_survives_boot_check_or_tray_failure(monkeypatch, failing_target) -
     warning dialog rather than the fatal "Startup Failed" error dialog used
     for core window/tab-construction failures.
     """
-    root = _patch_successful_boot(monkeypatch)
+    root, show_error, show_warning = _patch_successful_boot(monkeypatch)
     monkeypatch.setattr(
         main, failing_target, mock.Mock(side_effect=RuntimeError("boom"))
     )
@@ -177,5 +185,65 @@ def test_main_survives_boot_check_or_tray_failure(monkeypatch, failing_target) -
 
     root.destroy.assert_not_called()
     root.mainloop.assert_called_once()
-    main.messagebox.showwarning.assert_called_once()
-    main.messagebox.showerror.assert_not_called()
+    show_warning.assert_called_once()
+    show_error.assert_not_called()
+
+
+def _stale_record() -> TimeRecord:
+    """A single open record dated before "today" so it is picked up by
+    _boot_checks()'s stale-record filter."""
+    return TimeRecord(
+        id=1,
+        date=date(2020, 1, 1),
+        start_time=time(9, 0),
+        end_time=None,
+        break_minutes=0,
+        work_type=WorkType.IN_SITE,
+        office="Main Office",
+    )
+
+
+def test_boot_checks_skips_silently_on_record_not_found(monkeypatch) -> None:
+    """delete_record() can legitimately return RECORD_NOT_FOUND when the
+    stale record was already deleted elsewhere (e.g. by the tray icon or
+    another window) between get_open_records() and the delete call here.
+    That race lands on the exact outcome the boot-check cleanup wanted
+    anyway (no open stale record), so it must be treated as success --
+    no warning dialog, and specifically not one leaking the raw
+    "RECORD_NOT_FOUND" machine code to the user.
+    """
+    model = mock.Mock()
+    model.get_open_records.return_value = [_stale_record()]
+    ctrl = mock.Mock()
+    ctrl.delete_record.return_value = Result(
+        ok=False, errors=(WarningCode.RECORD_NOT_FOUND.value,)
+    )
+    monkeypatch.setattr(main.messagebox, "askyesno", mock.Mock(return_value=True))
+    show_warning = mock.Mock()
+    monkeypatch.setattr(main.messagebox, "showwarning", show_warning)
+
+    main._boot_checks(model, ctrl)
+
+    ctrl.delete_record.assert_called_once_with(1)
+    show_warning.assert_not_called()
+
+
+def test_boot_checks_warns_on_genuine_delete_failure(monkeypatch) -> None:
+    """A delete failure that is NOT the stale-record race (e.g. a real
+    database error) must still surface to the user via the warning dialog
+    -- only RECORD_NOT_FOUND is special-cased to skip silently.
+    """
+    model = mock.Mock()
+    model.get_open_records.return_value = [_stale_record()]
+    ctrl = mock.Mock()
+    ctrl.delete_record.return_value = Result(ok=False, errors=("DATABASE_ERROR",))
+    monkeypatch.setattr(main.messagebox, "askyesno", mock.Mock(return_value=True))
+    show_warning = mock.Mock()
+    monkeypatch.setattr(main.messagebox, "showwarning", show_warning)
+
+    main._boot_checks(model, ctrl)
+
+    show_warning.assert_called_once()
+    title, message = show_warning.call_args[0]
+    assert "Delete Failed" in title
+    assert "DATABASE_ERROR" in message

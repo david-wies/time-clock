@@ -8,7 +8,7 @@ from typing import Any
 from core.events import Event, EventBus
 from core.timeutil import date_to_iso, iso_to_date, period_bounds
 from db.database import Database
-from domain.enums import VacationType
+from domain.enums import RecordAction, RecordEntity, VacationType
 from domain.types import (
     CarryOverAllowance,
     CarryOverLogEntry,
@@ -127,7 +127,12 @@ class VacationModel:
                         record.id,
                     ),
                 )
-                raise_if_no_rows(cursor, "vacation_record", record.id, "update")
+                raise_if_no_rows(
+                    cursor,
+                    RecordEntity.VACATION_RECORD,
+                    record.id,
+                    RecordAction.UPDATE,
+                )
             self.bus.publish(Event.VACATION_CHANGED)
 
     def delete_record(self, record_id: int) -> None:
@@ -137,7 +142,12 @@ class VacationModel:
                 cursor = conn.execute(
                     "DELETE FROM vacation_record WHERE id = ?;", (record_id,)
                 )
-                raise_if_no_rows(cursor, "vacation_record", record_id, "delete")
+                raise_if_no_rows(
+                    cursor,
+                    RecordEntity.VACATION_RECORD,
+                    record_id,
+                    RecordAction.DELETE,
+                )
             self.bus.publish(Event.VACATION_CHANGED)
 
     # --- Vacation Settings Queries ---

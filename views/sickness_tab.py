@@ -10,7 +10,7 @@ from controllers.sickness_controller import SicknessController
 from core.events import Event, EventBus
 from core.hebrew_date import to_hebrew_label as _safe_hebrew
 from core.timeutil import to_display_date
-from domain.enums import WarningCode
+from domain.enums import RECORD_NOT_FOUND_MESSAGE, WarningCode
 from domain.types import SicknessRecord
 from models.sickness_model import SicknessModel
 from settings import SettingsManager
@@ -291,8 +291,7 @@ class SicknessTab(RecordTabMixin, ttk.Frame):
             if WarningCode.RECORD_NOT_FOUND.value in result.errors:
                 messagebox.showinfo(
                     "Record Already Removed",
-                    "This record no longer exists — it may have already "
-                    "been deleted elsewhere. The list will refresh.",
+                    RECORD_NOT_FOUND_MESSAGE,
                     parent=self,
                 )
                 self._refresh()

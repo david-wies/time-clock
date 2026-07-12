@@ -8,7 +8,7 @@ from datetime import date
 from tkinter import messagebox, ttk
 
 from controllers.miliuim_controller import MiliuimController
-from domain.enums import WarningCode
+from domain.enums import RECORD_NOT_FOUND_MESSAGE, WarningCode
 from domain.types import MiliuimRecord
 from models.miliuim_model import MiliuimModel
 from views.date_picker import make_date_picker
@@ -183,8 +183,7 @@ class MiliuimRecordDialog(tk.Toplevel):
             # record_vanished).
             messagebox.showwarning(
                 "Record No Longer Exists",
-                "This record no longer exists — it may have already been "
-                "deleted elsewhere. The list will refresh.",
+                RECORD_NOT_FOUND_MESSAGE,
                 parent=self,
             )
             self.record_vanished = True

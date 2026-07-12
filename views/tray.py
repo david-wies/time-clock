@@ -12,7 +12,7 @@ from PIL import Image, ImageDraw
 
 from controllers.time_clock_controller import TimeClockController
 from core.events import Event, EventBus
-from domain.enums import WarningCode
+from domain.enums import RECORD_NOT_FOUND_OPEN_RECORD_MESSAGE, WarningCode
 from models.time_clock_model import TimeClockModel
 from settings import SettingsManager
 
@@ -217,8 +217,7 @@ class SystemTray:
                 # and title from the DB explicitly.
                 messagebox.showinfo(
                     "Nothing to Clock Out",
-                    "The open clock-in record no longer exists — it may "
-                    "have already been deleted elsewhere.",
+                    RECORD_NOT_FOUND_OPEN_RECORD_MESSAGE,
                 )
                 self._on_records_changed()
                 return

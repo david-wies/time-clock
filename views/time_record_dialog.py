@@ -9,7 +9,7 @@ from tkinter import messagebox, ttk
 
 from controllers.time_clock_controller import TimeClockController
 from core.timeutil import duration
-from domain.enums import WarningCode, WorkType
+from domain.enums import RECORD_NOT_FOUND_MESSAGE, WarningCode, WorkType
 from domain.types import TimeRecord
 from settings import SettingsManager
 from views.date_picker import make_date_picker
@@ -398,8 +398,7 @@ class TimeRecordDialog(tk.Toplevel):
             # record_vanished).
             messagebox.showwarning(
                 "Record No Longer Exists",
-                "This record no longer exists — it may have already been "
-                "deleted elsewhere. The list will refresh.",
+                RECORD_NOT_FOUND_MESSAGE,
                 parent=self,
             )
             self.record_vanished = True

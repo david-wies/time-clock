@@ -9,7 +9,7 @@ from datetime import date
 from tkinter import messagebox, ttk
 
 from controllers.vacation_controller import VacationController
-from domain.enums import VacationType, WarningCode
+from domain.enums import RECORD_NOT_FOUND_MESSAGE, VacationType, WarningCode
 from domain.types import VacationRecord
 from models.vacation_model import VacationModel
 from views.date_picker import make_date_picker
@@ -254,8 +254,7 @@ class VacationRecordDialog(tk.Toplevel):
             # record_vanished).
             messagebox.showwarning(
                 "Record No Longer Exists",
-                "This record no longer exists — it may have already been "
-                "deleted elsewhere. The list will refresh.",
+                RECORD_NOT_FOUND_MESSAGE,
                 parent=self,
             )
             self.record_vanished = True

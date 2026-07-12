@@ -10,7 +10,7 @@ from controllers.vacation_controller import VacationController
 from core.events import Event, EventBus
 from core.hebrew_date import to_hebrew_label as _safe_hebrew
 from core.timeutil import to_display_date
-from domain.enums import VacationType, WarningCode
+from domain.enums import RECORD_NOT_FOUND_MESSAGE, VacationType, WarningCode
 from domain.types import VacationRecord
 from models.vacation_model import VacationModel
 from settings import SettingsManager
@@ -394,8 +394,7 @@ class VacationTab(RecordTabMixin, ttk.Frame):
             if WarningCode.RECORD_NOT_FOUND.value in result.errors:
                 messagebox.showinfo(
                     "Record Already Removed",
-                    "This record no longer exists — it may have already "
-                    "been deleted elsewhere. The list will refresh.",
+                    RECORD_NOT_FOUND_MESSAGE,
                     parent=self,
                 )
                 self._refresh()

@@ -1,23 +1,19 @@
-"""Regression tests for MiliuimTab._do_edit()'s no-selection guard (no live
-Tk display needed).
+"""Regression tests for SicknessTab's RECORD_NOT_FOUND stale-record-race
+handling in ``_do_edit()``/``_do_delete()`` (no live Tk display needed).
 
 This repo's CI runs headless with no X display (see tests/views/
 test_help_viewer_dialogs.py and test_report_dialog.py for the same
-constraint on other view modules), so MiliuimTab is built via
-``MiliuimTab.__new__`` (bypassing ``__init__``, which constructs real ttk
-widgets) with just the attributes ``_do_edit()`` actually touches --
-mirroring the ``_make_tab`` bypass pattern in
-tests/views/test_time_clock_tab_dedup.py and
-tests/views/test_sickness_tab_dedup.py. The Treeview is replaced with a
-lightweight fake exposing only ``selection()``, and
-``MiliuimRecordDialog`` (a ``tk.Toplevel`` subclass that cannot be built
-headless) is patched out at the module level it is imported into.
-
-Before the fix, ``_do_edit()`` fell through to
-``self.model.get_record_by_id(None)`` when nothing was selected in the
-tree, which returned ``None`` and popped a misleading "Record Not Found"
-dialog on a keyboard shortcut press with no selection -- rather than
-simply doing nothing, as a no-op edit action should.
+constraint on other view modules), so SicknessTab is built via
+``SicknessTab.__new__`` (bypassing ``__init__``, which constructs real ttk
+widgets) with just the attributes ``_do_edit()``/``_do_delete()`` actually
+touch -- mirroring the ``_make_tab`` bypass pattern in
+tests/views/test_miliuim_tab.py, whose ``_do_edit()``/``_do_delete()``
+bodies are structurally identical to SicknessTab's (both delegate to the
+shared ``RecordTabMixin._get_selected_record_id()`` and share the same
+RECORD_NOT_FOUND branch shape). The Treeview is replaced with a
+lightweight fake exposing only ``selection()``, and ``SickRecordDialog``
+(a ``tk.Toplevel`` subclass that cannot be built headless) is patched out
+at the module level it is imported into.
 """
 
 from datetime import date
@@ -26,14 +22,15 @@ from unittest import mock
 from core.events import EventBus
 from db.database import Database
 from domain.enums import WarningCode
-from domain.types import MiliuimRecord, Result
-from models.miliuim_model import MiliuimModel
-from views.miliuim_tab import MiliuimTab
+from domain.types import Result, SicknessRecord
+from models.sickness_model import SicknessModel
+from views.sickness_tab import SicknessTab
 
 
 class _FakeTree:
     """Stand-in for the ttk.Treeview: only ``selection()`` is exercised by
-    ``_get_selected_record_id()``, which is all ``_do_edit()`` needs."""
+    ``_get_selected_record_id()``, which is all ``_do_edit()``/``_do_delete()``
+    need."""
 
     def __init__(self, selected_iid: str | None = None) -> None:
         self._selected_iid = selected_iid
@@ -42,10 +39,11 @@ class _FakeTree:
         return (self._selected_iid,) if self._selected_iid is not None else ()
 
 
-def _make_tab(model: MiliuimModel, selected_iid: str | None) -> MiliuimTab:
-    """Builds a MiliuimTab without running __init__ / constructing real Tk
-    widgets -- only the attributes touched by ``_do_edit()`` are set."""
-    tab = MiliuimTab.__new__(MiliuimTab)
+def _make_tab(model: SicknessModel, selected_iid: str | None) -> SicknessTab:
+    """Builds a SicknessTab without running __init__ / constructing real Tk
+    widgets -- only the attributes touched by ``_do_edit()``/``_do_delete()``
+    are set."""
+    tab = SicknessTab.__new__(SicknessTab)
     tab.model = model
     tab.controller = mock.Mock()
     tab._tree = _FakeTree(selected_iid)
@@ -56,16 +54,16 @@ def test_do_edit_with_no_selection_does_not_fetch_or_show_dialog(
     db: Database, event_bus: EventBus
 ) -> None:
     """With nothing selected in the tree, _do_edit() must return immediately
-    -- no get_record_by_id() lookup and no MiliuimRecordDialog popped."""
-    model = MiliuimModel(db, event_bus)
+    -- no get_record_by_id() lookup and no SickRecordDialog popped."""
+    model = SicknessModel(db, event_bus)
     tab = _make_tab(model, selected_iid=None)
 
     with (
         mock.patch.object(
             model, "get_record_by_id", wraps=model.get_record_by_id
         ) as lookup_spy,
-        mock.patch("views.miliuim_tab.messagebox") as messagebox_mock,
-        mock.patch("views.miliuim_tab.MiliuimRecordDialog") as dialog_mock,
+        mock.patch("views.sickness_tab.messagebox") as messagebox_mock,
+        mock.patch("views.sickness_tab.SickRecordDialog") as dialog_mock,
     ):
         tab._do_edit()
 
@@ -78,12 +76,10 @@ def test_do_edit_with_valid_selection_opens_edit_dialog(
     db: Database, event_bus: EventBus
 ) -> None:
     """Regression guard on the happy path: a valid selected record id must
-    still fetch the record and open MiliuimRecordDialog with it, exactly as
+    still fetch the record and open SickRecordDialog with it, exactly as
     before the no-selection guard was added."""
-    model = MiliuimModel(db, event_bus)
-    rec_id = model.insert_record(
-        MiliuimRecord(None, date(2026, 6, 1), date(2026, 6, 5), "Annual training")
-    )
+    model = SicknessModel(db, event_bus)
+    rec_id = model.insert_record(SicknessRecord(None, date(2026, 6, 22), 8.0, "Flu"))
     rec = model.get_record_by_id(rec_id)
     tab = _make_tab(model, selected_iid=f"rec_{rec_id}")
 
@@ -91,8 +87,8 @@ def test_do_edit_with_valid_selection_opens_edit_dialog(
         mock.patch.object(
             model, "get_record_by_id", wraps=model.get_record_by_id
         ) as lookup_spy,
-        mock.patch("views.miliuim_tab.messagebox") as messagebox_mock,
-        mock.patch("views.miliuim_tab.MiliuimRecordDialog") as dialog_mock,
+        mock.patch("views.sickness_tab.messagebox") as messagebox_mock,
+        mock.patch("views.sickness_tab.SickRecordDialog") as dialog_mock,
     ):
         # The real dialog sets record_vanished=False unless its save hit
         # the RECORD_NOT_FOUND stale-record race; a bare MagicMock
@@ -116,17 +112,15 @@ def test_do_edit_record_vanished_true_triggers_refresh(
     race, ``record_vanished`` comes back ``True`` and ``_do_edit()`` must
     call ``self._refresh()`` to clear the now-phantom row. Only the
     ``False`` (no-op) half of this branch had coverage before."""
-    model = MiliuimModel(db, event_bus)
-    rec_id = model.insert_record(
-        MiliuimRecord(None, date(2026, 6, 1), date(2026, 6, 5), "Annual training")
-    )
+    model = SicknessModel(db, event_bus)
+    rec_id = model.insert_record(SicknessRecord(None, date(2026, 6, 22), 8.0, "Flu"))
     tab = _make_tab(model, selected_iid=f"rec_{rec_id}")
     refresh_mock = mock.Mock()
     tab._refresh = refresh_mock
 
     with (
-        mock.patch("views.miliuim_tab.messagebox") as messagebox_mock,
-        mock.patch("views.miliuim_tab.MiliuimRecordDialog") as dialog_mock,
+        mock.patch("views.sickness_tab.messagebox") as messagebox_mock,
+        mock.patch("views.sickness_tab.SickRecordDialog") as dialog_mock,
     ):
         dialog_mock.return_value.record_vanished = True
         tab._do_edit()
@@ -142,10 +136,8 @@ def test_do_delete_record_not_found_shows_info_and_refreshes(
     where the row was already removed elsewhere) must show the friendly
     "Record Already Removed" info box -- not the generic error box -- and
     call ``self._refresh()`` to clear the phantom row."""
-    model = MiliuimModel(db, event_bus)
-    rec_id = model.insert_record(
-        MiliuimRecord(None, date(2026, 6, 1), date(2026, 6, 5), "Annual training")
-    )
+    model = SicknessModel(db, event_bus)
+    rec_id = model.insert_record(SicknessRecord(None, date(2026, 6, 22), 8.0, "Flu"))
     tab = _make_tab(model, selected_iid=f"rec_{rec_id}")
     tab.controller = mock.Mock()
     tab.controller.delete_record.return_value = Result(
@@ -154,7 +146,7 @@ def test_do_delete_record_not_found_shows_info_and_refreshes(
     refresh_mock = mock.Mock()
     tab._refresh = refresh_mock
 
-    with mock.patch("views.miliuim_tab.messagebox") as messagebox_mock:
+    with mock.patch("views.sickness_tab.messagebox") as messagebox_mock:
         messagebox_mock.askyesno.return_value = True
         tab._do_delete()
 

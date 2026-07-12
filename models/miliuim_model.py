@@ -8,6 +8,7 @@ from datetime import date
 from core.events import Event, EventBus
 from core.timeutil import date_to_iso, iso_to_date, period_bounds
 from db.database import Database
+from domain.enums import RecordAction, RecordEntity
 from domain.types import MiliuimRecord, MiliuimSummary
 from models._row_mapping import rows_to_records
 from models.errors import raise_if_no_rows
@@ -174,7 +175,9 @@ class MiliuimModel:
                         record.id,
                     ),
                 )
-                raise_if_no_rows(cursor, "miliuim_record", record.id, "update")
+                raise_if_no_rows(
+                    cursor, RecordEntity.MILIUIM_RECORD, record.id, RecordAction.UPDATE
+                )
             self.bus.publish(Event.MILIUIM_CHANGED)
 
     def delete_record(self, record_id: int) -> None:
@@ -184,7 +187,9 @@ class MiliuimModel:
                 cursor = conn.execute(
                     "DELETE FROM miliuim_period WHERE id = ?;", (record_id,)
                 )
-                raise_if_no_rows(cursor, "miliuim_record", record_id, "delete")
+                raise_if_no_rows(
+                    cursor, RecordEntity.MILIUIM_RECORD, record_id, RecordAction.DELETE
+                )
             self.bus.publish(Event.MILIUIM_CHANGED)
 
     @staticmethod

@@ -15,6 +15,7 @@ from controllers.vacation_controller import VacationController
 from core.events import EventBus
 from core.timeutil import to_display_date
 from db.database import Database, get_app_data_dir
+from domain.enums import WarningCode
 from models.miliuim_model import MiliuimModel
 from models.sickness_model import SicknessModel
 from models.time_clock_model import TimeClockModel
@@ -216,6 +217,13 @@ def _boot_checks(model: TimeClockModel, ctrl: TimeClockController) -> None:
                     continue
                 result = ctrl.delete_record(r.id)
                 if not result.ok:
+                    if WarningCode.RECORD_NOT_FOUND.value in result.errors:
+                        # Stale-record race: something else (another view,
+                        # the tray icon) already deleted this record between
+                        # get_open_records() and here. That is the outcome
+                        # this cleanup wanted anyway, so there is nothing to
+                        # warn the user about.
+                        continue
                     messagebox.showwarning(
                         "Delete Failed",
                         f"Could not delete record from {to_display_date(r.date)}: "

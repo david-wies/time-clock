@@ -20,7 +20,13 @@ from core.events import Event, EventBus
 from core.hebrew_date import to_hebrew_label as _safe_hebrew
 from core.timeutil import MONTH_NAMES as _MONTH_NAMES
 from core.timeutil import time_to_str, to_display_date
-from domain.enums import WarningCode, Weekday, WorkType
+from domain.enums import (
+    RECORD_NOT_FOUND_MESSAGE,
+    RECORD_NOT_FOUND_OPEN_RECORD_MESSAGE,
+    WarningCode,
+    Weekday,
+    WorkType,
+)
 from domain.types import TimeRecord, WorkDayException
 from models.time_clock_model import TimeClockModel
 from settings import SettingsManager
@@ -797,8 +803,7 @@ class TimeClockTab(RecordTabMixin, ttk.Frame):
         record disappears and the buttons/auto-refresh match reality."""
         messagebox.showwarning(
             "Nothing to Clock Out",
-            "The open clock-in record no longer exists — it may have "
-            "already been deleted elsewhere. The display will refresh.",
+            RECORD_NOT_FOUND_OPEN_RECORD_MESSAGE + " The display will refresh.",
             parent=self,
         )
         self._refresh()
@@ -913,8 +918,7 @@ class TimeClockTab(RecordTabMixin, ttk.Frame):
             if WarningCode.RECORD_NOT_FOUND.value in result.errors:
                 messagebox.showinfo(
                     "Record Already Deleted",
-                    "This record no longer exists — it may have already "
-                    "been deleted elsewhere. The list will refresh.",
+                    RECORD_NOT_FOUND_MESSAGE,
                     parent=self,
                 )
                 self._refresh()
