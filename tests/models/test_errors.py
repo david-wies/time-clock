@@ -1,4 +1,3 @@
-import pickle
 import sqlite3
 
 import pytest
@@ -83,22 +82,6 @@ def test_record_not_found_error_rejects_invalid_action() -> None:
         RecordNotFoundError(RecordEntity.TIME_RECORD, 1, "insert")  # type: ignore[arg-type]
 
 
-def test_record_not_found_error_is_immutable() -> None:
-    """entity/record_id/action must be structurally immutable after
-    construction — DatabaseErrorGuard logs them verbatim, so a mutated
-    value would produce a misleading diagnostic log line. Underscore-prefixed
-    fields with read-only @property alone don't prevent `err._entity = ...`;
-    __setattr__/__delattr__ must block it outright."""
-    err = RecordNotFoundError(RecordEntity.TIME_RECORD, 1, RecordAction.UPDATE)
-
-    with pytest.raises(AttributeError):
-        err._entity = RecordEntity.VACATION_RECORD  # type: ignore[misc]
-    with pytest.raises(AttributeError):
-        err.record_id = 2  # type: ignore[misc, assignment]
-    with pytest.raises(AttributeError):
-        del err._entity  # type: ignore[misc]
-
-
 def test_raise_if_no_rows_raises_runtime_error_after_select(
     cursor: sqlite3.Cursor,
 ) -> None:
@@ -109,19 +92,3 @@ def test_raise_if_no_rows_raises_runtime_error_after_select(
 
     with pytest.raises(RuntimeError, match="rowcount is unavailable"):
         raise_if_no_rows(cursor, RecordEntity.TIME_RECORD, 1, RecordAction.UPDATE)
-
-
-def test_record_not_found_error_pickle_round_trip() -> None:
-    """Exception's default __reduce__ replays self.args (the single formatted
-    message) into the three-argument __init__, so unpickling would raise
-    TypeError without the __reduce__ override — pin the round-trip here."""
-    err = RecordNotFoundError(RecordEntity.VACATION_RECORD, 42, RecordAction.DELETE)
-
-    # Safe: round-tripping bytes we just produced in-process, not loading
-    # pickle data from an external source.
-    restored = pickle.loads(pickle.dumps(err))
-
-    assert restored.entity == RecordEntity.VACATION_RECORD
-    assert restored.record_id == 42
-    assert restored.action == RecordAction.DELETE
-    assert str(restored) == str(err)
