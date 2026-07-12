@@ -13,13 +13,13 @@ strict = true
 ignore_missing_imports = true
 explicit_package_bases = true
 
-# These packages are not yet held to the --strict bar (213 pre-existing
-# errors as of the codebase review that introduced this consolidation).
-# CI and pre-commit only ever scan domain/, core/, controllers/ explicitly
-# (see .github/workflows/ci.yml and .pre-commit-config.yaml), so these
-# overrides are currently inert -- but they must live here as the single
-# source of truth rather than in a separate mypy.ini, which mypy would
-# otherwise treat as taking precedence over this section wholesale.
+# These packages are not yet held to the --strict bar. The documented gate
+# (CLAUDE.md) and CI both scan domain/, core/, controllers/, models/
+# explicitly (see .github/workflows/ci.yml), so db/settings/views are not
+# gated today -- but the overrides must live here as the single source of
+# truth rather than in a separate mypy.ini, which mypy would otherwise treat
+# as taking precedence over this section wholesale. Removing an override
+# means that package must first pass `mypy --strict` cleanly.
 [[tool.mypy.overrides]]
 module = ["db.*"]
 ignore_errors = true
@@ -27,16 +27,6 @@ ignore_errors = true
 [[tool.mypy.overrides]]
 module = ["settings"]
 ignore_errors = true
-
-[[tool.mypy.overrides]]
-module = ["models.*"]
-ignore_errors = true
-
-# models.errors is held to --strict despite the models.* blanket above:
-# mypy gives more-specific module patterns precedence over wildcards.
-[[tool.mypy.overrides]]
-module = ["models.errors"]
-ignore_errors = false
 
 [[tool.mypy.overrides]]
 module = ["views.*"]

@@ -65,7 +65,7 @@ jobs:
         run: pip install -r requirements-dev.txt
 
       - name: Run mypy
-        run: mypy --strict domain/ core/ controllers/ models/errors.py
+        run: mypy --strict domain/ core/ controllers/ models/
 
   test:
     name: Test
