@@ -168,7 +168,12 @@ def _make_dialog_for_record_not_found() -> VacationRecordDialog:
     (not just the date-parsing path covered by ``_make_dialog_for_save``
     above), with field values that pass every field/domain validation so
     ``_on_save`` actually reaches ``self._controller.save_record(...)`` and
-    the RECORD_NOT_FOUND branch under test can be exercised."""
+    the RECORD_NOT_FOUND branch under test can be exercised.
+
+    ``_record`` is an existing record with a non-null id (not ``None``):
+    RECORD_NOT_FOUND is a stale-*edit* race — a zero-row update — so the
+    branch is only reachable on the update path, and the surviving id must
+    reach ``save_record``."""
     dialog = VacationRecordDialog.__new__(VacationRecordDialog)
     dialog._get_date = lambda: date(2026, 6, 1)
     dialog._lbl_error = mock.MagicMock()
@@ -178,7 +183,7 @@ def _make_dialog_for_record_not_found() -> VacationRecordDialog:
     dialog._var_vtype.get.return_value = str(VacationType.ANNUAL_LEAVE)
     dialog._var_note = mock.MagicMock()
     dialog._var_note.get.return_value = ""
-    dialog._record = None
+    dialog._record = mock.Mock(id=123)
     dialog._controller = mock.MagicMock()
     dialog.destroy = mock.MagicMock()
     dialog.record_vanished = False
@@ -202,6 +207,8 @@ def test_on_save_record_not_found_sets_vanished_warns_and_destroys() -> None:
     with mock.patch("views.vacation_record_dialog.messagebox") as messagebox_mock:
         dialog._on_save()
 
+    controller_mock.save_record.assert_called_once()
+    assert controller_mock.save_record.call_args.args[0].id == 123
     assert dialog.record_vanished is True
     messagebox_mock.showwarning.assert_called_once()
     destroy_mock.assert_called_once()

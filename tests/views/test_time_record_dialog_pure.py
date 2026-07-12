@@ -27,6 +27,11 @@ def _make_dialog_for_record_not_found() -> TimeRecordDialog:
     needs neither an office (``IN_SITE``-only requirement) nor a document
     path (``ROAD``-only branch), so ``_var_office``/``_get_doc_path`` never
     need to be stood in.
+
+    ``_record`` is an existing record with a non-null id (not ``None``):
+    RECORD_NOT_FOUND is a stale-*edit* race — a zero-row update — so the
+    branch is only reachable on the update path, and the surviving id must
+    reach ``save_record``.
     """
     dialog = TimeRecordDialog.__new__(TimeRecordDialog)
     dialog._get_date = lambda: date(2026, 6, 1)
@@ -41,7 +46,7 @@ def _make_dialog_for_record_not_found() -> TimeRecordDialog:
     dialog._var_work_type.get.return_value = str(WorkType.REMOTE)
     dialog._var_note = mock.MagicMock()
     dialog._var_note.get.return_value = ""
-    dialog._record = None
+    dialog._record = mock.Mock(id=123)
     dialog._controller = mock.MagicMock()
     dialog.destroy = mock.MagicMock()
     dialog.record_vanished = False
@@ -65,6 +70,8 @@ def test_on_save_record_not_found_sets_vanished_warns_and_destroys() -> None:
     with mock.patch("views.time_record_dialog.messagebox") as messagebox_mock:
         dialog._on_save()
 
+    controller_mock.save_record.assert_called_once()
+    assert controller_mock.save_record.call_args.args[0].id == 123
     assert dialog.record_vanished is True
     messagebox_mock.showwarning.assert_called_once()
     destroy_mock.assert_called_once()
