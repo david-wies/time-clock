@@ -8,7 +8,7 @@ from typing import Any
 from core.events import Event, EventBus
 from core.timeutil import date_to_iso, iso_to_date, period_bounds
 from db.database import Database
-from domain.enums import VacationType
+from domain.enums import RecordAction, RecordEntity, VacationType
 from domain.types import (
     CarryOverAllowance,
     CarryOverLogEntry,
@@ -16,6 +16,7 @@ from domain.types import (
     VacationSummary,
 )
 from models._row_mapping import rows_to_records
+from models.errors import raise_if_no_rows
 
 logger = logging.getLogger(__name__)
 
@@ -126,10 +127,12 @@ class VacationModel:
                         record.id,
                     ),
                 )
-                if cursor.rowcount == 0:
-                    raise sqlite3.DatabaseError(
-                        f"No vacation record with id={record.id} exists to update"
-                    )
+                raise_if_no_rows(
+                    cursor,
+                    RecordEntity.VACATION_RECORD,
+                    record.id,
+                    RecordAction.UPDATE,
+                )
             self.bus.publish(Event.VACATION_CHANGED)
 
     def delete_record(self, record_id: int) -> None:
@@ -139,10 +142,12 @@ class VacationModel:
                 cursor = conn.execute(
                     "DELETE FROM vacation_record WHERE id = ?;", (record_id,)
                 )
-                if cursor.rowcount == 0:
-                    raise sqlite3.DatabaseError(
-                        f"No vacation_record with id={record_id} exists to delete"
-                    )
+                raise_if_no_rows(
+                    cursor,
+                    RecordEntity.VACATION_RECORD,
+                    record_id,
+                    RecordAction.DELETE,
+                )
             self.bus.publish(Event.VACATION_CHANGED)
 
     # --- Vacation Settings Queries ---

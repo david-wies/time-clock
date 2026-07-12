@@ -728,6 +728,9 @@ SicknessController:
 
 - `validate_*` functions live beside each controller and are **pure** (record + context → error list) so §5.6 / §6.5 / §7.3 tables are enforced in one tested place, independent of any dialog.
 - `Result` is a small `@dataclass(frozen=True)(ok: bool, errors: tuple[str, ...], warnings: tuple[str, ...])` — no exceptions for expected validation failures; exceptions reserved for true faults (DB error). Frozen so the `ok=False ⟺ errors non-empty` invariant can't be broken post-construction.
+- `DatabaseErrorGuard` (`controllers/time_clock_controller.py`) is the shared exception → `Result` translation used by every controller mutation, covering both `sqlite3.Error` and `RecordNotFoundError`. `RecordNotFoundError` (`models/errors.py`, deliberately *not* a `sqlite3.Error` subclass — kept disjoint so a bare `except sqlite3.Error` elsewhere can never silently reclassify it as a real DB failure) is what `update_record()`/`delete_record()` raise when the row affected is zero — an expected stale-record race (double-click delete, stale UI), not a true DB fault.
+- Raising an exception here is deliberate control flow, not an exception to the "no exceptions for expected validation failures" rule in the line above: the guard catches it and translates it into `Result(ok=False, errors=("RECORD_NOT_FOUND",))` — the machine-readable `WarningCode.RECORD_NOT_FOUND` code, following the same pattern as `OVER_BALANCE_WARNING` — instead of the generic "Database error" message, so no exception ever escapes to callers.
+- Views match on the code and own the user-facing wording: they inform the user, reload the tab's data so the phantom row disappears, and close any open edit dialog (its save can never succeed).
 - Views render `Result.errors`; they never re-implement validation.
 
 ## 20. Testing

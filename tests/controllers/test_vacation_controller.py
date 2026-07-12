@@ -7,7 +7,7 @@ import pytest
 from controllers.vacation_controller import VacationController
 from core.events import EventBus
 from db.database import Database
-from domain.enums import VacationType
+from domain.enums import VacationType, WarningCode
 from domain.types import VacationRecord
 from models.time_clock_model import TimeClockModel
 from models.vacation_model import VacationModel
@@ -520,7 +520,7 @@ def test_save_record_update_on_since_deleted_record_returns_error_result(
     it via the model directly (bypassing the controller, e.g. simulating a
     concurrent delete from another view), then try to save an edit for that
     now-stale id through the controller. update_record() raises
-    sqlite3.DatabaseError, which DatabaseErrorGuard must catch and turn into
+    RecordNotFoundError, which DatabaseErrorGuard must catch and turn into
     Result(ok=False, ...) -- not a mocked generic exception, the real
     rowcount mechanism."""
     controller.model.save_settings(2026, 160.0, 40.0)
@@ -534,7 +534,58 @@ def test_save_record_update_on_since_deleted_record_returns_error_result(
     res = controller.save_record(stale)
 
     assert res.ok is False
+    assert res.errors == (WarningCode.RECORD_NOT_FOUND.value,)
+
+
+def test_save_record_update_sqlite_error_is_caught_and_returned(
+    controller: VacationController, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A genuine (non-not-found) sqlite3.Error raised by update_record() on
+    the edit path must still produce the old generic "Database error: ..."
+    message, not be misrouted into the RECORD_NOT_FOUND branch
+    exercised by
+    test_save_record_update_on_since_deleted_record_returns_error_result
+    above."""
+    controller.model.save_settings(2026, 160.0, 40.0)
+    rec = VacationRecord(None, date(2026, 7, 15), 8.0, VacationType.ANNUAL_LEAVE)
+    assert controller.save_record(rec).ok is True
+    assert rec.id is not None
+
+    def _boom(_record: VacationRecord) -> None:
+        raise sqlite3.Error("db error")
+
+    monkeypatch.setattr(controller.model, "update_record", _boom)
+
+    edited = dataclasses.replace(rec, hours=4.0)
+    res = controller.save_record(edited)
+
+    assert res.ok is False
     assert "Database error" in res.errors[0]
+
+
+def test_delete_record_on_since_deleted_record_returns_error_result(
+    controller: VacationController,
+) -> None:
+    """End-to-end exercise of the rowcount-based guard in
+    VacationModel.delete_record(): save a real record, delete it once via
+    the controller's own delete_record(), then delete the same now-stale id
+    again through the controller. The second delete_record() call raises
+    RecordNotFoundError on the zero-rowcount DELETE, which
+    DatabaseErrorGuard must catch and turn into Result(ok=False, ...) --
+    not a mocked generic exception, the real rowcount mechanism exercised by
+    test_save_record_update_on_since_deleted_record_returns_error_result
+    above."""
+    controller.model.save_settings(2026, 160.0, 40.0)
+    rec = VacationRecord(None, date(2026, 7, 15), 8.0, VacationType.ANNUAL_LEAVE)
+    assert controller.save_record(rec).ok is True
+    assert rec.id is not None
+
+    assert controller.delete_record(rec.id).ok is True
+
+    res = controller.delete_record(rec.id)
+
+    assert res.ok is False
+    assert res.errors == (WarningCode.RECORD_NOT_FOUND.value,)
 
 
 def test_delete_record_non_sqlite_error_propagates(

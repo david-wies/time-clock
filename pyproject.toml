@@ -32,6 +32,12 @@ ignore_errors = true
 module = ["models.*"]
 ignore_errors = true
 
+# models.errors is held to --strict despite the models.* blanket above:
+# mypy gives more-specific module patterns precedence over wildcards.
+[[tool.mypy.overrides]]
+module = ["models.errors"]
+ignore_errors = false
+
 [[tool.mypy.overrides]]
 module = ["views.*"]
 ignore_errors = true

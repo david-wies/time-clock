@@ -6,9 +6,9 @@ from datetime import date, time
 import pytest
 
 from controllers.time_clock_controller import DatabaseErrorGuard, TimeClockController
-from core.events import EventBus
+from core.events import Event, EventBus
 from db.database import Database
-from domain.enums import WorkType
+from domain.enums import WarningCode, WorkType
 from domain.types import TimeRecord
 from models.time_clock_model import TimeClockModel
 from settings import SettingsManager
@@ -64,7 +64,7 @@ def test_save_record_on_since_deleted_record_returns_error_result(
     model.update_record() (see test_save_record_with_id_updates_existing_record
     above). If the underlying row was deleted out from under the caller
     (e.g. a stale UI selection), model.update_record() now raises
-    sqlite3.DatabaseError on the zero-rowcount UPDATE -- this must surface
+    RecordNotFoundError on the zero-rowcount UPDATE -- this must surface
     as Result(ok=False, ...) via DatabaseErrorGuard, not propagate or
     silently report success. Exercises the real rowcount-based mechanism
     end-to-end (a real row is inserted then really deleted), rather than
@@ -81,7 +81,123 @@ def test_save_record_on_since_deleted_record_returns_error_result(
     res = controller.save_record(stale)
 
     assert res.ok is False
-    assert "Database error" in res.errors[0]
+    assert res.errors == (WarningCode.RECORD_NOT_FOUND.value,)
+
+
+def test_delete_record_on_since_deleted_record_returns_error_result(
+    controller: TimeClockController,
+) -> None:
+    """delete_record() called twice on the same id: the first call really
+    deletes the row, and the second call must hit the same zero-rowcount
+    guard exercised by test_save_record_on_since_deleted_record_returns_error_result
+    above, converting the resulting RecordNotFoundError into
+    Result(ok=False, ...) via DatabaseErrorGuard rather than propagating
+    or silently reporting success on a no-op delete."""
+    rec = TimeRecord(
+        None, date(2026, 6, 26), time(9, 0), time(17, 0), 30, WorkType.REMOTE
+    )
+    assert controller.save_record(rec).ok is True
+    assert rec.id is not None
+
+    assert controller.delete_record(rec.id).ok is True
+
+    res = controller.delete_record(rec.id)
+
+    assert res.ok is False
+    assert res.errors == (WarningCode.RECORD_NOT_FOUND.value,)
+
+
+def test_delete_record_on_since_deleted_record_logs_info_with_no_traceback(
+    controller: TimeClockController, caplog: pytest.LogCaptureFixture
+) -> None:
+    """DatabaseErrorGuard.__exit__ special-cases RecordNotFoundError: per its
+    docstring, this is an expected "record already deleted" race (e.g. a
+    double-click delete), not a genuine DB failure, so it must be logged at
+    INFO with no traceback -- unlike a real sqlite3.Error, which is logged
+    via logger.exception(...) (ERROR level, with traceback). This pins down
+    that distinction, which is currently only documented in the class
+    docstring and would not otherwise be caught by a regression (e.g.
+    swapping .info() for .exception(), or downgrading to .debug())."""
+    rec = TimeRecord(
+        None, date(2026, 6, 26), time(9, 0), time(17, 0), 30, WorkType.REMOTE
+    )
+    assert controller.save_record(rec).ok is True
+    assert rec.id is not None
+
+    assert controller.delete_record(rec.id).ok is True
+
+    with caplog.at_level(logging.INFO):
+        res = controller.delete_record(rec.id)
+
+    assert res.ok is False
+    not_found_records = [
+        record for record in caplog.records if "record not found" in record.message
+    ]
+    assert len(not_found_records) == 1
+    record = not_found_records[0]
+    assert record.levelname == "INFO"
+    assert record.exc_info is None
+    assert f"record_id={rec.id}" in record.message
+    assert "entity=time_record" in record.message
+    assert "action=delete" in record.message
+    # The INFO line must also carry the guard's contextual message/args
+    # (what operation was being attempted), just like the generic
+    # sqlite3.Error branch does — entity/id/action alone drops that context.
+    assert (
+        f"(context: Database error while deleting time record id={rec.id})"
+        in record.message
+    )
+
+
+def test_clock_out_on_since_deleted_open_record_returns_record_not_found(
+    controller: TimeClockController,
+    event_bus: EventBus,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """clock_out() fetches today's open record and then update_record()s it
+    with end_time set. If that record is deleted out from under it inside
+    that window (deleted "elsewhere" — e.g. another window or the tray
+    acting on the same DB), the UPDATE affects zero rows and raises
+    RecordNotFoundError, which must surface as the machine-readable
+    RECORD_NOT_FOUND code (the view owns clock-out-appropriate wording),
+    and no mutation event may be published — the clock-out never happened.
+
+    The race window is real but too narrow to hit from test code without a
+    hook, so the deletion is injected via a wrapper around
+    get_time_ranges_by_date() — the last read clock_out() performs before
+    the guarded update. The UPDATE itself then runs unmocked against the
+    really-deleted row, exercising the genuine rowcount mechanism
+    end-to-end. The delete goes through a second model instance with its
+    own EventBus (simulating "another window"), so the controller's bus
+    stays silent throughout and the no-event assertion is meaningful."""
+    open_rec = TimeRecord(None, date(2026, 6, 26), time(8, 0), None, 0, WorkType.REMOTE)
+    record_id = controller.model.insert_record(open_rec)
+
+    other_window_model = TimeClockModel(controller.model.db, EventBus())
+    original = controller.model.get_time_ranges_by_date
+
+    def fetch_then_lose_race(d: date) -> list[tuple[int, time, time | None]]:
+        ranges = original(d)
+        other_window_model.delete_record(record_id)
+        return ranges
+
+    monkeypatch.setattr(
+        controller.model, "get_time_ranges_by_date", fetch_then_lose_race
+    )
+
+    published: list[Event] = []
+    event_bus.subscribe(
+        Event.TIME_RECORDS_CHANGED,
+        lambda **_kw: published.append(Event.TIME_RECORDS_CHANGED),
+    )
+
+    res = controller.clock_out()
+
+    assert res.ok is False
+    assert res.errors == (WarningCode.RECORD_NOT_FOUND.value,)
+    assert published == []
+    # The record really is gone — nothing was resurrected or half-updated.
+    assert controller.model.get_record_by_id(record_id) is None
 
 
 def test_save_overlapping_record(controller: TimeClockController) -> None:

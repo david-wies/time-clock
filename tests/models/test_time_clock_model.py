@@ -1,6 +1,5 @@
 import dataclasses
 import logging
-import sqlite3
 from datetime import date, time
 
 import pytest
@@ -9,6 +8,7 @@ from core.events import Event, EventBus
 from db.database import Database
 from domain.enums import WorkType
 from domain.types import TimeRecord
+from models.errors import RecordNotFoundError
 from models.time_clock_model import TimeClockModel
 
 
@@ -217,7 +217,7 @@ def test_delete_record_nonexistent_id_raises_and_publishes_no_event(
 
     event_bus.subscribe(Event.TIME_RECORDS_CHANGED, on_change)
 
-    with pytest.raises(sqlite3.DatabaseError, match="No time_record with id=999999"):
+    with pytest.raises(RecordNotFoundError, match="No time_record with id=999999"):
         model.delete_record(999999)
 
     assert change_called is False
@@ -249,7 +249,7 @@ def test_update_record_on_since_deleted_record_raises_and_publishes_no_event(
 
     event_bus.subscribe(Event.TIME_RECORDS_CHANGED, on_change)
 
-    with pytest.raises(sqlite3.DatabaseError, match=f"No time record with id={rec_id}"):
+    with pytest.raises(RecordNotFoundError, match=f"No time_record with id={rec_id}"):
         model.update_record(stored)
 
     assert change_called is False

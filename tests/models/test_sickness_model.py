@@ -1,6 +1,5 @@
 import dataclasses
 import logging
-import sqlite3
 from datetime import date
 
 import pytest
@@ -8,6 +7,7 @@ import pytest
 from core.events import Event, EventBus
 from db.database import Database
 from domain.types import SicknessRecord
+from models.errors import RecordNotFoundError
 from models.sickness_model import SicknessModel
 
 
@@ -249,7 +249,7 @@ def test_delete_record_nonexistent_id_raises_and_does_not_publish(
 
     event_bus.subscribe(Event.SICKNESS_CHANGED, on_change)
 
-    with pytest.raises(sqlite3.DatabaseError, match="No sickness record with id=999"):
+    with pytest.raises(RecordNotFoundError, match="No sickness_record with id=999"):
         model.delete_record(999)
 
     assert published is False
@@ -279,7 +279,7 @@ def test_update_record_on_since_deleted_record_raises_and_does_not_publish(
     event_bus.subscribe(Event.SICKNESS_CHANGED, on_change)
 
     with pytest.raises(
-        sqlite3.DatabaseError, match=f"No sickness record with id={rec_id}"
+        RecordNotFoundError, match=f"No sickness_record with id={rec_id}"
     ):
         model.update_record(fetched)
 

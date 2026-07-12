@@ -20,7 +20,13 @@ from core.events import Event, EventBus
 from core.hebrew_date import to_hebrew_label as _safe_hebrew
 from core.timeutil import MONTH_NAMES as _MONTH_NAMES
 from core.timeutil import time_to_str, to_display_date
-from domain.enums import WarningCode, Weekday, WorkType
+from domain.enums import (
+    RECORD_NOT_FOUND_MESSAGE,
+    RECORD_NOT_FOUND_OPEN_RECORD_MESSAGE,
+    WarningCode,
+    Weekday,
+    WorkType,
+)
 from domain.types import TimeRecord, WorkDayException
 from models.time_clock_model import TimeClockModel
 from settings import SettingsManager
@@ -779,11 +785,28 @@ class TimeClockTab(RecordTabMixin, ttk.Frame):
             if WarningCode.MULTIPLE_OPEN_RECORDS.value in result.errors:
                 self._pick_record_to_close()
                 return
+            if WarningCode.RECORD_NOT_FOUND.value in result.errors:
+                self._handle_vanished_open_record()
+                return
             messagebox.showerror(
                 "Clock Out Failed", "\n".join(result.errors), parent=self
             )
             return
         self._update_button_states()
+        if not self.model.get_open_records():
+            self._cancel_auto_refresh()
+
+    def _handle_vanished_open_record(self) -> None:
+        """Clock-out hit the stale-record race (RECORD_NOT_FOUND): the open
+        record was already deleted elsewhere. Inform the user with
+        clock-out-appropriate wording, then refresh so the phantom open
+        record disappears and the buttons/auto-refresh match reality."""
+        messagebox.showwarning(
+            "Nothing to Clock Out",
+            RECORD_NOT_FOUND_OPEN_RECORD_MESSAGE + " The display will refresh.",
+            parent=self,
+        )
+        self._refresh()
         if not self.model.get_open_records():
             self._cancel_auto_refresh()
 
@@ -835,6 +858,8 @@ class TimeClockTab(RecordTabMixin, ttk.Frame):
                 self._update_button_states()
                 if not self.model.get_open_records():
                     self._cancel_auto_refresh()
+            elif WarningCode.RECORD_NOT_FOUND.value in res.errors:
+                self._handle_vanished_open_record()
             else:
                 messagebox.showerror(
                     "Clock Out Failed", "\n".join(res.errors), parent=self
@@ -864,12 +889,18 @@ class TimeClockTab(RecordTabMixin, ttk.Frame):
                 parent=self,
             )
             return
-        TimeRecordDialog(
+        dlg = TimeRecordDialog(
             self,
             controller=self.controller,
             settings=self.settings,
             record=rec,
         )
+        # The dialog is modal (wait_window in __init__), so by now it has
+        # closed. If its save hit the RECORD_NOT_FOUND stale-record race,
+        # no mutation event was published — refresh explicitly so the
+        # phantom row disappears.
+        if dlg.record_vanished:
+            self._refresh()
 
     def _do_delete(self) -> None:
         rec_id = self._get_selected_record_id()
@@ -884,6 +915,14 @@ class TimeClockTab(RecordTabMixin, ttk.Frame):
             return
         result = self.controller.delete_record(rec_id)
         if not result.ok:
+            if WarningCode.RECORD_NOT_FOUND.value in result.errors:
+                messagebox.showinfo(
+                    "Record Already Deleted",
+                    RECORD_NOT_FOUND_MESSAGE,
+                    parent=self,
+                )
+                self._refresh()
+                return
             messagebox.showerror("Delete Failed", "\n".join(result.errors), parent=self)
 
     # ─────────────────────────── Lifecycle ──────────────────────────────────

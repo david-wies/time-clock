@@ -13,9 +13,10 @@ from core.timeutil import (
     time_to_str,
 )
 from db.database import Database
-from domain.enums import WorkType
+from domain.enums import RecordAction, RecordEntity, WorkType
 from domain.types import TimeRecord, WorkDayException
 from models._row_mapping import rows_to_records
+from models.errors import raise_if_no_rows
 
 logger = logging.getLogger(__name__)
 
@@ -245,10 +246,9 @@ class TimeClockModel:
                         record.id,
                     ),
                 )
-                if cursor.rowcount == 0:
-                    raise sqlite3.DatabaseError(
-                        f"No time record with id={record.id} exists to update"
-                    )
+                raise_if_no_rows(
+                    cursor, RecordEntity.TIME_RECORD, record.id, RecordAction.UPDATE
+                )
             self.bus.publish(Event.TIME_RECORDS_CHANGED)
 
     def delete_record(self, record_id: int) -> None:
@@ -258,10 +258,9 @@ class TimeClockModel:
                 cursor = conn.execute(
                     "DELETE FROM time_record WHERE id = ?;", (record_id,)
                 )
-                if cursor.rowcount == 0:
-                    raise sqlite3.DatabaseError(
-                        f"No time_record with id={record_id} exists to delete"
-                    )
+                raise_if_no_rows(
+                    cursor, RecordEntity.TIME_RECORD, record_id, RecordAction.DELETE
+                )
             self.bus.publish(Event.TIME_RECORDS_CHANGED)
 
     # --- Target Hours & Exceptions Queries ---

@@ -16,6 +16,7 @@ from domain.types import (
     set_generated_id,
     time_record_invariant_errors,
 )
+from models.errors import RecordNotFoundError
 from models.time_clock_model import TimeClockModel
 from settings import SettingsManager
 
@@ -24,8 +25,9 @@ logger = logging.getLogger(__name__)
 
 class DatabaseErrorGuard(AbstractContextManager[None]):
     """Shared implementation of this codebase's "controllers return Result,
-    never raise for expected validation failures" rule, specifically for
-    sqlite3 errors raised by model calls.
+    never raise for expected validation failures" rule, translating the
+    exceptions raised by model calls — sqlite3 errors and the (deliberately
+    non-sqlite3) `RecordNotFoundError` stale-record race — into Results.
 
     Every controller `save_record()`/`delete_record()`/etc. method used to
     hand-copy the same `except Exception as e: return Result(ok=False,
@@ -38,6 +40,17 @@ class DatabaseErrorGuard(AbstractContextManager[None]):
     propagates instead of being swallowed into a generic Result, and every
     caught sqlite3.Error is now logged via `logger.exception(...)` before
     being converted, which the original bare `except Exception` never did.
+
+    `RecordNotFoundError` (a distinct exception type, unrelated to
+    `sqlite3.Error` — see `models/errors.py`) is special-cased ahead of the
+    generic sqlite3.Error branch: it's an expected "record already deleted"
+    race, not a genuine DB failure, so it's logged at INFO (no traceback)
+    and converted to a Result carrying the machine-readable
+    `WarningCode.RECORD_NOT_FOUND` code instead of the generic "Database
+    error" message — views match on the code, own the user-facing wording,
+    and reload their data. It must be caught explicitly here, since it is
+    not a sqlite3.Error subclass and the generic branch below would not
+    catch it.
 
     The `with` block is expected to `return` on its success path, so code
     after the `with` statement is reached only when an error was caught —
@@ -69,13 +82,38 @@ class DatabaseErrorGuard(AbstractContextManager[None]):
         self._args = args
         self.result: Result | None = None
 
+    def __enter__(self) -> None:
+        """Returns None, matching the `AbstractContextManager[None]` generic
+        parameter above. The inherited `AbstractContextManager.__enter__`
+        returns `self`, not None, so without this override the declared
+        generic and the actual runtime return value would disagree — a
+        hypothetical `with guard as g:` would get the guard object at
+        runtime despite `g` being typed as None. This guard is only ever
+        used as bare `with guard:` (see class docstring); overriding
+        `__enter__` here makes that "no usable value on entry" contract
+        explicit and mypy-checked rather than incidental.
+        """
+        return None
+
     def __exit__(
         self,
         exc_type: type[BaseException] | None,
         exc: BaseException | None,
         tb: TracebackType | None,
     ) -> bool:
-        if exc_type is not None and issubclass(exc_type, sqlite3.Error):
+        if isinstance(exc, RecordNotFoundError):
+            self._log.info(
+                "record not found: entity=%s record_id=%s action=%s (context: "
+                + self._message
+                + ")",
+                exc.entity,
+                exc.record_id,
+                exc.action,
+                *self._args,
+            )
+            self.result = Result(ok=False, errors=(WarningCode.RECORD_NOT_FOUND.value,))
+            return True
+        if isinstance(exc, sqlite3.Error):
             self._log.exception(self._message, *self._args)
             self.result = Result(ok=False, errors=(f"Database error: {exc}",))
             return True
@@ -83,10 +121,10 @@ class DatabaseErrorGuard(AbstractContextManager[None]):
 
     def unwrap(self) -> Result:
         """Returns the Result captured by `__exit__` after a sqlite3.Error
-        was caught. Only call this in the code reached when the `with`
-        body did not itself return — i.e., right after the `with` block —
-        at which point an error is guaranteed to have been caught and
-        `self.result` populated.
+        or RecordNotFoundError was caught. Only call this in the code
+        reached when the `with` body did not itself return — i.e., right
+        after the `with` block — at which point an error is guaranteed to
+        have been caught and `self.result` populated.
         """
         if self.result is None:
             raise RuntimeError(

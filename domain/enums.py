@@ -7,6 +7,10 @@ __all__ = [
     "VacationType",
     "Weekday",
     "WarningCode",
+    "RECORD_NOT_FOUND_MESSAGE",
+    "RECORD_NOT_FOUND_OPEN_RECORD_MESSAGE",
+    "RecordEntity",
+    "RecordAction",
     "PeriodType",
     "OvertimePeriod",
 ]
@@ -45,9 +49,10 @@ class Weekday(IntEnum):
 class WarningCode(StrEnum):
     """A code identifying a non-fatal warning condition surfaced to the UI.
 
-    `blocking` marks whether this code requires a `force`/`confirm_*`
-    re-call to bypass (and therefore belongs in `Result.errors`), or is
-    purely informational (and belongs in `Result.warnings`)."""
+    `blocking` marks whether this code belongs in `Result.errors` — the
+    view must handle it specially (a `force`/`confirm_*` re-call, or a
+    data reload for `RECORD_NOT_FOUND`) — or is purely informational
+    (and belongs in `Result.warnings`)."""
 
     blocking: bool
 
@@ -61,6 +66,60 @@ class WarningCode(StrEnum):
     OPEN_RECORD_EXISTS = ("OPEN_RECORD_EXISTS", True)
     MULTIPLE_OPEN_RECORDS = ("MULTIPLE_OPEN_RECORDS", True)
     OVER_BALANCE = ("OVER_BALANCE_WARNING", True)
+    # The record targeted by an update/delete no longer exists (a stale-UI
+    # race: it was already deleted elsewhere). Views own the user-facing
+    # wording; on this code they should inform the user, reload their data
+    # so the phantom row disappears, and close any edit dialog.
+    RECORD_NOT_FOUND = ("RECORD_NOT_FOUND", True)
+
+
+# Shared user-facing copy for WarningCode.RECORD_NOT_FOUND, factored out so
+# the many view call sites that handle this code don't each hand-roll their
+# own near-identical sentence. Views still own *how* they present it (title,
+# messagebox variant, and any context-specific suffix) — these constants
+# only capture the wording that would otherwise be duplicated verbatim.
+
+# Used as-is by the record dialogs (save) and by the tab delete/remove
+# handlers (time clock, vacation, sickness, miliuim) — identical across all
+# of those call sites.
+RECORD_NOT_FOUND_MESSAGE = (
+    "This record no longer exists — it may have already been deleted "
+    "elsewhere. The list will refresh."
+)
+
+# Base sentence for the open-clock-in-record variant of RECORD_NOT_FOUND.
+# The tray icon's clock-out handler uses this as-is (no list/display to
+# refresh there); the time-clock tab's clock-out handler appends its own
+# " The display will refresh." suffix.
+RECORD_NOT_FOUND_OPEN_RECORD_MESSAGE = (
+    "The open clock-in record no longer exists — it may have already "
+    "been deleted elsewhere."
+)
+
+
+class RecordEntity(StrEnum):
+    """The kind of domain record a RecordNotFoundError refers to.
+
+    One member per model that calls raise_if_no_rows() from its
+    update_record()/delete_record() (models/time_clock_model.py,
+    models/vacation_model.py, models/sickness_model.py,
+    models/miliuim_model.py), mirroring the record dataclasses in
+    domain/types.py."""
+
+    TIME_RECORD = "time_record"
+    VACATION_RECORD = "vacation_record"
+    SICKNESS_RECORD = "sickness_record"
+    MILIUIM_RECORD = "miliuim_record"
+
+
+class RecordAction(StrEnum):
+    """The mutating operation that was attempted against a record which
+    turned out to be missing — used by RecordNotFoundError to describe
+    what raced with what (e.g. an update that lost to a concurrent
+    delete)."""
+
+    UPDATE = "update"
+    DELETE = "delete"
 
 
 class PeriodType(StrEnum):
