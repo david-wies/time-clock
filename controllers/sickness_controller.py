@@ -3,9 +3,8 @@
 import logging
 from datetime import date, timedelta
 
-from controllers.time_clock_controller import DatabaseErrorGuard
+from controllers.time_clock_controller import DatabaseErrorGuard, over_balance_block
 from core.timeutil import to_display_date
-from domain.enums import WarningCode
 from domain.types import (
     Hours,
     Result,
@@ -80,7 +79,9 @@ class SicknessController:
             projected_remaining = summary.allowance_hours - projected_used
 
             if projected_remaining < 0 and not confirm_over_balance:
-                return Result(ok=False, errors=(WarningCode.OVER_BALANCE.value,))
+                blocked = over_balance_block()
+                if blocked is not None:
+                    return blocked
 
             if record.id is None:
                 record_id = self.model.insert_record(record)
@@ -158,9 +159,9 @@ class SicknessController:
                 for yr, count in year_date_counts.items():
                     summary = self.model.calculate_sickness_summary(yr)
                     if summary.remaining_hours - hours * count < 0:
-                        return Result(
-                            ok=False, errors=(WarningCode.OVER_BALANCE.value,)
-                        )
+                        blocked = over_balance_block()
+                        if blocked is not None:
+                            return blocked
 
             # Note-length (and non-negative-hours) validity is a
             # context-free invariant enforced unconditionally by

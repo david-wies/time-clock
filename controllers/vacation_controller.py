@@ -2,8 +2,8 @@
 
 import logging
 
-from controllers.time_clock_controller import DatabaseErrorGuard
-from domain.enums import VacationType, WarningCode
+from controllers.time_clock_controller import DatabaseErrorGuard, over_balance_block
+from domain.enums import VacationType
 from domain.types import (
     Result,
     VacationRecord,
@@ -59,14 +59,14 @@ class VacationController:
         self, record: VacationRecord, confirm_over_balance: bool = False
     ) -> Result:
         """Validates and saves a VacationRecord."""
-        # NOT dead code: VacationRecord.__post_init__ deliberately does not
-        # reject vtype=CARRY_OVER (it must remain constructible so records
-        # read back from the DB via VacationModel._row_to_record() — which
-        # includes carry-over rows inserted by add_carry_over() — don't
-        # crash the Vacation tab / export dialog). This guard is what stops
-        # such a record (however a caller obtained one) from being routed
-        # through the general debit/credit save path instead of
-        # add_carry_over().
+        # This guard is what routes carry-over records to add_carry_over()
+        # rather than the general debit/credit save path. It is load-bearing:
+        # VacationRecord.__post_init__ deliberately does not reject
+        # vtype=CARRY_OVER (carry-over rows inserted by add_carry_over() must
+        # remain constructible so VacationModel._row_to_record() can read them
+        # back without crashing the Vacation tab / export dialog), so a
+        # carry-over record can legitimately reach this method and must be
+        # rejected here.
         if record.vtype == VacationType.CARRY_OVER:
             return Result(
                 ok=False,
@@ -116,7 +116,9 @@ class VacationController:
                 projected_remaining = summary.remaining + old_hours - record.hours
 
                 if projected_remaining < 0 and not confirm_over_balance:
-                    return Result(ok=False, errors=(WarningCode.OVER_BALANCE.value,))
+                    blocked = over_balance_block()
+                    if blocked is not None:
+                        return blocked
 
             if record.id is None:
                 record_id = self.model.insert_record(record)

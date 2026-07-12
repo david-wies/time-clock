@@ -149,6 +149,30 @@ def _is_blocking(code: str) -> bool:
     return True
 
 
+def over_balance_block() -> Result | None:
+    """The Result to return when a debit would exceed the available balance
+    and the caller hasn't confirmed — or None to let the save proceed.
+
+    Single source of truth for the vacation/sickness over-balance sites so
+    they stay in lockstep with WarningCode.OVER_BALANCE.blocking instead of
+    each hardcoding `Result(ok=False, errors=(OVER_BALANCE.value,))`. The
+    hardcoded form is correct only while OVER_BALANCE is blocking; routing
+    through here derives the behavior from `.blocking` the same way
+    `_is_blocking()` does for the time-clock codes, so a future flip of that
+    member is honored at every call site rather than silently ignored.
+
+    Today OVER_BALANCE is blocking, so this returns the ok=False error the
+    view handles with a `confirm_over_balance` re-call. Were the member ever
+    flipped to non-blocking, this returns None and the save proceeds —
+    mirroring how `_is_blocking()` lets non-blocking codes through instead of
+    turning them into errors.
+    """
+    code = WarningCode.OVER_BALANCE
+    if code.blocking:
+        return Result(ok=False, errors=(code.value,))
+    return None
+
+
 def times_overlap(s1: time, e1: time | None, s2: time, e2: time | None) -> bool:
     """Checks if two time intervals on the same day overlap."""
     start1 = s1.hour * 60 + s1.minute

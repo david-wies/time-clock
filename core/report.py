@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import calendar
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import date
+from typing import Protocol
 
 from core.balance import group_records_by_date, period_balance_from_grouped
 from core.timeutil import MONTH_NAMES
@@ -14,6 +16,37 @@ from models.sickness_model import SicknessModel
 from models.time_clock_model import TimeClockModel
 from models.vacation_model import VacationModel
 from settings import SettingsManager
+
+
+class _SkipCounting(Protocol):
+    """Structural type for a model that records how many malformed rows its
+    most recent list-fetch silently dropped (see models/_row_mapping.py's
+    ``rows_to_records()`` and each model's ``last_skipped_count``)."""
+
+    last_skipped_count: int
+
+
+def fetch_with_skip_count[R](
+    model: _SkipCounting, fetch: Callable[[], list[R]]
+) -> tuple[list[R], int]:
+    """Runs ``fetch()`` (a model list-fetch call) and returns
+    ``(records, model.last_skipped_count)`` as an explicit tuple.
+
+    This is the single audited place that reads the mutable
+    ``last_skipped_count`` attribute at the report/export call sites: it does
+    so immediately after the fetch that set it, then hands the count back by
+    value. Callers thread that returned int onward instead of re-reading the
+    attribute at a distance, so a later fetch on the same model can never
+    silently detach the surfaced count from the fetch it describes.
+
+    (Making the count travel *with* the records for real -- i.e. having the
+    public model methods return the ``(records, skipped)`` tuple that
+    ``rows_to_records()`` already produces internally -- would remove the
+    attribute entirely, but that is a models/ change out of scope here; this
+    helper is the closest safe approximation.)
+    """
+    records = fetch()
+    return records, model.last_skipped_count
 
 
 @dataclass(slots=True)
@@ -67,8 +100,10 @@ class ReportData:
     # vacation, sickness, and miliuim models) while assembling this report.
     # See models/_row_mapping.py:rows_to_records() and
     # views/record_tab_common.py:RecordTabMixin._append_skip_notice() for
-    # the underlying mechanism. period_summary() sums each model's
-    # last_skipped_count into this field so callers (report_dialog.py,
+    # the underlying mechanism. period_summary() sums each fetch's skip count
+    # into this field (threaded by value via fetch_with_skip_count() for the
+    # time-clock records fetch, read directly off the per-model
+    # last_skipped_count for the summary calls) so callers (report_dialog.py,
     # export_dialog.py) can surface a data-integrity warning to the user --
     # unlike the record tabs, this dataclass has no label of its own to
     # append the notice to.
@@ -152,17 +187,22 @@ def period_summary(
     start_date, end_date = period_range(period_type, year, month, quarter)
     label = _period_label(period_type, year, month, quarter)
 
-    # Fetch records once for the full year so monthly rows can reuse them
+    # Fetch records once for the full year so monthly rows can reuse them.
+    # fetch_with_skip_count() reads model_tc.last_skipped_count in the single
+    # audited spot immediately adjacent to the fetch that set it and hands
+    # back an explicit (records, skipped) tuple, so the count is threaded on
+    # by value from here -- it can no longer be silently detached by the
+    # later get_work_day_targets()/get_date_exceptions() reads below (neither
+    # of which touches last_skipped_count today, but the threading no longer
+    # depends on that staying true).
     if period_type == PeriodType.MONTH:
-        records = model_tc.get_records_for_period(year, month)
+        records, skipped_record_count = fetch_with_skip_count(
+            model_tc, lambda: model_tc.get_records_for_period(year, month)
+        )
     else:
-        records = model_tc.get_records_for_period(year)
-    # get_records_for_period() is the last list-fetch call on model_tc
-    # before this point, so last_skipped_count reflects it here -- captured
-    # before get_work_day_targets()/get_date_exceptions() run (neither of
-    # which goes through _rows_to_records(), so neither overwrites it, but
-    # capturing immediately keeps this correct even if that changes).
-    skipped_record_count = model_tc.last_skipped_count
+        records, skipped_record_count = fetch_with_skip_count(
+            model_tc, lambda: model_tc.get_records_for_period(year)
+        )
 
     targets = model_tc.get_work_day_targets()
 
@@ -204,12 +244,13 @@ def period_summary(
                 )
             )
 
-    # Vacation and sickness summaries are always year-level. Each call below
-    # fetches its own year's records internally (no `records=` override is
-    # passed here) and so sets that model's last_skipped_count -- captured
-    # immediately after each call for defense-in-depth consistency with the
-    # pattern above, though these are separate model instances so there's no
-    # actual cross-call overwrite risk here.
+    # Vacation and sickness summaries are always year-level. Each summary
+    # call fetches its own year's records *internally* (no `records=`
+    # override is passed here), so the fetch is encapsulated where
+    # fetch_with_skip_count() can't wrap it -- the count is read directly off
+    # that model's last_skipped_count right after the call. Each read targets
+    # a distinct model instance, so there is no shared-attribute overwrite
+    # window between them.
     vac = model_vacation.calculate_vacation_summary(year)
     skipped_record_count += model_vacation.last_skipped_count
     sick = model_sickness.calculate_sickness_summary(year)

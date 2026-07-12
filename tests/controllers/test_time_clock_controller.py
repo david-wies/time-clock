@@ -719,3 +719,30 @@ def test_delete_record_non_sqlite_error_propagates(
 
     with pytest.raises(KeyError):
         controller.delete_record(1)
+
+
+# ─────────────────────── over_balance_block() (shared helper) ─────────────────
+
+
+def test_over_balance_block_derives_from_warning_code_blocking(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """over_balance_block() must stay in lockstep with
+    WarningCode.OVER_BALANCE.blocking rather than hardcoding ok=False. Today
+    the member is blocking, so the helper returns the ok=False error the
+    vacation/sickness views handle with a confirm_over_balance re-call; were
+    the member ever flipped to non-blocking, the helper must return None so
+    the save proceeds instead of silently blocking forever."""
+    from controllers.time_clock_controller import over_balance_block
+
+    # Blocking today: exactly the Result the three sites used to hardcode.
+    assert WarningCode.OVER_BALANCE.blocking is True
+    blocked = over_balance_block()
+    assert blocked is not None
+    assert blocked.ok is False
+    assert blocked.errors == (WarningCode.OVER_BALANCE.value,)
+
+    # Simulate a future flip of the enum's .blocking property: the helper —
+    # and therefore every call site routed through it — stops blocking.
+    monkeypatch.setattr(WarningCode.OVER_BALANCE, "blocking", False)
+    assert over_balance_block() is None

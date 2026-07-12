@@ -14,7 +14,7 @@ from core.events import Event, EventBus
 from core.hebrew_date import to_hebrew_label
 from core.report import period_summary
 from db.database import Database
-from domain.enums import VacationType, WorkType
+from domain.enums import PeriodType, VacationType, WorkType
 from domain.types import SicknessRecord, TimeRecord, VacationRecord
 from models.sickness_model import SicknessModel
 from models.time_clock_model import TimeClockModel
@@ -315,7 +315,7 @@ def test_report_month(
 ) -> None:
     tc_model, vac_model, sick_model, settings = populated_db
     data = period_summary(
-        period_type="month",
+        period_type=PeriodType.MONTH,
         year=2026,
         month=6,
         quarter=None,
@@ -336,7 +336,7 @@ def test_report_quarter(
 ) -> None:
     tc_model, vac_model, sick_model, settings = populated_db
     data = period_summary(
-        period_type="quarter",
+        period_type=PeriodType.QUARTER,
         year=2026,
         month=None,
         quarter=2,
@@ -356,7 +356,7 @@ def test_report_year(
 ) -> None:
     tc_model, vac_model, sick_model, settings = populated_db
     data = period_summary(
-        period_type="year",
+        period_type=PeriodType.YEAR,
         year=2026,
         month=None,
         quarter=None,

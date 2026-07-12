@@ -16,11 +16,12 @@ logger = logging.getLogger(__name__)
 
 
 class MiliuimController:
-    """Note: there is no free validate_miliuim_record() function anymore —
-    every check it used to perform was context-free and either type-checked
-    or moved into MiliuimRecord.__post_init__. start_date/end_date being
-    required is enforced by their type annotation (`date`, not `date |
-    None`) rather than a runtime check — if a caller bypasses typing and
+    """MiliuimRecord validation is fully handled by static typing and
+    MiliuimRecord.__post_init__; there is no free validate_miliuim_record()
+    function, because every context-free check is either type-checked or
+    lives in __post_init__. start_date/end_date being required is enforced by
+    their type annotation (`date`, not `date | None`) rather than a runtime
+    check — if a caller bypasses typing and
     passes None anyway, the `end_date < start_date` comparison in
     miliuim_record_invariant_errors() raises an unhandled TypeError.
     save_record() below catches that TypeError and converts it to a clean
@@ -51,6 +52,14 @@ class MiliuimController:
             # one with a None date, which makes the `end_date < start_date`
             # comparison inside miliuim_record_invariant_errors() raise
             # TypeError instead of producing a clean validation error.
+            # Log with a traceback (matching DatabaseErrorGuard's
+            # logger.exception() sibling in this file) before converting to a
+            # Result, so this typing-bypass leaves an audit trail.
+            logger.exception(
+                "Invalid Miliuim record: start_date/end_date comparison raised "
+                "TypeError (a required date field was None) for record %r",
+                record,
+            )
             return Result(ok=False, errors=("Start date and end date are required.",))
         if errors:
             return Result(ok=False, errors=tuple(errors))

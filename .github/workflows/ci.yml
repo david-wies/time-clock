@@ -44,6 +44,11 @@ jobs:
       - name: Run ruff format check
         run: ruff format --check .
 
+      # Baselined via [tool.pylint] in pyproject.toml -- passes clean today.
+      # Full config cleanup (trimming the disable list) tracked in issue #42.
+      - name: Run pylint
+        run: pylint domain/ core/ controllers/ models/ views/ tests/ settings.py
+
   type-check:
     name: Type Check
     needs: lint

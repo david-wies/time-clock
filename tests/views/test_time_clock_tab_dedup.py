@@ -37,6 +37,21 @@ class _FakeWidget:
         pass
 
 
+class _CaptureLabel:
+    """Label fake that records its text so _append_skip_notice()'s
+    cget/config round-trip can be observed."""
+
+    def __init__(self) -> None:
+        self.text = ""
+
+    def config(self, **kw) -> None:
+        if "text" in kw:
+            self.text = kw["text"]
+
+    def cget(self, key: str) -> str:
+        return self.text if key == "text" else ""
+
+
 class _FakeTree:
     def __init__(self) -> None:
         self._rows: list[tuple] = []
@@ -237,3 +252,43 @@ def test_standalone_refresh_tree_still_works_without_prefetch(
     tab._refresh_tree()
     # Should have produced at least the month header row without raising.
     assert len(tab._tree._rows) >= 1
+
+
+def test_refresh_threads_skip_count_from_both_header_and_tree(
+    db: Database, event_bus: EventBus, settings_manager: SettingsManager
+) -> None:
+    """_refresh_header() and _refresh_tree() each capture their own fetch's
+    skip count and return it; _refresh_header_and_tree() must sum both
+    returns and surface the total via _append_skip_notice(). A malformed row
+    on "today" is dropped by both the header's get_records_by_date(today)
+    fetch and the tree's get_records_for_period(year, month) fetch, so the
+    surfaced count is 2 -- proving both returns are threaded, not just one."""
+    model = TimeClockModel(db, event_bus)
+    today = date.today()
+    conn = db.get_connection()
+    try:
+        with conn:
+            # break_minutes (600) exceeds the shift length -> fails the
+            # TimeRecord invariant and is dropped by _row_to_record().
+            conn.execute(
+                "INSERT INTO time_record "
+                "(date, start_time, end_time, break_minutes, work_type) "
+                "VALUES (?, '09:00', '10:00', 600, 'remote');",
+                (today.isoformat(),),
+            )
+    finally:
+        conn.close()
+
+    tab = _make_tab(
+        model,
+        settings_manager,
+        view_mode="month",
+        selected_year=today.year,
+        selected_month=today.month,
+        selected_week_start=today,
+    )
+    tab._lbl_today = _CaptureLabel()
+
+    tab._refresh_header_and_tree()
+
+    assert "2 record(s) skipped due to data errors" in tab._lbl_today.text

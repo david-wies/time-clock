@@ -731,7 +731,7 @@ class ReportDialog(tk.Toplevel):
                 with open(tmp_path, "wb") as f:
                     writer.write(f)
                 shutil.move(tmp_path, filepath)
-            except Exception:
+            except Exception:  # pylint: disable=broad-exception-caught
                 try:
                     os.unlink(tmp_path)
                 except Exception:  # pylint: disable=broad-exception-caught

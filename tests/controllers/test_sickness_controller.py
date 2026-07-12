@@ -83,6 +83,27 @@ def test_save_balance_warning_and_override(controller: SicknessController) -> No
     assert res_override.ok is True
 
 
+def test_over_balance_stays_in_lockstep_with_warning_code_blocking(
+    controller: SicknessController, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Both over-balance sites (save_record and save_range) route their
+    decision through over_balance_block(), so a flip of
+    WarningCode.OVER_BALANCE.blocking is honored rather than ignored by a
+    hardcoded ok=False. With the member forced non-blocking, an over-balance
+    save must proceed (ok=True) without a confirm_over_balance re-call."""
+    controller.model.save_settings(2026, 8.0)
+
+    monkeypatch.setattr(WarningCode.OVER_BALANCE, "blocking", False)
+
+    # save_record: 16h against an 8h allowance would normally block.
+    rec = SicknessRecord(None, date(2026, 6, 22), 16.0, "Over balance, allowed")
+    assert controller.save_record(rec).ok is True
+
+    # save_range: another 8h day still exceeds the allowance but is allowed.
+    res = controller.save_range(date(2026, 7, 6), date(2026, 7, 6), 8.0, "Sick")
+    assert res.ok is True
+
+
 def test_edit_path_over_balance_warning(controller: SicknessController) -> None:
     # Allowance = 16h; one record of 8h leaves 8h remaining.
     controller.model.save_settings(2026, 16.0)
