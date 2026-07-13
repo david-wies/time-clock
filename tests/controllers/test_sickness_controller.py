@@ -117,6 +117,7 @@ def test_edit_path_over_balance_warning(controller: SicknessController) -> None:
     assert res.ok is True
 
     # Raise hours to 24h: projected_used = 16h - 8h + 24h = 32h → remaining = -16h
+    assert rec.id is not None
     fetched = controller.model.get_record_by_id(rec.id)
     assert fetched is not None
     fetched = dataclasses.replace(fetched, hours=24.0)
@@ -146,6 +147,7 @@ def test_edit_across_year_boundary_credits_correct_year(
     # Move the 2026 record into 2027: its old hours must NOT be credited back
     # against 2027's balance (it was never counted there), so this should
     # trip the over-balance warning (8h existing + 8h moved-in > 8h allowance).
+    assert rec.id is not None
     fetched = controller.model.get_record_by_id(rec.id)
     assert fetched is not None
     fetched = dataclasses.replace(fetched, date=date(2027, 1, 20))
