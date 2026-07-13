@@ -112,8 +112,9 @@ def test_refresh_fetches_once_even_with_specific_month_selected(
         assert spy.call_count == 1
 
     # And the tree only shows the June record (client-side month filter).
-    assert len(cast(_FakeTree, tab._tree)._rows) == 2  # June record row + "Total" row
-    assert cast(_FakeTree, tab._tree)._rows[0][2] == "8.0h"
+    rows = cast(_FakeTree, tab._tree)._rows
+    assert len(rows) == 2  # June record row + "Total" row
+    assert rows[0][2] == "8.0h"
 
 
 def test_refresh_tree_shows_all_records_when_month_is_all(
