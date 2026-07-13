@@ -234,45 +234,74 @@ _GOOD_VAC_SQL = (
     "INSERT INTO vacation_record (date, hours, vtype, note) "
     "VALUES (?, 4.0, 'annual_leave', '');"
 )
+_BAD_SICK_SQL = (
+    "INSERT INTO sickness_record (date, hours, note) "
+    "VALUES (?, 8.0, ?);"  # note param overflows 500-char limit
+)
+_GOOD_SICK_SQL = "INSERT INTO sickness_record (date, hours, note) VALUES (?, 8.0, '');"
+
+_LONG_NOTE = "x" * 501  # one over the 500-char SicknessRecord/VacationRecord limit
 
 
-def test_fetch_records_time_sums_skipped_across_two_years(export_models, db) -> None:
-    """A malformed time_record in EACH of two years must make
-    `_fetch_records` return `skipped_count == 2`.
+def _seed_time(db, iso: str, *, bad: bool) -> None:
+    _exec(db, _BAD_TIME_SQL if bad else _GOOD_TIME_SQL, (iso,))
+
+
+def _seed_vacation(db, iso: str, *, bad: bool) -> None:
+    if bad:
+        _exec(db, _BAD_VAC_SQL, (iso, _LONG_NOTE))
+    else:
+        _exec(db, _GOOD_VAC_SQL, (iso,))
+
+
+def _seed_sickness(db, iso: str, *, bad: bool) -> None:
+    if bad:
+        _exec(db, _BAD_SICK_SQL, (iso, _LONG_NOTE))
+    else:
+        _exec(db, _GOOD_SICK_SQL, (iso,))
+
+
+@pytest.mark.parametrize(
+    "tab, seeder, good_dates",
+    [
+        pytest.param(
+            "time", _seed_time, (date(2025, 6, 1), date(2026, 6, 1)), id="time"
+        ),
+        pytest.param(
+            "vacation",
+            _seed_vacation,
+            (date(2025, 7, 1), date(2026, 7, 1)),
+            id="vacation",
+        ),
+        pytest.param(
+            "sickness",
+            _seed_sickness,
+            (date(2025, 8, 1), date(2026, 8, 1)),
+            id="sickness",
+        ),
+    ],
+)
+def test_fetch_records_sums_skipped_across_two_years(
+    export_models, db, tab: str, seeder, good_dates: tuple[date, date]
+) -> None:
+    """A malformed row in EACH of two years must make `_fetch_records`
+    return `skipped_count == 2` for every tab.
 
     This is the regression the whole test file otherwise misses: a bug that
     reset `year_skipped` in the wrong place, or that returned only the last
-    year's skip count, would still yield 1 here (or 0) instead of 2. A good
-    row per year is inserted too, so the returned record list also proves
-    both years were actually fetched.
+    year's skip count, would still yield 1 here (or 0) instead of 2. The
+    per-tab wiring is proven to route through each model's own
+    `last_skipped_count` for every year in the range. A good row per year is
+    inserted too, so the returned record list also proves both years were
+    actually fetched.
     """
-    dialog = _make_fetch_dialog(export_models, "time")
-    _exec(db, _BAD_TIME_SQL, ("2025-03-15",))
-    _exec(db, _BAD_TIME_SQL, ("2026-03-15",))
-    _exec(db, _GOOD_TIME_SQL, ("2025-06-01",))
-    _exec(db, _GOOD_TIME_SQL, ("2026-06-01",))
+    dialog = _make_fetch_dialog(export_models, tab)
+    seeder(db, "2025-03-15", bad=True)
+    seeder(db, "2026-03-15", bad=True)
+    seeder(db, good_dates[0].isoformat(), bad=False)
+    seeder(db, good_dates[1].isoformat(), bad=False)
 
     records, skipped_count = dialog._fetch_records(date(2025, 1, 1), date(2026, 12, 31))
 
     assert skipped_count == 2, "both years' skip counts must be summed, not just one"
-    assert [r.date for r in records] == [date(2025, 6, 1), date(2026, 6, 1)]
-
-
-def test_fetch_records_vacation_sums_skipped_across_two_years(
-    export_models, db
-) -> None:
-    """Same two-year accumulation contract for the VACATION tab: one
-    malformed vacation row per year must sum to `skipped_count == 2`,
-    confirming the per-tab wiring routes through the vacation model's own
-    `last_skipped_count` for every year in the range."""
-    dialog = _make_fetch_dialog(export_models, "vacation")
-    long_note = "x" * 501
-    _exec(db, _BAD_VAC_SQL, ("2025-04-10", long_note))
-    _exec(db, _BAD_VAC_SQL, ("2026-04-10", long_note))
-    _exec(db, _GOOD_VAC_SQL, ("2025-07-01",))
-    _exec(db, _GOOD_VAC_SQL, ("2026-07-01",))
-
-    records, skipped_count = dialog._fetch_records(date(2025, 1, 1), date(2026, 12, 31))
-
-    assert skipped_count == 2, "both years' skip counts must be summed, not just one"
-    assert [r.date for r in records] == [date(2025, 7, 1), date(2026, 7, 1)]
+    assert [r.date for r in records] == list(good_dates)

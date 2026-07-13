@@ -7,7 +7,7 @@ from types import SimpleNamespace
 from unittest import mock
 
 import pytest
-from pypdf import PdfWriter
+from pypdf import PdfReader, PdfWriter
 
 from core.events import EventBus
 from core.report import ReportData
@@ -352,3 +352,38 @@ def test_generate_pdf_success_writes_pdf_and_leaves_no_temps(
     assert not os.path.exists(filepath + ".merge.tmp")
     with open(filepath, "rb") as handle:
         assert handle.read(5) == b"%PDF-"
+
+
+def test_generate_pdf_success_merges_pdf_attachment_into_multipage_output(
+    db: Database, event_bus: EventBus, tmp_path
+) -> None:
+    """Success path through the merge branch: an in-period ROAD record with a
+    valid PDF attachment appends its page(s) onto the report body, the final
+    multi-page PDF lands at ``filepath`` and stays readable, and the
+    ``.merge.tmp`` artifact (the merge path's extra sibling temp) is cleaned
+    up. The mocked-``_generate_pdf`` export tests never reach this branch."""
+    dialog, tc_model = _make_pdf_export_dialog(db, event_bus)
+    attachment = tmp_path / "receipt.pdf"
+    _write_minimal_pdf(attachment)
+    tc_model.insert_record(
+        TimeRecord(
+            id=None,
+            date=date(2026, 6, 15),
+            start_time=time(8, 0),
+            end_time=time(16, 0),
+            break_minutes=30,
+            work_type=WorkType.ROAD,
+            document_path=str(attachment),
+        )
+    )
+    filepath = str(tmp_path / "report.pdf")
+
+    dialog._generate_pdf(_make_report_data(), filepath)
+
+    assert os.path.exists(filepath)
+    assert not os.path.exists(filepath + ".tmp")
+    assert not os.path.exists(filepath + ".merge.tmp")
+    with open(filepath, "rb") as handle:
+        reader = PdfReader(handle)
+        # report body page(s) + the one merged attachment page → strictly >1
+        assert len(reader.pages) > 1
