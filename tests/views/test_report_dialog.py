@@ -385,5 +385,9 @@ def test_generate_pdf_success_merges_pdf_attachment_into_multipage_output(
     assert not os.path.exists(filepath + ".merge.tmp")
     with open(filepath, "rb") as handle:
         reader = PdfReader(handle)
-        # report body page(s) + the one merged attachment page → strictly >1
-        assert len(reader.pages) > 1
+        # _make_report_data() renders a fixed 1-page body; _write_minimal_pdf
+        # adds exactly 1 attachment page → deterministic 2. Pinning the exact
+        # count (not just >1) catches a merge that drops the attachment (→1) or
+        # double-appends (→3); if the body's page count ever changes this must
+        # be updated deliberately.
+        assert len(reader.pages) == 2
