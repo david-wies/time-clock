@@ -13,7 +13,7 @@ from core.events import EventBus
 from core.report import ReportData
 from db.database import Database
 from domain.enums import PeriodType, WorkType
-from domain.types import SicknessRecord, TimeRecord
+from domain.types import Hours, SicknessRecord, TimeRecord
 from models.sickness_model import SicknessModel
 from models.time_clock_model import TimeClockModel
 from views.report_dialog import ReportDialog
@@ -100,7 +100,7 @@ def test_collect_documents_still_includes_sickness_docs(
         SicknessRecord(
             id=None,
             date=date(2026, 6, 20),
-            hours=8.0,
+            hours=Hours(8.0),
             document_path=str(doc_path),
         )
     )

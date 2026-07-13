@@ -15,7 +15,7 @@ from core.hebrew_date import to_hebrew_label
 from core.report import period_summary
 from db.database import Database
 from domain.enums import PeriodType, VacationType, WorkType
-from domain.types import SicknessRecord, TimeRecord, VacationRecord
+from domain.types import Hours, SicknessRecord, TimeRecord, VacationRecord
 from models.sickness_model import SicknessModel
 from models.time_clock_model import TimeClockModel
 from models.vacation_model import VacationModel
@@ -221,7 +221,7 @@ def test_vacation_four_pool_types(
         r = VacationRecord(
             id=None,
             date=date(2026, 6, i + 1),
-            hours=8.0,
+            hours=Hours(8.0),
             vtype=vtype,
             note=None,
         )
@@ -251,7 +251,7 @@ def test_sickness_add_and_convert(
     sick_ctrl: SicknessController, sick_model: SicknessModel
 ) -> None:
     sick_model.save_settings(year=2026, hours_per_year=80.0)
-    r = SicknessRecord(id=None, date=date(2026, 6, 10), hours=8.0, note="Flu")
+    r = SicknessRecord(id=None, date=date(2026, 6, 10), hours=Hours(8.0), note="Flu")
     result = sick_ctrl.save_record(r)
     assert result.ok
 
@@ -297,14 +297,14 @@ def populated_db(
     vr = VacationRecord(
         id=None,
         date=date(2026, 6, 5),
-        hours=8.0,
+        hours=Hours(8.0),
         vtype=VacationType.ANNUAL_LEAVE,
         note=None,
     )
     vac_ctrl.save_record(vr, confirm_over_balance=True)
 
     # Sickness
-    sr = SicknessRecord(id=None, date=date(2026, 6, 10), hours=8.0, note=None)
+    sr = SicknessRecord(id=None, date=date(2026, 6, 10), hours=Hours(8.0), note=None)
     sick_ctrl.save_record(sr)
 
     return tc_model, vac_model, sick_model, settings

@@ -7,7 +7,7 @@ import pytest
 from core.events import Event, EventBus
 from db.database import Database
 from domain.enums import VacationType
-from domain.types import VacationRecord
+from domain.types import Hours, VacationRecord
 from models.errors import RecordNotFoundError
 from models.time_clock_model import TimeClockModel
 from models.vacation_model import VacationModel
@@ -24,7 +24,7 @@ def test_vacation_events(db: Database, event_bus: EventBus) -> None:
 
     event_bus.subscribe(Event.VACATION_CHANGED, on_change)
 
-    rec = VacationRecord(None, date(2026, 7, 15), 8.0, VacationType.ANNUAL_LEAVE)
+    rec = VacationRecord(None, date(2026, 7, 15), Hours(8.0), VacationType.ANNUAL_LEAVE)
     rec_id = model.insert_record(rec)
     assert change_called is True
 
@@ -85,7 +85,7 @@ def test_vacation_record_crud(db: Database, event_bus: EventBus) -> None:
     rec = VacationRecord(
         id=None,
         date=date(2026, 7, 15),
-        hours=8.0,
+        hours=Hours(8.0),
         vtype=VacationType.ANNUAL_LEAVE,
         note="Summer vacation",
     )
@@ -129,7 +129,7 @@ def test_unpaid_leave_not_counted_as_used(db: Database, event_bus: EventBus) -> 
     model = VacationModel(db, event_bus)
     model.save_settings(2026, 160.0, 40.0)
 
-    rec = VacationRecord(None, date(2026, 7, 1), 8.0, VacationType.UNPAID_LEAVE)
+    rec = VacationRecord(None, date(2026, 7, 1), Hours(8.0), VacationType.UNPAID_LEAVE)
     model.insert_record(rec)
 
     summary = model.calculate_vacation_summary(2026)
@@ -151,20 +151,20 @@ def test_calculate_vacation_summary_sums_carry_over_and_used_from_one_fetch(
     model.save_settings(2026, 160.0, 40.0)
 
     model.insert_record(
-        VacationRecord(None, date(2026, 1, 1), 15.0, VacationType.CARRY_OVER)
+        VacationRecord(None, date(2026, 1, 1), Hours(15.0), VacationType.CARRY_OVER)
     )
     model.insert_record(
-        VacationRecord(None, date(2026, 3, 10), 24.0, VacationType.ANNUAL_LEAVE)
+        VacationRecord(None, date(2026, 3, 10), Hours(24.0), VacationType.ANNUAL_LEAVE)
     )
     model.insert_record(
-        VacationRecord(None, date(2026, 5, 5), 8.0, VacationType.PUBLIC_HOLIDAY)
+        VacationRecord(None, date(2026, 5, 5), Hours(8.0), VacationType.PUBLIC_HOLIDAY)
     )
     model.insert_record(
-        VacationRecord(None, date(2026, 8, 20), 16.0, VacationType.SPECIAL_LEAVE)
+        VacationRecord(None, date(2026, 8, 20), Hours(16.0), VacationType.SPECIAL_LEAVE)
     )
     # Not counted as "used" -- must not leak into either bucket.
     model.insert_record(
-        VacationRecord(None, date(2026, 9, 1), 40.0, VacationType.UNPAID_LEAVE)
+        VacationRecord(None, date(2026, 9, 1), Hours(40.0), VacationType.UNPAID_LEAVE)
     )
 
     conn = db.get_connection()
@@ -198,8 +198,10 @@ def test_vacation_balance_and_carry_over(db: Database, event_bus: EventBus) -> N
 
     # 2. Add some used vacation in 2025
     # Total used in 2025: 140h (so 20h remaining)
-    r1 = VacationRecord(None, date(2025, 6, 1), 120.0, VacationType.ANNUAL_LEAVE)
-    r2 = VacationRecord(None, date(2025, 12, 25), 20.0, VacationType.PUBLIC_HOLIDAY)
+    r1 = VacationRecord(None, date(2025, 6, 1), Hours(120.0), VacationType.ANNUAL_LEAVE)
+    r2 = VacationRecord(
+        None, date(2025, 12, 25), Hours(20.0), VacationType.PUBLIC_HOLIDAY
+    )
     model.insert_record(r1)
     model.insert_record(r2)
 
@@ -240,7 +242,7 @@ def test_carry_over_history(db: Database, event_bus: EventBus) -> None:
     model.save_settings(2026, 160.0, 40.0)
 
     # Use only 145h of 160h in 2025 (15h remaining)
-    r1 = VacationRecord(None, date(2025, 6, 1), 145.0, VacationType.ANNUAL_LEAVE)
+    r1 = VacationRecord(None, date(2025, 6, 1), Hours(145.0), VacationType.ANNUAL_LEAVE)
     model.insert_record(r1)
 
     model.add_carry_over(2025, 2026, 15.0)
@@ -258,7 +260,7 @@ def test_update_record_without_id_raises(db: Database, event_bus: EventBus) -> N
     statement, so this is checked explicitly rather than silently updating
     zero rows."""
     model = VacationModel(db, event_bus)
-    rec = VacationRecord(None, date(2026, 7, 15), 8.0, VacationType.ANNUAL_LEAVE)
+    rec = VacationRecord(None, date(2026, 7, 15), Hours(8.0), VacationType.ANNUAL_LEAVE)
 
     with pytest.raises(ValueError, match="Cannot update a record without an ID"):
         model.update_record(rec)
@@ -294,7 +296,7 @@ def test_update_record_on_since_deleted_record_raises(
     refreshed since another path deleted it) -- must raise rather than
     silently no-op, exactly like delete_record()'s own rowcount guard."""
     model = VacationModel(db, event_bus)
-    rec = VacationRecord(None, date(2026, 7, 15), 8.0, VacationType.ANNUAL_LEAVE)
+    rec = VacationRecord(None, date(2026, 7, 15), Hours(8.0), VacationType.ANNUAL_LEAVE)
     rec_id = model.insert_record(rec)
     fetched = model.get_record_by_id(rec_id)
     assert fetched is not None
@@ -372,7 +374,9 @@ def test_calculate_carry_over_allowance_clamps_negative_prev_surplus_to_zero(
     model.save_settings(2025, 10.0, 0.0)
     model.save_settings(2026, 100.0, 100.0)
 
-    over_drawn = VacationRecord(None, date(2025, 6, 1), 15.0, VacationType.ANNUAL_LEAVE)
+    over_drawn = VacationRecord(
+        None, date(2025, 6, 1), Hours(15.0), VacationType.ANNUAL_LEAVE
+    )
     model.insert_record(over_drawn)
     assert model.calculate_vacation_summary(2025).remaining == -5.0
 
@@ -447,7 +451,9 @@ def test_get_records_for_year_skips_malformed_row_and_logs_warning(
     TimeClockModel.get_date_exceptions()."""
     model = VacationModel(db, event_bus)
 
-    good = VacationRecord(None, date(2026, 7, 15), 8.0, VacationType.ANNUAL_LEAVE, "ok")
+    good = VacationRecord(
+        None, date(2026, 7, 15), Hours(8.0), VacationType.ANNUAL_LEAVE, "ok"
+    )
     model.insert_record(good)
 
     conn = db.get_connection()

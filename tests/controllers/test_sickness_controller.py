@@ -8,7 +8,7 @@ from controllers.sickness_controller import SicknessController
 from core.events import EventBus
 from db.database import Database
 from domain.enums import WarningCode
-from domain.types import SicknessRecord
+from domain.types import Hours, SicknessRecord
 from models.sickness_model import SicknessModel
 
 
@@ -20,16 +20,16 @@ def controller(db: Database, event_bus: EventBus) -> SicknessController:
 
 
 def test_save_valid_record(controller: SicknessController) -> None:
-    rec = SicknessRecord(id=None, date=date(2026, 2, 15), hours=8.0, note="Flu")
+    rec = SicknessRecord(id=None, date=date(2026, 2, 15), hours=Hours(8.0), note="Flu")
     res = controller.save_record(rec)
     assert res.ok is True
 
 
 def test_save_invalid_hours(controller: SicknessController) -> None:
-    rec_low = SicknessRecord(None, date(2026, 2, 15), 0.4, "Low hours")
+    rec_low = SicknessRecord(None, date(2026, 2, 15), Hours(0.4), "Low hours")
     assert controller.save_record(rec_low).ok is False
 
-    rec_high = SicknessRecord(None, date(2026, 2, 15), 24.1, "High hours")
+    rec_high = SicknessRecord(None, date(2026, 2, 15), Hours(24.1), "High hours")
     assert controller.save_record(rec_high).ok is False
 
 
@@ -44,7 +44,7 @@ def test_replace_into_invalid_negative_hours_raises(
     __post_init__ in full — an invalid replacement raises ValueError
     immediately, rather than producing a record SicknessController
     .save_record() would need to catch as a second line of defense."""
-    rec = SicknessRecord(None, date(2026, 2, 15), 8.0, "Flu")
+    rec = SicknessRecord(None, date(2026, 2, 15), Hours(8.0), "Flu")
     assert controller.save_record(rec).ok is True
 
     with pytest.raises(ValueError, match="Hours must be non-negative"):
@@ -55,7 +55,7 @@ def test_replace_into_invalid_note_too_long_raises(
     controller: SicknessController,
 ) -> None:
     """Same as above, but for the note-length invariant."""
-    rec = SicknessRecord(None, date(2026, 2, 15), 8.0, "Flu")
+    rec = SicknessRecord(None, date(2026, 2, 15), Hours(8.0), "Flu")
     assert controller.save_record(rec).ok is True
 
     with pytest.raises(ValueError, match="Note is too long"):
@@ -66,14 +66,14 @@ def test_save_balance_warning_and_override(controller: SicknessController) -> No
     # Allowance = 16h (2 days × 8h); two records of 8h each exhaust it.
     controller.model.save_settings(2026, 16.0)
 
-    rec1 = SicknessRecord(None, date(2026, 6, 22), 8.0, "Used 8h")
+    rec1 = SicknessRecord(None, date(2026, 6, 22), Hours(8.0), "Used 8h")
     assert controller.save_record(rec1).ok is True
 
-    rec2 = SicknessRecord(None, date(2026, 6, 29), 8.0, "Used 8h")
+    rec2 = SicknessRecord(None, date(2026, 6, 29), Hours(8.0), "Used 8h")
     assert controller.save_record(rec2).ok is True
 
     # Third record pushes used to 24h, remaining to -8h
-    rec3 = SicknessRecord(None, date(2026, 7, 6), 8.0, "Causes over balance")
+    rec3 = SicknessRecord(None, date(2026, 7, 6), Hours(8.0), "Causes over balance")
     res = controller.save_record(rec3)
     assert res.ok is False
     assert res.errors[0] == "OVER_BALANCE_WARNING"
@@ -97,7 +97,7 @@ def test_over_balance_stays_in_lockstep_with_warning_code_blocking(
     monkeypatch.setattr(WarningCode.OVER_BALANCE, "blocking", False)
 
     # save_record: 16h against an 8h allowance would normally block.
-    rec = SicknessRecord(None, date(2026, 6, 22), 16.0, "Over balance, allowed")
+    rec = SicknessRecord(None, date(2026, 6, 22), Hours(16.0), "Over balance, allowed")
     res_record = controller.save_record(rec)
     assert res_record.ok is True
     assert WarningCode.OVER_BALANCE.value in res_record.warnings
@@ -112,7 +112,7 @@ def test_edit_path_over_balance_warning(controller: SicknessController) -> None:
     # Allowance = 16h; one record of 8h leaves 8h remaining.
     controller.model.save_settings(2026, 16.0)
 
-    rec = SicknessRecord(None, date(2026, 6, 22), 8.0, "First sick day")
+    rec = SicknessRecord(None, date(2026, 6, 22), Hours(8.0), "First sick day")
     res = controller.save_record(rec)
     assert res.ok is True
 
@@ -137,10 +137,10 @@ def test_edit_across_year_boundary_credits_correct_year(
     # 2027 allowance = 8h, already fully used by a different record.
     controller.model.save_settings(2027, 8.0)
 
-    rec = SicknessRecord(None, date(2026, 12, 31), 8.0, "2026 sick day")
+    rec = SicknessRecord(None, date(2026, 12, 31), Hours(8.0), "2026 sick day")
     assert controller.save_record(rec).ok is True
 
-    other_2027 = SicknessRecord(None, date(2027, 1, 15), 8.0, "2027 sick day")
+    other_2027 = SicknessRecord(None, date(2027, 1, 15), Hours(8.0), "2027 sick day")
     assert controller.save_record(other_2027).ok is True
 
     # Move the 2026 record into 2027: its old hours must NOT be credited back
@@ -161,7 +161,7 @@ def test_edit_across_year_boundary_credits_correct_year(
 def test_save_range_rejects_overlapping_existing_record(
     controller: SicknessController,
 ) -> None:
-    existing = SicknessRecord(None, date(2026, 6, 10), 8.0, "Existing")
+    existing = SicknessRecord(None, date(2026, 6, 10), Hours(8.0), "Existing")
     assert controller.save_record(existing).ok is True
 
     res = controller.save_range(
@@ -247,7 +247,7 @@ def test_save_record_defense_in_depth_negative_hours_via_bypass(
     simulate that with the same object.__setattr__ escape hatch
     __post_init__ itself uses (bypassing the frozen-dataclass guard) to
     force hours negative after construction."""
-    rec = SicknessRecord(None, date(2026, 2, 15), 8.0, "Flu")
+    rec = SicknessRecord(None, date(2026, 2, 15), Hours(8.0), "Flu")
     object.__setattr__(rec, "hours", -1.0)
 
     res = controller.save_record(rec)
@@ -259,7 +259,7 @@ def test_save_record_defense_in_depth_negative_hours_via_bypass(
 def test_delete_record_success(controller: SicknessController) -> None:
     """The real (non-monkeypatched) delete_record() success path: a saved
     record is actually removed and the resulting Result is ok=True."""
-    rec = SicknessRecord(None, date(2026, 2, 15), 8.0, "Flu")
+    rec = SicknessRecord(None, date(2026, 2, 15), Hours(8.0), "Flu")
     assert controller.save_record(rec).ok is True
     assert rec.id is not None
 
@@ -371,7 +371,7 @@ def test_save_range_year_boundary_succeeds_when_both_years_have_balance(
 def test_save_record_sqlite_error_is_caught_and_returned(
     controller: SicknessController, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    rec = SicknessRecord(None, date(2026, 2, 15), 8.0, "Flu")
+    rec = SicknessRecord(None, date(2026, 2, 15), Hours(8.0), "Flu")
 
     def _boom(_record: SicknessRecord) -> int:
         raise sqlite3.OperationalError("database is locked")
@@ -386,7 +386,7 @@ def test_save_record_sqlite_error_is_caught_and_returned(
 def test_save_record_non_sqlite_error_propagates(
     controller: SicknessController, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    rec = SicknessRecord(None, date(2026, 2, 15), 8.0, "Flu")
+    rec = SicknessRecord(None, date(2026, 2, 15), Hours(8.0), "Flu")
 
     def _boom(_record: SicknessRecord) -> int:
         raise AttributeError("boom")
@@ -435,7 +435,7 @@ def test_save_record_update_on_since_deleted_record_returns_error_result(
 
     Hours stay low (8h) against the default 80h allowance so this exercises
     only the rowcount failure, not the over-balance path."""
-    rec = SicknessRecord(None, date(2026, 2, 15), 8.0, "Flu")
+    rec = SicknessRecord(None, date(2026, 2, 15), Hours(8.0), "Flu")
     assert controller.save_record(rec).ok is True
     assert rec.id is not None
 
@@ -456,7 +456,7 @@ def test_save_record_update_sqlite_error_is_caught_and_returned(
     exercised by
     test_save_record_update_on_since_deleted_record_returns_error_result
     above."""
-    rec = SicknessRecord(None, date(2026, 2, 15), 8.0, "Flu")
+    rec = SicknessRecord(None, date(2026, 2, 15), Hours(8.0), "Flu")
     assert controller.save_record(rec).ok is True
     assert rec.id is not None
 
@@ -484,7 +484,7 @@ def test_delete_record_on_since_deleted_record_returns_error_result(
     letting it propagate -- mirrors
     test_save_record_update_on_since_deleted_record_returns_error_result
     above but for the delete path."""
-    rec = SicknessRecord(None, date(2026, 2, 15), 8.0, "Flu")
+    rec = SicknessRecord(None, date(2026, 2, 15), Hours(8.0), "Flu")
     assert controller.save_record(rec).ok is True
     assert rec.id is not None
 
@@ -536,7 +536,7 @@ def test_save_record_summary_read_sqlite_error_is_caught_and_returned(
     guard (used to compute projected_used/projected_remaining), ahead of the
     insert -- a sqlite3.Error raised there must be caught exactly like one
     raised by insert_record()."""
-    rec = SicknessRecord(None, date(2026, 2, 15), 8.0, "Flu")
+    rec = SicknessRecord(None, date(2026, 2, 15), Hours(8.0), "Flu")
 
     def _boom(_year: int) -> None:
         raise sqlite3.Error("db error")
@@ -556,7 +556,7 @@ def test_save_record_edit_lookup_read_sqlite_error_is_caught_and_returned(
     path (record.id is not None) to look up the pre-edit hours for the
     projected-balance calculation -- a sqlite3.Error raised there must be
     caught the same way as one raised by insert_record()/update_record()."""
-    rec = SicknessRecord(None, date(2026, 2, 15), 8.0, "Flu")
+    rec = SicknessRecord(None, date(2026, 2, 15), Hours(8.0), "Flu")
     assert controller.save_record(rec).ok is True
     assert rec.id is not None
 

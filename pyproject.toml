@@ -32,6 +32,24 @@ ignore_errors = true
 module = ["views.*"]
 ignore_errors = true
 
+# Pyright runs as a CI + local gate alongside mypy, catching the editor-level
+# (Pylance) type errors mypy's scope misses. Scoped to production code, which
+# is clean under pyright's default "standard" mode today. It covers the four
+# layers mypy --strict checks (domain/ core/ controllers/ models/) plus db/,
+# settings.py, and main.py -- which mypy does not gate (db.* and settings carry
+# ignore_errors overrides above; main.py is outside mypy's scope), so for those
+# three pyright is the sole type gate, not a redundant second pass. tests/ and
+# views/ are deliberately out of scope: they still carry pre-existing pyright
+# findings (issue #31's float->Hours was cleared from tests/, but other
+# findings remain). Widening the include to tests/ + views/ is tracked in #42
+# (the Pyright gate), same as the pylint disable-list trim -- do it there, not
+# incidentally. Removing a path from this list means it must first pass
+# `pyright` cleanly.
+[tool.pyright]
+include = ["domain", "core", "controllers", "models", "db", "settings.py", "main.py"]
+pythonVersion = "3.14"
+typeCheckingMode = "standard"
+
 # Pylint runs as a CI + local gate alongside ruff/mypy. source-roots lets it
 # resolve intra-project imports despite the space in the repo directory name
 # (otherwise every `from core.x import ...` reports a false import-error).
