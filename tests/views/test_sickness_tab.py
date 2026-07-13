@@ -17,6 +17,8 @@ at the module level it is imported into.
 """
 
 from datetime import date
+from tkinter import ttk
+from typing import cast
 from unittest import mock
 
 from core.events import EventBus
@@ -46,7 +48,7 @@ def _make_tab(model: SicknessModel, selected_iid: str | None) -> SicknessTab:
     tab = SicknessTab.__new__(SicknessTab)
     tab.model = model
     tab.controller = mock.Mock()
-    tab._tree = _FakeTree(selected_iid)
+    tab._tree = cast(ttk.Treeview, _FakeTree(selected_iid))
     return tab
 
 

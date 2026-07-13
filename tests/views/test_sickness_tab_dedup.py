@@ -12,6 +12,8 @@ with lightweight fakes exposing only the methods the tab calls on them.
 """
 
 from datetime import date
+from tkinter import ttk
+from typing import cast
 from unittest import mock
 
 from core.events import EventBus
@@ -59,11 +61,11 @@ def _make_tab(model: SicknessModel, year: int, month: int) -> SicknessTab:
     tab._theme_mode = "light"
     tab._selected_year = year
     tab._selected_month = month
-    tab._tree = _FakeTree()
-    tab._lbl_balance = _FakeWidget()
-    tab._lbl_hours = _FakeWidget()
-    tab._btn_edit = _FakeWidget()
-    tab._btn_delete = _FakeWidget()
+    tab._tree = cast(ttk.Treeview, _FakeTree())
+    tab._lbl_balance = cast(ttk.Label, _FakeWidget())
+    tab._lbl_hours = cast(ttk.Label, _FakeWidget())
+    tab._btn_edit = cast(ttk.Button, _FakeWidget())
+    tab._btn_delete = cast(ttk.Button, _FakeWidget())
     return tab
 
 
@@ -110,8 +112,8 @@ def test_refresh_fetches_once_even_with_specific_month_selected(
         assert spy.call_count == 1
 
     # And the tree only shows the June record (client-side month filter).
-    assert len(tab._tree._rows) == 2  # June record row + "Total" row
-    assert tab._tree._rows[0][2] == "8.0h"
+    assert len(cast(_FakeTree, tab._tree)._rows) == 2  # June record row + "Total" row
+    assert cast(_FakeTree, tab._tree)._rows[0][2] == "8.0h"
 
 
 def test_refresh_tree_shows_all_records_when_month_is_all(
@@ -126,4 +128,4 @@ def test_refresh_tree_shows_all_records_when_month_is_all(
     tab._refresh()
 
     # Both records + the "Total" row.
-    assert len(tab._tree._rows) == 3
+    assert len(cast(_FakeTree, tab._tree)._rows) == 3

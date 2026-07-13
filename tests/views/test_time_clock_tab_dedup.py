@@ -21,6 +21,8 @@ refresh cycle in ``_refresh()``/``_auto_refresh()``.
 """
 
 from datetime import date, time, timedelta
+from tkinter import Misc, ttk
+from typing import cast
 from unittest import mock
 
 from core.events import EventBus
@@ -91,14 +93,14 @@ def _make_tab(
     tab._selected_month = selected_month
     tab._selected_week_start = selected_week_start
     tab._after_id = None
-    tab._tree = _FakeTree()
-    tab._lbl_today = _FakeWidget()
-    tab._lbl_target = _FakeWidget()
-    tab._lbl_remaining = _FakeWidget()
-    tab._btn_clock_in = _FakeWidget()
-    tab._btn_clock_out = _FakeWidget()
-    tab._btn_edit = _FakeWidget()
-    tab._btn_delete = _FakeWidget()
+    tab._tree = cast(ttk.Treeview, _FakeTree())
+    tab._lbl_today = cast(ttk.Label, _FakeWidget())
+    tab._lbl_target = cast(ttk.Label, _FakeWidget())
+    tab._lbl_remaining = cast(ttk.Label, _FakeWidget())
+    tab._btn_clock_in = cast(ttk.Button, _FakeWidget())
+    tab._btn_clock_out = cast(ttk.Button, _FakeWidget())
+    tab._btn_edit = cast(ttk.Button, _FakeWidget())
+    tab._btn_delete = cast(ttk.Button, _FakeWidget())
     return tab
 
 
@@ -212,7 +214,7 @@ def test_auto_refresh_fetches_targets_and_exceptions_once(
         def after(self, *_a, **_kw):
             return "after_id"
 
-    tab.root = _FakeRoot()
+    tab.root = cast(Misc, _FakeRoot())
 
     targets_patch, exc_patch = _spies(model)
     with targets_patch as targets_spy, exc_patch as exc_spy:
@@ -251,7 +253,7 @@ def test_standalone_refresh_tree_still_works_without_prefetch(
     )
     tab._refresh_tree()
     # Should have produced at least the month header row without raising.
-    assert len(tab._tree._rows) >= 1
+    assert len(cast(_FakeTree, tab._tree)._rows) >= 1
 
 
 def _insert_malformed_row(db: Database, d: date) -> None:
@@ -289,11 +291,14 @@ def test_refresh_dedups_today_skip_when_period_includes_today(
         selected_month=today.month,
         selected_week_start=today,
     )
-    tab._lbl_today = _CaptureLabel()
+    tab._lbl_today = cast(ttk.Label, _CaptureLabel())
 
     tab._refresh_header_and_tree()
 
-    assert "1 record(s) skipped due to data errors" in tab._lbl_today.text
+    assert (
+        "1 record(s) skipped due to data errors"
+        in cast(_CaptureLabel, tab._lbl_today).text
+    )
 
 
 def test_refresh_sums_header_and_tree_skips_for_disjoint_periods(
@@ -318,11 +323,14 @@ def test_refresh_sums_header_and_tree_skips_for_disjoint_periods(
         selected_month=other_month,
         selected_week_start=today,
     )
-    tab._lbl_today = _CaptureLabel()
+    tab._lbl_today = cast(ttk.Label, _CaptureLabel())
 
     tab._refresh_header_and_tree()
 
-    assert "2 record(s) skipped due to data errors" in tab._lbl_today.text
+    assert (
+        "2 record(s) skipped due to data errors"
+        in cast(_CaptureLabel, tab._lbl_today).text
+    )
 
 
 def test_navigation_surfaces_skip_notice_for_new_period(
@@ -345,11 +353,14 @@ def test_navigation_surfaces_skip_notice_for_new_period(
         selected_month=today.month,
         selected_week_start=today,
     )
-    tab._lbl_today = _CaptureLabel()
-    tab._lbl_week_range = _FakeWidget()
+    tab._lbl_today = cast(ttk.Label, _CaptureLabel())
+    tab._lbl_week_range = cast(ttk.Label, _FakeWidget())
 
     # Navigate to the previous week [today-7, today-1], which contains the bad
     # row but not today, so the count is the tree fetch's single drop.
     tab._prev_week()
 
-    assert "1 record(s) skipped due to data errors" in tab._lbl_today.text
+    assert (
+        "1 record(s) skipped due to data errors"
+        in cast(_CaptureLabel, tab._lbl_today).text
+    )
