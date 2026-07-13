@@ -239,6 +239,18 @@ def test_vacation_record_valid_construction_succeeds() -> None:
     assert rec.hours == 8.0
 
 
+def test_vacation_record_coerces_raw_float_hours_to_hours() -> None:
+    """__post_init__ re-wraps hours in Hours() — a raw float passed in still
+    ends up as an Hours instance, not a plain float. cast() here stands in for
+    a caller that hands over an unwrapped float (== 8.0 alone can't catch the
+    missing coercion, since a plain float compares equal too)."""
+    rec = VacationRecord(
+        None, date(2026, 7, 15), cast(Hours, 8.0), VacationType.ANNUAL_LEAVE
+    )
+    assert isinstance(rec.hours, Hours)
+    assert rec.hours == 8.0
+
+
 def test_vacation_record_negative_hours_raises() -> None:
     with pytest.raises(ValueError, match="non-negative"):
         VacationRecord(
