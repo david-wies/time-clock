@@ -72,6 +72,12 @@ jobs:
       - name: Run mypy
         run: mypy --strict domain/ core/ controllers/ models/
 
+      # Scope + mode configured in [tool.pyright] (pyproject.toml): production
+      # code only, "standard" mode. Catches the Pylance/editor type errors
+      # mypy's scope misses. Widening to tests/ + views/ tracked in #42.
+      - name: Run pyright
+        run: pyright
+
   test:
     name: Test
     needs: lint
