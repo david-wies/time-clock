@@ -22,6 +22,8 @@ rather than simply doing nothing, as a no-op edit action should.
 """
 
 from datetime import date
+from tkinter import ttk
+from typing import cast
 from unittest import mock
 
 from core.events import EventBus
@@ -49,7 +51,7 @@ def _make_tab(model: VacationModel, selected_iid: str | None) -> VacationTab:
     tab = VacationTab.__new__(VacationTab)
     tab.model = model
     tab.controller = mock.Mock()
-    tab._tree = _FakeTree(selected_iid)
+    tab._tree = cast(ttk.Treeview, _FakeTree(selected_iid))
     return tab
 
 

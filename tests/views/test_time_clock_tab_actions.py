@@ -23,6 +23,8 @@ click.
 """
 
 from datetime import date, time
+from tkinter import ttk
+from typing import cast
 from unittest import mock
 
 from core.events import EventBus
@@ -57,7 +59,7 @@ def _make_tab(
     tab.model = model
     tab.controller = controller if controller is not None else mock.Mock()
     tab.settings = mock.Mock()
-    tab._tree = _FakeTree(selected_iid)
+    tab._tree = cast(ttk.Treeview, _FakeTree(selected_iid))
     tab._theme_mode = "light"
     return tab
 
