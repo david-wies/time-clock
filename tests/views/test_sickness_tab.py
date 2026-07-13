@@ -22,7 +22,7 @@ from unittest import mock
 from core.events import EventBus
 from db.database import Database
 from domain.enums import WarningCode
-from domain.types import Result, SicknessRecord
+from domain.types import Hours, Result, SicknessRecord
 from models.sickness_model import SicknessModel
 from views.sickness_tab import SicknessTab
 
@@ -79,7 +79,9 @@ def test_do_edit_with_valid_selection_opens_edit_dialog(
     still fetch the record and open SickRecordDialog with it, exactly as
     before the no-selection guard was added."""
     model = SicknessModel(db, event_bus)
-    rec_id = model.insert_record(SicknessRecord(None, date(2026, 6, 22), 8.0, "Flu"))
+    rec_id = model.insert_record(
+        SicknessRecord(None, date(2026, 6, 22), Hours(8.0), "Flu")
+    )
     rec = model.get_record_by_id(rec_id)
     tab = _make_tab(model, selected_iid=f"rec_{rec_id}")
 
@@ -113,7 +115,9 @@ def test_do_edit_record_vanished_true_triggers_refresh(
     call ``self._refresh()`` to clear the now-phantom row. Only the
     ``False`` (no-op) half of this branch had coverage before."""
     model = SicknessModel(db, event_bus)
-    rec_id = model.insert_record(SicknessRecord(None, date(2026, 6, 22), 8.0, "Flu"))
+    rec_id = model.insert_record(
+        SicknessRecord(None, date(2026, 6, 22), Hours(8.0), "Flu")
+    )
     tab = _make_tab(model, selected_iid=f"rec_{rec_id}")
     refresh_mock = mock.Mock()
     tab._refresh = refresh_mock
@@ -137,7 +141,9 @@ def test_do_delete_record_not_found_shows_info_and_refreshes(
     "Record Already Removed" info box -- not the generic error box -- and
     call ``self._refresh()`` to clear the phantom row."""
     model = SicknessModel(db, event_bus)
-    rec_id = model.insert_record(SicknessRecord(None, date(2026, 6, 22), 8.0, "Flu"))
+    rec_id = model.insert_record(
+        SicknessRecord(None, date(2026, 6, 22), Hours(8.0), "Flu")
+    )
     tab = _make_tab(model, selected_iid=f"rec_{rec_id}")
     tab.controller = mock.Mock()
     tab.controller.delete_record.return_value = Result(

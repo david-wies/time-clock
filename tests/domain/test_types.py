@@ -8,6 +8,7 @@ tests/controllers/*.
 import dataclasses
 import sqlite3
 from datetime import date, datetime, time
+from typing import cast
 
 import pytest
 
@@ -234,13 +235,15 @@ def test_time_record_replace_reruns_full_validation() -> None:
 
 
 def test_vacation_record_valid_construction_succeeds() -> None:
-    rec = VacationRecord(None, date(2026, 7, 15), 8.0, VacationType.ANNUAL_LEAVE)
+    rec = VacationRecord(None, date(2026, 7, 15), Hours(8.0), VacationType.ANNUAL_LEAVE)
     assert rec.hours == 8.0
 
 
 def test_vacation_record_negative_hours_raises() -> None:
     with pytest.raises(ValueError, match="non-negative"):
-        VacationRecord(None, date(2026, 7, 15), -1.0, VacationType.ANNUAL_LEAVE)
+        VacationRecord(
+            None, date(2026, 7, 15), cast(Hours, -1.0), VacationType.ANNUAL_LEAVE
+        )
 
 
 def test_vacation_record_none_hours_raises_value_error() -> None:
@@ -250,14 +253,20 @@ def test_vacation_record_none_hours_raises_value_error() -> None:
     clean joined ValueError from __post_init__, not an unhandled TypeError
     escaping construction."""
     with pytest.raises(ValueError) as exc_info:
-        VacationRecord(None, date(2026, 7, 15), None, VacationType.ANNUAL_LEAVE)
+        VacationRecord(
+            None, date(2026, 7, 15), cast(Hours, None), VacationType.ANNUAL_LEAVE
+        )
     assert exc_info.value.args[0]
 
 
 def test_vacation_record_note_too_long_raises() -> None:
     with pytest.raises(ValueError, match="Note is too long"):
         VacationRecord(
-            None, date(2026, 7, 15), 8.0, VacationType.ANNUAL_LEAVE, note="a" * 501
+            None,
+            date(2026, 7, 15),
+            Hours(8.0),
+            VacationType.ANNUAL_LEAVE,
+            note="a" * 501,
         )
 
 
@@ -275,7 +284,11 @@ def test_vacation_record_allows_carry_over_vtype_for_db_readback() -> None:
     carry-over transfer on record.
     """
     rec = VacationRecord(
-        None, date(2026, 1, 1), 20.0, VacationType.CARRY_OVER, "Carry-over from 2025"
+        None,
+        date(2026, 1, 1),
+        Hours(20.0),
+        VacationType.CARRY_OVER,
+        "Carry-over from 2025",
     )
     assert rec.vtype == VacationType.CARRY_OVER
 
@@ -285,14 +298,14 @@ def test_vacation_record_is_frozen() -> None:
     test_time_record_is_frozen above. Callers must use dataclasses.replace()
     instead, which reruns __post_init__ in full — see
     test_vacation_record_replace_reruns_full_validation below."""
-    rec = VacationRecord(None, date(2026, 7, 15), 8.0, VacationType.ANNUAL_LEAVE)
+    rec = VacationRecord(None, date(2026, 7, 15), Hours(8.0), VacationType.ANNUAL_LEAVE)
 
     with pytest.raises(dataclasses.FrozenInstanceError):
         rec.hours = 4.0  # type: ignore[misc]
 
 
 def test_vacation_record_replace_reruns_full_validation() -> None:
-    rec = VacationRecord(None, date(2026, 7, 15), 8.0, VacationType.ANNUAL_LEAVE)
+    rec = VacationRecord(None, date(2026, 7, 15), Hours(8.0), VacationType.ANNUAL_LEAVE)
 
     with pytest.raises(ValueError, match="non-negative"):
         dataclasses.replace(rec, hours=-1.0)
@@ -302,13 +315,13 @@ def test_vacation_record_replace_reruns_full_validation() -> None:
 
 
 def test_sickness_record_valid_construction_succeeds() -> None:
-    rec = SicknessRecord(None, date(2026, 2, 15), 8.0, "Flu")
+    rec = SicknessRecord(None, date(2026, 2, 15), Hours(8.0), "Flu")
     assert rec.hours == 8.0
 
 
 def test_sickness_record_negative_hours_raises() -> None:
     with pytest.raises(ValueError, match="non-negative"):
-        SicknessRecord(None, date(2026, 2, 15), -0.5, "Flu")
+        SicknessRecord(None, date(2026, 2, 15), cast(Hours, -0.5), "Flu")
 
 
 def test_sickness_record_none_hours_raises_value_error() -> None:
@@ -318,26 +331,26 @@ def test_sickness_record_none_hours_raises_value_error() -> None:
     clean joined ValueError from __post_init__, not an unhandled TypeError
     escaping construction."""
     with pytest.raises(ValueError) as exc_info:
-        SicknessRecord(None, date(2026, 2, 15), None, "Flu")
+        SicknessRecord(None, date(2026, 2, 15), cast(Hours, None), "Flu")
     assert exc_info.value.args[0]
 
 
 def test_sickness_record_note_too_long_raises() -> None:
     with pytest.raises(ValueError, match="Note is too long"):
-        SicknessRecord(None, date(2026, 2, 15), 8.0, "a" * 501)
+        SicknessRecord(None, date(2026, 2, 15), Hours(8.0), "a" * 501)
 
 
 def test_sickness_record_is_frozen() -> None:
     """SicknessRecord is immutable, like TimeRecord — see
     test_time_record_is_frozen above."""
-    rec = SicknessRecord(None, date(2026, 2, 15), 8.0, "Flu")
+    rec = SicknessRecord(None, date(2026, 2, 15), Hours(8.0), "Flu")
 
     with pytest.raises(dataclasses.FrozenInstanceError):
         rec.hours = 4.0  # type: ignore[misc]
 
 
 def test_sickness_record_replace_reruns_full_validation() -> None:
-    rec = SicknessRecord(None, date(2026, 2, 15), 8.0, "Flu")
+    rec = SicknessRecord(None, date(2026, 2, 15), Hours(8.0), "Flu")
 
     with pytest.raises(ValueError, match="non-negative"):
         dataclasses.replace(rec, hours=-1.0)
@@ -391,23 +404,23 @@ def test_miliuim_record_replace_reruns_full_validation() -> None:
 
 
 def test_workday_exception_valid_construction_succeeds() -> None:
-    exc = WorkDayException(1, date(2026, 6, 1), 8.0, "Holiday")
+    exc = WorkDayException(1, date(2026, 6, 1), Hours(8.0), "Holiday")
     assert exc.hours == 8.0
 
 
 def test_workday_exception_negative_hours_raises() -> None:
     with pytest.raises(ValueError, match="non-negative"):
-        WorkDayException(1, date(2026, 6, 1), -1.0, "Holiday")
+        WorkDayException(1, date(2026, 6, 1), cast(Hours, -1.0), "Holiday")
 
 
 def test_workday_exception_nan_hours_raises() -> None:
     with pytest.raises(ValueError, match="non-negative"):
-        WorkDayException(1, date(2026, 6, 1), float("nan"), "Holiday")
+        WorkDayException(1, date(2026, 6, 1), cast(Hours, float("nan")), "Holiday")
 
 
 def test_workday_exception_infinite_hours_raises() -> None:
     with pytest.raises(ValueError, match="non-negative"):
-        WorkDayException(1, date(2026, 6, 1), float("inf"), "Holiday")
+        WorkDayException(1, date(2026, 6, 1), cast(Hours, float("inf")), "Holiday")
 
 
 def test_workday_exception_rejects_negative_hours_after_mutation() -> None:
@@ -415,7 +428,7 @@ def test_workday_exception_rejects_negative_hours_after_mutation() -> None:
     (domain/types.py), so mutating it to an invalid value on an
     already-constructed instance raises ValueError immediately, same as at
     construction time — see test_workday_exception_negative_hours_raises."""
-    exc = WorkDayException(1, date(2026, 6, 1), 8.0, "Holiday")
+    exc = WorkDayException(1, date(2026, 6, 1), Hours(8.0), "Holiday")
 
     with pytest.raises(ValueError, match="non-negative"):
         exc.hours = -1.0
@@ -425,18 +438,18 @@ def test_workday_exception_rejects_negative_hours_after_mutation() -> None:
 
 
 def test_carry_over_log_entry_valid_construction_succeeds() -> None:
-    entry = CarryOverLogEntry(1, 2025, 2026, 5.0, datetime(2026, 1, 1))
+    entry = CarryOverLogEntry(1, 2025, 2026, Hours(5.0), datetime(2026, 1, 1))
     assert entry.hours == 5.0
 
 
 def test_carry_over_log_entry_non_positive_hours_raises() -> None:
     with pytest.raises(ValueError, match="positive"):
-        CarryOverLogEntry(1, 2025, 2026, 0.0, datetime(2026, 1, 1))
+        CarryOverLogEntry(1, 2025, 2026, Hours(0.0), datetime(2026, 1, 1))
 
 
 def test_carry_over_log_entry_non_consecutive_years_raises() -> None:
     with pytest.raises(ValueError, match="one year after"):
-        CarryOverLogEntry(1, 2024, 2026, 5.0, datetime(2026, 1, 1))
+        CarryOverLogEntry(1, 2024, 2026, Hours(5.0), datetime(2026, 1, 1))
 
 
 def test_carry_over_log_entry_is_frozen() -> None:
@@ -447,7 +460,7 @@ def test_carry_over_log_entry_is_frozen() -> None:
     individually fine but jointly invalid (e.g. changing only from_year
     without re-checking it against to_year). See CarryOverLogEntry's
     docstring (domain/types.py)."""
-    entry = CarryOverLogEntry(1, 2025, 2026, 5.0, datetime(2026, 1, 1))
+    entry = CarryOverLogEntry(1, 2025, 2026, Hours(5.0), datetime(2026, 1, 1))
 
     with pytest.raises(dataclasses.FrozenInstanceError):
         entry.hours = 0.0  # type: ignore[misc]

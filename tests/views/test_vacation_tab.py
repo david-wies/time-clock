@@ -27,7 +27,7 @@ from unittest import mock
 from core.events import EventBus
 from db.database import Database
 from domain.enums import VacationType, WarningCode
-from domain.types import Result, VacationRecord
+from domain.types import Hours, Result, VacationRecord
 from models.vacation_model import VacationModel
 from views.vacation_tab import VacationTab
 
@@ -83,7 +83,9 @@ def test_do_edit_with_valid_selection_opens_edit_dialog(
     as before the no-selection guard was added."""
     model = VacationModel(db, event_bus)
     rec_id = model.insert_record(
-        VacationRecord(None, date(2026, 6, 1), 8.0, VacationType.ANNUAL_LEAVE, "Trip")
+        VacationRecord(
+            None, date(2026, 6, 1), Hours(8.0), VacationType.ANNUAL_LEAVE, "Trip"
+        )
     )
     rec = model.get_record_by_id(rec_id)
     tab = _make_tab(model, selected_iid=f"rec_{rec_id}")
@@ -119,7 +121,9 @@ def test_do_edit_record_vanished_true_triggers_refresh(
     ``False`` (no-op) half of this branch had coverage before."""
     model = VacationModel(db, event_bus)
     rec_id = model.insert_record(
-        VacationRecord(None, date(2026, 6, 1), 8.0, VacationType.ANNUAL_LEAVE, "Trip")
+        VacationRecord(
+            None, date(2026, 6, 1), Hours(8.0), VacationType.ANNUAL_LEAVE, "Trip"
+        )
     )
     tab = _make_tab(model, selected_iid=f"rec_{rec_id}")
     refresh_mock = mock.Mock()
@@ -145,7 +149,9 @@ def test_do_delete_record_not_found_shows_info_and_refreshes(
     call ``self._refresh()`` to clear the phantom row."""
     model = VacationModel(db, event_bus)
     rec_id = model.insert_record(
-        VacationRecord(None, date(2026, 6, 1), 8.0, VacationType.ANNUAL_LEAVE, "Trip")
+        VacationRecord(
+            None, date(2026, 6, 1), Hours(8.0), VacationType.ANNUAL_LEAVE, "Trip"
+        )
     )
     tab = _make_tab(model, selected_iid=f"rec_{rec_id}")
     tab.controller = mock.Mock()

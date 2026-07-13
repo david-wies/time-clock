@@ -16,7 +16,7 @@ from unittest import mock
 
 from core.events import EventBus
 from db.database import Database
-from domain.types import SicknessRecord
+from domain.types import Hours, SicknessRecord
 from models.sickness_model import SicknessModel
 from views.sickness_tab import SicknessTab
 
@@ -77,8 +77,8 @@ def test_refresh_fetches_year_records_only_once(
     whenever the month filter was 'All'."""
     model = SicknessModel(db, event_bus)
     model.save_settings(2026, 80.0)
-    model.insert_record(SicknessRecord(None, date(2026, 6, 22), 8.0, "Flu"))
-    model.insert_record(SicknessRecord(None, date(2026, 3, 1), 4.0, "Cold"))
+    model.insert_record(SicknessRecord(None, date(2026, 6, 22), Hours(8.0), "Flu"))
+    model.insert_record(SicknessRecord(None, date(2026, 3, 1), Hours(4.0), "Cold"))
 
     tab = _make_tab(model, year=2026, month=0)  # 0 = "All" months
 
@@ -98,8 +98,8 @@ def test_refresh_fetches_once_even_with_specific_month_selected(
     not issue a second query."""
     model = SicknessModel(db, event_bus)
     model.save_settings(2026, 80.0)
-    model.insert_record(SicknessRecord(None, date(2026, 6, 22), 8.0, "Flu"))
-    model.insert_record(SicknessRecord(None, date(2026, 3, 1), 4.0, "Cold"))
+    model.insert_record(SicknessRecord(None, date(2026, 6, 22), Hours(8.0), "Flu"))
+    model.insert_record(SicknessRecord(None, date(2026, 3, 1), Hours(4.0), "Cold"))
 
     tab = _make_tab(model, year=2026, month=6)
 
@@ -119,8 +119,8 @@ def test_refresh_tree_shows_all_records_when_month_is_all(
 ) -> None:
     model = SicknessModel(db, event_bus)
     model.save_settings(2026, 80.0)
-    model.insert_record(SicknessRecord(None, date(2026, 6, 22), 8.0, "Flu"))
-    model.insert_record(SicknessRecord(None, date(2026, 3, 1), 4.0, "Cold"))
+    model.insert_record(SicknessRecord(None, date(2026, 6, 22), Hours(8.0), "Flu"))
+    model.insert_record(SicknessRecord(None, date(2026, 3, 1), Hours(4.0), "Cold"))
 
     tab = _make_tab(model, year=2026, month=0)
     tab._refresh()

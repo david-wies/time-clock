@@ -25,14 +25,18 @@ import logging
 from datetime import date
 from types import SimpleNamespace
 
-from domain.types import WorkDayException
+from domain.types import Hours, WorkDayException
 from views.time_clock_tab import _build_exc_dict
 
 
 def test_build_exc_dict_parses_valid_rows() -> None:
     raw = [
-        WorkDayException(id=1, date=date(2026, 6, 1), hours=4.0, label="Half day"),
-        WorkDayException(id=2, date=date(2026, 6, 2), hours=0.0, label="Day off"),
+        WorkDayException(
+            id=1, date=date(2026, 6, 1), hours=Hours(4.0), label="Half day"
+        ),
+        WorkDayException(
+            id=2, date=date(2026, 6, 2), hours=Hours(0.0), label="Day off"
+        ),
     ]
     result = _build_exc_dict(raw)
     assert result == {

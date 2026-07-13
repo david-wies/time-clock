@@ -6,7 +6,7 @@ import pytest
 
 from core.events import Event, EventBus
 from db.database import Database
-from domain.types import SicknessRecord
+from domain.types import Hours, SicknessRecord
 from models.errors import RecordNotFoundError
 from models.sickness_model import SicknessModel
 
@@ -22,7 +22,7 @@ def test_sickness_events(db: Database, event_bus: EventBus) -> None:
 
     event_bus.subscribe(Event.SICKNESS_CHANGED, on_change)
 
-    rec = SicknessRecord(None, date(2026, 2, 15), 8.0, "Flu")
+    rec = SicknessRecord(None, date(2026, 2, 15), Hours(8.0), "Flu")
     rec_id = model.insert_record(rec)
     assert change_called is True
 
@@ -80,7 +80,7 @@ def test_get_records_for_year_uses_real_month_end_date(
 def test_sickness_record_crud(db: Database, event_bus: EventBus) -> None:
     model = SicknessModel(db, event_bus)
 
-    rec = SicknessRecord(id=None, date=date(2026, 2, 15), hours=8.0, note="Flu")
+    rec = SicknessRecord(id=None, date=date(2026, 2, 15), hours=Hours(8.0), note="Flu")
 
     # Insert
     rec_id = model.insert_record(rec)
@@ -122,8 +122,8 @@ def test_sickness_summary(db: Database, event_bus: EventBus) -> None:
     # 80h allowance (10 days × 8h); records: 8h + 4h = 12h used
     sick_model.save_settings(2026, 80.0)
 
-    rec1 = SicknessRecord(None, date(2026, 6, 22), 8.0, "Flu")
-    rec2 = SicknessRecord(None, date(2026, 6, 23), 4.0, "Cold")
+    rec1 = SicknessRecord(None, date(2026, 6, 22), Hours(8.0), "Flu")
+    rec2 = SicknessRecord(None, date(2026, 6, 23), Hours(4.0), "Cold")
     sick_model.insert_record(rec1)
     sick_model.insert_record(rec2)
 
@@ -147,10 +147,10 @@ def test_sickness_summary_accepts_prefetched_records(
     # Insert a record directly, then pass a *different* explicit records
     # list to prove the DB isn't re-queried -- the summary must reflect the
     # passed-in list, not what's actually in the table.
-    sick_model.insert_record(SicknessRecord(None, date(2026, 6, 22), 8.0, "Flu"))
+    sick_model.insert_record(SicknessRecord(None, date(2026, 6, 22), Hours(8.0), "Flu"))
 
     explicit_records = [
-        SicknessRecord(None, date(2026, 1, 1), 5.0, "Explicit only"),
+        SicknessRecord(None, date(2026, 1, 1), Hours(5.0), "Explicit only"),
     ]
     summary = sick_model.calculate_sickness_summary(2026, records=explicit_records)
     assert summary.used_hours == 5.0
@@ -171,7 +171,7 @@ def test_get_records_for_year_skips_malformed_row_and_logs_warning(
     TimeClockModel.get_date_exceptions()."""
     model = SicknessModel(db, event_bus)
 
-    good = SicknessRecord(None, date(2026, 2, 15), 8.0, "ok")
+    good = SicknessRecord(None, date(2026, 2, 15), Hours(8.0), "ok")
     model.insert_record(good)
 
     conn = db.get_connection()
@@ -225,7 +225,7 @@ def test_update_record_without_id_raises(db: Database, event_bus: EventBus) -> N
     statement, so this is checked explicitly rather than silently updating
     zero rows."""
     model = SicknessModel(db, event_bus)
-    rec = SicknessRecord(None, date(2026, 2, 15), 8.0, "Flu")
+    rec = SicknessRecord(None, date(2026, 2, 15), Hours(8.0), "Flu")
 
     with pytest.raises(ValueError, match="Cannot update a record without an ID"):
         model.update_record(rec)
@@ -263,7 +263,7 @@ def test_update_record_on_since_deleted_record_raises_and_does_not_publish(
     subsequent update_record() call silently no-op and report success."""
     model = SicknessModel(db, event_bus)
 
-    rec = SicknessRecord(None, date(2026, 2, 15), 8.0, "Flu")
+    rec = SicknessRecord(None, date(2026, 2, 15), Hours(8.0), "Flu")
     rec_id = model.insert_record(rec)
     fetched = model.get_record_by_id(rec_id)
     assert fetched is not None
@@ -298,7 +298,7 @@ def test_get_dates_in_range_skips_corrupt_date_row_and_logs_warning(
     existing sick day in the range to be visible)."""
     model = SicknessModel(db, event_bus)
 
-    good = SicknessRecord(None, date(2026, 6, 10), 8.0, "ok")
+    good = SicknessRecord(None, date(2026, 6, 10), Hours(8.0), "ok")
     good_id = model.insert_record(good)
 
     conn = db.get_connection()
