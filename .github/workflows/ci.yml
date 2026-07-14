@@ -44,10 +44,11 @@ jobs:
       - name: Run ruff format check
         run: ruff format --check .
 
-      # Baselined via [tool.pylint] in pyproject.toml -- passes clean today.
-      # Full config cleanup (trimming the disable list) tracked in issue #42.
+      # Whole-project lint. The [tool.pylint] disable list (pyproject.toml) is
+      # trimmed to only the deliberately-kept design-metric rules (issue #42);
+      # everything else is enforced.
       - name: Run pylint
-        run: pylint domain/ core/ controllers/ models/ views/ tests/ settings.py
+        run: pylint domain/ core/ controllers/ models/ db/ views/ tests/ theme/ help/ settings.py main.py version.py
 
   type-check:
     name: Type Check
@@ -72,9 +73,10 @@ jobs:
       - name: Run mypy
         run: mypy --strict domain/ core/ controllers/ models/
 
-      # Scope + mode configured in [tool.pyright] (pyproject.toml): production
-      # code only, "standard" mode. Catches the Pylance/editor type errors
-      # mypy's scope misses. Widening to tests/ + views/ tracked in #42.
+      # Scope + mode configured in [tool.pyright] (pyproject.toml): whole
+      # project, "standard" mode, with tests/ + views/ pre-existing noise
+      # baselined per-path via executionEnvironments. Catches the Pylance/editor
+      # type errors mypy's scope misses.
       - name: Run pyright
         run: pyright
 

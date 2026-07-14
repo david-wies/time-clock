@@ -6,6 +6,7 @@ unhandled traceback) both when logging setup itself fails and when a
 non-essential boot step (open-record checks / tray icon) fails after the
 main window is already built.
 """
+# pylint: disable=protected-access  # tests deliberately exercise the private _boot_checks helper
 
 import logging
 import logging.handlers
@@ -44,6 +45,7 @@ def _clean_root_logger():
 def test_configure_logging_writes_records_to_log_file_in_given_dir(
     tmp_path, _clean_root_logger
 ) -> None:
+    """Log records are written to time_clock.log in the given directory."""
     _configure_logging(log_dir=tmp_path)
 
     logging.getLogger("some.module").info("hello from the test suite")
@@ -58,6 +60,7 @@ def test_configure_logging_writes_records_to_log_file_in_given_dir(
 def test_configure_logging_sets_root_level_to_info(
     tmp_path, _clean_root_logger
 ) -> None:
+    """Configuring logging sets the root logger's effective level to INFO."""
     _configure_logging(log_dir=tmp_path)
 
     assert logging.getLogger().getEffectiveLevel() == logging.INFO
@@ -86,6 +89,7 @@ def test_configure_logging_attaches_rotating_file_handler_with_size_limits(
 def test_configure_logging_includes_timestamp_level_and_logger_name(
     tmp_path, _clean_root_logger
 ) -> None:
+    """Log lines include the level and logger name alongside the message."""
     _configure_logging(log_dir=tmp_path)
 
     logging.getLogger("some.module").warning("a warning message")

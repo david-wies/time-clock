@@ -53,7 +53,7 @@ class SettingsManager:
             if self.on_error is not None:
                 try:
                     self.on_error(key, str(exc))
-                except Exception as hook_exc:
+                except Exception as hook_exc:  # pylint: disable=broad-exception-caught
                     logger.warning(
                         "SettingsManager: on_error hook failed: %s", hook_exc
                     )
@@ -80,7 +80,7 @@ class SettingsManager:
             if self.on_error is not None:
                 try:
                     self.on_error(key, str(exc))
-                except Exception as hook_exc:
+                except Exception as hook_exc:  # pylint: disable=broad-exception-caught
                     logger.warning(
                         "SettingsManager: on_error hook failed: %s", hook_exc
                     )

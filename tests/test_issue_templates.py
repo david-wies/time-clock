@@ -9,6 +9,7 @@ TEMPLATE_DIR = Path(__file__).parent.parent / ".github" / "ISSUE_TEMPLATE"
 
 
 def test_bug_report_template_has_required_contact_field():
+    """Bug report form declares a required contact field before description."""
     content = (TEMPLATE_DIR / "bug_report.yml").read_text()
     assert "id: contact" in content
     contact_start = content.index("id: contact")
@@ -19,6 +20,7 @@ def test_bug_report_template_has_required_contact_field():
 
 
 def test_feature_request_template_has_required_contact_field():
+    """Feature request form declares a required contact field before problem."""
     content = (TEMPLATE_DIR / "feature_request.yml").read_text()
     assert "id: contact" in content
     contact_start = content.index("id: contact")
@@ -29,6 +31,7 @@ def test_feature_request_template_has_required_contact_field():
 
 
 def test_field_id_by_kind_matches_template_field_ids():
+    """Each kind's configured field_id exists in its template file."""
     for kind, config in _KIND_CONFIG.items():
         content = (TEMPLATE_DIR / config.template).read_text()
         assert f"id: {config.field_id}" in content, (

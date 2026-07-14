@@ -33,58 +33,90 @@ module = ["views.*"]
 ignore_errors = true
 
 # Pyright runs as a CI + local gate alongside mypy, catching the editor-level
-# (Pylance) type errors mypy's scope misses. Scoped to production code, which
-# is clean under pyright's default "standard" mode today. It covers the four
-# layers mypy --strict checks (domain/ core/ controllers/ models/) plus db/,
-# settings.py, and main.py -- which mypy does not gate (db.* and settings carry
-# ignore_errors overrides above; main.py is outside mypy's scope), so for those
-# three pyright is the sole type gate, not a redundant second pass. tests/ and
-# views/ are deliberately out of scope: they still carry pre-existing pyright
-# findings (issue #31's float->Hours was cleared from tests/, but other
-# findings remain). Widening the include to tests/ + views/ is tracked in #42
-# (the Pyright gate), same as the pylint disable-list trim -- do it there, not
-# incidentally. Removing a path from this list means it must first pass
-# `pyright` cleanly.
+# (Pylance) type errors mypy's scope misses. It now covers the WHOLE project
+# (include = ["."]) -- production code (domain/ core/ controllers/ models/ db/,
+# settings.py, main.py, theme/, help/, version.py) is clean under pyright's
+# default "standard" mode and stays fully strict. tests/ and views/ carry
+# pre-existing, pyright-only noise that mypy never sees: validated-scalar
+# construction ergonomics (Hours / BreakMinutes / PeriodType literals, #31),
+# test-double-vs-typed-widget-attr assignments (#33), Mock assertion members,
+# and tkinter stub friction. Those rules are baselined to "none" ONLY on the
+# tests/ and views/ roots via the executionEnvironments below, so the gate
+# exits 0 without a repo-wide cleanup -- the same "baseline, don't add new
+# problems" approach as the pylint disable list. Trim those per-path overrides
+# incrementally, not incidentally; production stays at full standard mode.
+# (extraPaths = ["."] keeps `views.x` / `tests.x` imports resolvable once a
+# per-directory execution environment root is declared.)
 [tool.pyright]
-include = ["domain", "core", "controllers", "models", "db", "settings.py", "main.py"]
+include = ["."]
+exclude = ["**/node_modules", "**/__pycache__", "**/.*"]
 pythonVersion = "3.14"
 typeCheckingMode = "standard"
 
-# Pylint runs as a CI + local gate alongside ruff/mypy. source-roots lets it
-# resolve intra-project imports despite the space in the repo directory name
-# (otherwise every `from core.x import ...` reports a false import-error).
+[[tool.pyright.executionEnvironments]]
+root = "tests"
+extraPaths = ["."]
+reportArgumentType = "none"
+reportAttributeAccessIssue = "none"
+reportPossiblyUnboundVariable = "none"
+reportIncompatibleVariableOverride = "none"
+reportOptionalMemberAccess = "none"
+reportFunctionMemberAccess = "none"
+
+[[tool.pyright.executionEnvironments]]
+root = "views"
+extraPaths = ["."]
+reportArgumentType = "none"
+reportAttributeAccessIssue = "none"
+reportCallIssue = "none"
+reportInvalidTypeForm = "none"
+reportOptionalMemberAccess = "none"
+
+[[tool.pyright.executionEnvironments]]
+root = "."
+extraPaths = ["."]
+
+# Pylint runs as a CI + local gate alongside ruff/mypy, over the whole project.
+# source-roots lets it resolve intra-project imports despite the space in the
+# repo directory name (otherwise every `from core.x import ...` reports a false
+# import-error).
 #
-# The disabled set baselines pylint to the codebase's current state: these
-# categories already occur throughout the pre-existing code (docstring style,
-# design-metric "too-many-*", tkinter's build-UI attribute pattern, pytest
-# fixture shadowing, duplicate-code) and are deliberately out of scope here.
-# Error-level checks and real correctness warnings stay ON, so new code is
-# still caught. Trim this list in a dedicated cleanup PR (tracked in #42),
-# not incidentally.
+# This disable list has been trimmed (issue #42) to ONLY the design-metric and
+# structural rules the team deliberately keeps off project-wide, each with a
+# rationale below. Everything else is enforced: docstrings are now required
+# across the whole project, and the localized test-only idioms
+# (redefined-outer-name, protected-access, unused fixture params) plus the
+# handful of deliberate broad `except Exception` boot/settings guards are
+# handled with narrowly-scoped module-level / inline `# pylint: disable`
+# comments at their sites, not blanket-disabled here -- so new violations
+# elsewhere are still caught. Pylint has no native per-path message control
+# (unlike ruff's per-file-ignores), so module-level disables are the idiomatic
+# substitute that keeps a single `pylint` CI command.
 [tool.pylint.main]
 source-roots = ["."]
 
 [tool.pylint."messages control"]
 disable = [
+    # Structural parallelism between the four record-type tabs/models/controllers
+    # is deliberate; R0801 is noisy, cross-file, and DRYing it fights the design.
     "duplicate-code",
-    "missing-module-docstring",
-    "missing-class-docstring",
-    "missing-function-docstring",
+    # tkinter widget __init__ and the report/balance calculators legitimately
+    # take many parameters / locals; these are design metrics, not defects.
     "too-many-arguments",
     "too-many-positional-arguments",
     "too-many-locals",
+    # tkinter views hold one instance attribute per widget -- inherent to the UI.
     "too-many-instance-attributes",
+    # Controller validators are guard-clause ladders a return or two over the
+    # default threshold; the linear early-return shape is intentional.
     "too-many-return-statements",
+    # Long UI-build / validate / DB-migration methods in views/ and db/. Splitting
+    # them is a separate refactor, out of scope for the static-analysis config.
     "too-many-branches",
     "too-many-statements",
-    "too-many-ancestors",
     "too-many-lines",
+    # Deep ancestry comes from the ttk.Frame / tkinter MRO, not our code.
+    "too-many-ancestors",
+    # Dataclasses and mixin bases with 0-1 public methods are intentional.
     "too-few-public-methods",
-    "redefined-outer-name",
-    "protected-access",
-    "attribute-defined-outside-init",
-    "unused-argument",
-    "broad-exception-caught",
-    "cell-var-from-loop",
-    "use-implicit-booleaness-not-comparison",
 ]

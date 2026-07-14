@@ -119,7 +119,8 @@ class _HasId(Protocol):
     doesn't see."""
 
     @property
-    def id(self) -> int | None: ...
+    def id(self) -> int | None:
+        """The record's database id, or None before it has been persisted."""
 
 
 def time_record_invariant_errors(record: TimeRecord) -> list[str]:
@@ -402,10 +403,12 @@ class VacationSummary:
 
     @property
     def total_pool(self) -> float:
+        """Total hours available this year: allowance plus carried-over surplus."""
         return self.allowance + self.carry_over
 
     @property
     def remaining(self) -> float:
+        """Hours still unused: the total pool minus hours already used."""
         return self.total_pool - self.used
 
 
@@ -431,10 +434,12 @@ class CarryOverAllowance:
 
     @property
     def available_surplus(self) -> float:
+        """Prior-year surplus still left after any already-transferred hours."""
         return max(0.0, self.prev_surplus - self.already_transferred)
 
     @property
     def allowed_transfer(self) -> float:
+        """Surplus permitted to carry over, capped by the max-carry-over limit."""
         return max(
             0.0,
             min(self.max_carry_over - self.already_transferred, self.available_surplus),
@@ -456,6 +461,7 @@ class SicknessSummary:
 
     @property
     def remaining_hours(self) -> float:
+        """Sick-leave hours still available: allowance minus hours used."""
         return self.allowance_hours - self.used_hours
 
 
@@ -647,10 +653,12 @@ class PeriodBalance:
 
     @property
     def balance(self) -> float:
+        """Signed hours over (positive) or under (negative) the period target."""
         return self.worked_hours - self.target_hours
 
     @property
     def weighted_overtime(self) -> float:
+        """Balance with any positive surplus scaled by the overtime rate."""
         if self.balance > 0:
             return self.balance * self.overtime_rate
         return self.balance
