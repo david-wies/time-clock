@@ -71,7 +71,7 @@ def main() -> None:
     """Wire Database → Models → Controllers → Views and start the app."""
     try:
         _configure_logging()
-    except Exception:
+    except Exception:  # pylint: disable=broad-exception-caught
         # Logging isn't up yet -- nothing to log here, so just tell the
         # user and exit rather than letting this propagate as an
         # unhandled traceback with zero diagnostic trail (invisible in a
@@ -98,7 +98,7 @@ def main() -> None:
         vacation_ctrl = VacationController(vacation_model)
         sickness_ctrl = SicknessController(sickness_model)
         miliuim_ctrl = MiliuimController(miliuim_model)
-    except Exception:
+    except Exception:  # pylint: disable=broad-exception-caught
         logger.critical("Fatal error during startup", exc_info=True)
         messagebox.showerror(
             "Time Clock — Startup Failed",
@@ -161,7 +161,7 @@ def main() -> None:
             bus=bus,
             root=root,
         )
-    except Exception:
+    except Exception:  # pylint: disable=broad-exception-caught
         logger.critical("Fatal error during startup", exc_info=True)
         messagebox.showerror(
             "Time Clock — Startup Failed",
@@ -176,7 +176,7 @@ def main() -> None:
         _boot_checks(time_model, time_ctrl)
         tray = SystemTray(root, time_ctrl, time_model, settings, bus)
         tray.start()
-    except Exception:
+    except Exception:  # pylint: disable=broad-exception-caught
         # Boot checks and the tray icon are non-essential -- the main
         # window is already fully built and usable, so a failure here
         # should not tear down the whole app the way a core

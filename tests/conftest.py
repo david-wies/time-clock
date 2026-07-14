@@ -1,3 +1,6 @@
+"""Shared pytest fixtures for the Time Clock test suite."""
+# pylint: disable=redefined-outer-name  # pytest fixtures shadow module-level fixture names by design
+
 from datetime import datetime
 
 import pytest

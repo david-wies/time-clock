@@ -1,4 +1,5 @@
 """Integration smoke tests: end-to-end flows through controller → model → DB."""
+# pylint: disable=redefined-outer-name,unused-argument  # pytest fixture-arg shadowing + unused fixture params
 
 from __future__ import annotations
 
@@ -26,16 +27,19 @@ from settings import SettingsManager
 
 @pytest.fixture
 def bus() -> EventBus:
+    """A fresh EventBus per test."""
     return EventBus()
 
 
 @pytest.fixture
 def db() -> Database:
+    """A fresh in-memory SQLite database per test."""
     return Database(db_path=":memory:")
 
 
 @pytest.fixture
 def settings(db: Database) -> SettingsManager:
+    """A SettingsManager with weekday work-day targets preconfigured."""
     sm = SettingsManager(db)
     sm.set("work_day_targets", {0: 8.0, 1: 8.0, 2: 8.0, 3: 8.0, 4: 8.0, 5: 0.0, 6: 0.0})
     return sm
@@ -43,21 +47,26 @@ def settings(db: Database) -> SettingsManager:
 
 @pytest.fixture
 def tc_model(db: Database, bus: EventBus) -> TimeClockModel:
+    """A TimeClockModel bound to the test db and bus."""
     return TimeClockModel(db, bus)
 
 
 @pytest.fixture
 def vac_model(db: Database, bus: EventBus) -> VacationModel:
+    """A VacationModel bound to the test db and bus."""
     return VacationModel(db, bus)
 
 
 @pytest.fixture
 def sick_model(db: Database, bus: EventBus) -> SicknessModel:
+    """A SicknessModel bound to the test db and bus."""
     return SicknessModel(db, bus)
 
 
 @pytest.fixture
 def tc_ctrl(tc_model: TimeClockModel, settings: SettingsManager) -> TimeClockController:
+    """A TimeClockController with a clock fixed at 2026-06-26 09:00."""
+
     def fixed_clock() -> datetime:
         return datetime(2026, 6, 26, 9, 0)
 
@@ -66,11 +75,13 @@ def tc_ctrl(tc_model: TimeClockModel, settings: SettingsManager) -> TimeClockCon
 
 @pytest.fixture
 def vac_ctrl(vac_model: VacationModel, settings: SettingsManager) -> VacationController:
+    """A VacationController bound to the test vacation model."""
     return VacationController(vac_model)
 
 
 @pytest.fixture
 def sick_ctrl(sick_model: SicknessModel) -> SicknessController:
+    """A SicknessController bound to the test sickness model."""
     return SicknessController(sick_model)
 
 
@@ -78,12 +89,14 @@ def sick_ctrl(sick_model: SicknessModel) -> SicknessController:
 
 
 def test_hebrew_label_returns_string() -> None:
+    """to_hebrew_label returns a non-empty string."""
     label = to_hebrew_label(date(2026, 6, 26))
     assert isinstance(label, str)
     assert len(label) > 0
 
 
 def test_hebrew_label_known_date() -> None:
+    """26 June 2026 maps to the Hebrew month Tammuz."""
     # 26 June 2026 = 1 Tammuz 5786 (א' תמוז תשפ"ו)
     label = to_hebrew_label(date(2026, 6, 26))
     assert (
@@ -92,6 +105,7 @@ def test_hebrew_label_known_date() -> None:
 
 
 def test_hebrew_label_rosh_hashana() -> None:
+    """23 Sep 2025 (Rosh Hashana) maps to the Hebrew month Tishri."""
     # 23 Sep 2025 = 1 Tishri 5786 (Rosh Hashana; 22 Sep is still 29 Elul)
     label = to_hebrew_label(date(2025, 9, 23))
     assert (
@@ -105,6 +119,7 @@ def test_hebrew_label_rosh_hashana() -> None:
 def test_clock_in_creates_open_record(
     tc_ctrl: TimeClockController, tc_model: TimeClockModel
 ) -> None:
+    """clock_in creates one open record with the given work type."""
     result = tc_ctrl.clock_in(work_type=WorkType.REMOTE)
     assert result.ok
     open_records = tc_model.get_open_records_for_date(date(2026, 6, 26))
@@ -116,6 +131,7 @@ def test_clock_in_creates_open_record(
 def test_clock_out_closes_open_record(
     tc_ctrl: TimeClockController, tc_model: TimeClockModel
 ) -> None:
+    """clock_out closes the previously opened record."""
     tc_ctrl.clock_in(work_type=WorkType.REMOTE)
     result = tc_ctrl.clock_out()
     assert result.ok
@@ -126,6 +142,7 @@ def test_clock_out_closes_open_record(
 def test_second_clock_in_blocked_without_force(
     tc_ctrl: TimeClockController,
 ) -> None:
+    """A second clock_in without force is blocked by OPEN_RECORD_EXISTS."""
     tc_ctrl.clock_in(work_type=WorkType.REMOTE)
     result = tc_ctrl.clock_in(work_type=WorkType.ROAD)
     assert not result.ok
@@ -135,6 +152,7 @@ def test_second_clock_in_blocked_without_force(
 def test_force_flag_bypasses_open_record_check(
     tc_ctrl: TimeClockController,
 ) -> None:
+    """force=True suppresses the OPEN_RECORD_EXISTS guard on clock_in."""
     tc_ctrl.clock_in(work_type=WorkType.REMOTE)
     result = tc_ctrl.clock_in(work_type=WorkType.ROAD, force=True)
     # force=True suppresses OPEN_RECORD_EXISTS — any remaining error is
@@ -145,6 +163,7 @@ def test_force_flag_bypasses_open_record_check(
 def test_add_edit_delete_record(
     tc_ctrl: TimeClockController, tc_model: TimeClockModel
 ) -> None:
+    """A time record round-trips through save, edit, and delete."""
     record = TimeRecord(
         id=None,
         date=date(2026, 6, 26),
@@ -175,6 +194,7 @@ def test_add_edit_delete_record(
 def test_all_three_work_types(
     tc_ctrl: TimeClockController, tc_model: TimeClockModel
 ) -> None:
+    """Records for all three work types save successfully."""
     slots = [
         (time(9, 0), time(10, 0)),
         (time(11, 0), time(12, 0)),
@@ -208,6 +228,7 @@ def test_all_three_work_types(
 def test_vacation_four_pool_types(
     vac_ctrl: VacationController, vac_model: VacationModel
 ) -> None:
+    """Records save across the four non-carry-over vacation pool types."""
     vac_model.save_settings(year=2026, hours_per_year=160.0, max_carry_over=40.0)
     # carry_over must go via add_carry_over(); test the other four pool types
     for i, vtype in enumerate(
@@ -234,6 +255,7 @@ def test_vacation_four_pool_types(
 def test_carry_over_flow(
     vac_ctrl: VacationController, vac_model: VacationModel
 ) -> None:
+    """Carry-over hours from one year add to the next year's pool."""
     vac_model.save_settings(year=2025, hours_per_year=160.0, max_carry_over=40.0)
     vac_model.save_settings(year=2026, hours_per_year=160.0, max_carry_over=40.0)
     result = vac_ctrl.add_carry_over(from_year=2025, to_year=2026, hours=20.0)
@@ -250,6 +272,7 @@ def test_carry_over_flow(
 def test_sickness_add_and_convert(
     sick_ctrl: SicknessController, sick_model: SicknessModel
 ) -> None:
+    """A saved sickness record is reflected in the year's used hours."""
     sick_model.save_settings(year=2026, hours_per_year=80.0)
     r = SicknessRecord(id=None, date=date(2026, 6, 10), hours=Hours(8.0), note="Flu")
     result = sick_ctrl.save_record(r)
@@ -272,6 +295,7 @@ def populated_db(
     vac_ctrl: VacationController,
     sick_ctrl: SicknessController,
 ) -> tuple[TimeClockModel, VacationModel, SicknessModel, SettingsManager]:
+    """Models seeded with time, vacation, and sickness records for report tests."""
     vac_model.save_settings(year=2026, hours_per_year=160.0, max_carry_over=40.0)
     sick_model.save_settings(year=2026, hours_per_year=80.0)
     settings.set("overtime_rate", 1.0)
@@ -313,6 +337,7 @@ def populated_db(
 def test_report_month(
     populated_db: tuple[TimeClockModel, VacationModel, SicknessModel, SettingsManager],
 ) -> None:
+    """A month report aggregates worked, vacation, and sickness hours."""
     tc_model, vac_model, sick_model, settings = populated_db
     data = period_summary(
         period_type=PeriodType.MONTH,
@@ -328,12 +353,13 @@ def test_report_month(
     assert data.worked_hours > 0
     assert data.vac_used == 8.0
     assert data.sick_used_hours == 8.0
-    assert data.monthly_rows == []
+    assert not data.monthly_rows
 
 
 def test_report_quarter(
     populated_db: tuple[TimeClockModel, VacationModel, SicknessModel, SettingsManager],
 ) -> None:
+    """A quarter report yields one monthly row per month in the quarter."""
     tc_model, vac_model, sick_model, settings = populated_db
     data = period_summary(
         period_type=PeriodType.QUARTER,
@@ -354,6 +380,7 @@ def test_report_quarter(
 def test_report_year(
     populated_db: tuple[TimeClockModel, VacationModel, SicknessModel, SettingsManager],
 ) -> None:
+    """A year report yields twelve monthly rows."""
     tc_model, vac_model, sick_model, settings = populated_db
     data = period_summary(
         period_type=PeriodType.YEAR,
@@ -375,6 +402,7 @@ def test_report_year(
 def test_event_published_on_clock_in(
     tc_ctrl: TimeClockController, bus: EventBus
 ) -> None:
+    """clock_in publishes a TIME_RECORDS_CHANGED event on the bus."""
     events_received: list[str] = []
     bus.subscribe(Event.TIME_RECORDS_CHANGED, lambda: events_received.append("changed"))
     tc_ctrl.clock_in(work_type=WorkType.REMOTE)
@@ -382,6 +410,7 @@ def test_event_published_on_clock_in(
 
 
 def test_event_unsubscribe(bus: EventBus) -> None:
+    """Unsubscribing stops a handler from receiving further events."""
     received: list[int] = []
     unsub = bus.subscribe(Event.SETTINGS_CHANGED, lambda: received.append(1))
     bus.publish(Event.SETTINGS_CHANGED)
@@ -395,6 +424,7 @@ def test_event_unsubscribe(bus: EventBus) -> None:
 
 
 def test_settings_round_trip(settings: SettingsManager) -> None:
+    """String and bool settings persist and read back correctly."""
     settings.set("theme", "dark")
     assert settings.get("theme") == "dark"
     settings.set("minimize_to_tray", True)
@@ -402,4 +432,5 @@ def test_settings_round_trip(settings: SettingsManager) -> None:
 
 
 def test_settings_default(settings: SettingsManager) -> None:
+    """An unknown settings key returns the caller-supplied fallback."""
     assert settings.get("nonexistent_key", "fallback") == "fallback"

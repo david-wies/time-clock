@@ -275,19 +275,19 @@ class ExportDialog(tk.Toplevel):
             if tab == ExportTab.TIME:
                 tc_records, year_skipped = fetch_with_skip_count(
                     self._model_tc,
-                    lambda: self._model_tc.get_records_for_period(year),
+                    lambda year=year: self._model_tc.get_records_for_period(year),
                 )
                 all_records.extend(tc_records)
             elif tab == ExportTab.VACATION:
                 vac_records, year_skipped = fetch_with_skip_count(
                     self._model_vacation,
-                    lambda: self._model_vacation.get_records_for_year(year),
+                    lambda year=year: self._model_vacation.get_records_for_year(year),
                 )
                 all_records.extend(vac_records)
             else:  # sickness
                 sick_records, year_skipped = fetch_with_skip_count(
                     self._model_sickness,
-                    lambda: self._model_sickness.get_records_for_year(year),
+                    lambda year=year: self._model_sickness.get_records_for_year(year),
                 )
                 all_records.extend(sick_records)
             skipped_count += year_skipped
