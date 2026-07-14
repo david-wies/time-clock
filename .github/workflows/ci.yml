@@ -85,12 +85,15 @@ jobs:
               capture_output=True, check=True,
           ).stdout
           for path in filter(None, out.decode().split("\0")):
-              if path.endswith(".toml"):
-                  with open(path, "rb") as fh:
-                      tomllib.load(fh)
-              else:
-                  with open(path, encoding="utf-8") as fh:
-                      json.load(fh)
+              try:
+                  if path.endswith(".toml"):
+                      with open(path, "rb") as fh:
+                          tomllib.load(fh)
+                  else:
+                      with open(path, encoding="utf-8") as fh:
+                          json.load(fh)
+              except (tomllib.TOMLDecodeError, json.JSONDecodeError) as exc:
+                  raise SystemExit(f"{path}: {exc}")
           PY
 
   type-check:

@@ -63,9 +63,12 @@ CREATE TABLE vacation_record (
 CREATE INDEX idx_vacation_record_date ON vacation_record(date);
 ```
 
-> **Migration note.** `hours` was originally `CHECK(hours > 0)`; a `PRAGMA user_version` migration (db/database.py, version 2) relaxed it to
-> `CHECK(hours >= 0)` to allow 0-hour holiday imports (e.g. a
-> `public_holiday` row imported for a day that carries no hour value).
+> **Migration note.** `vacation_record.hours` was originally
+> `CHECK(hours > 0)`; a `PRAGMA user_version` migration (db/database.py,
+> version 2) relaxed it to `CHECK(hours >= 0)` to allow 0-hour holiday
+> imports (e.g. a `public_holiday` row imported for a day that carries no
+> hour value). The `sickness_record.hours` and `carry_over_log.hours`
+> columns are unaffected and still require `CHECK(hours > 0)`.
 
 ```sql
 -- Sickness settings keyed by year (supports allowance changes)
