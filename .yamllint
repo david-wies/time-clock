@@ -1,0 +1,26 @@
+# yamllint config for the whole project (CI + pre-commit gate).
+#
+# Relaxations vs the built-in `default` ruleset, each deliberate:
+#   document-start  -- our YAML files omit the leading `---`; harmless, disabled.
+#   truthy          -- GitHub Actions uses a bare `on:` key, which the default
+#                      truthy rule misreads as a boolean; check-keys off allows
+#                      it while still catching truthy *values* like yes/no.
+#   line-length     -- action pins (SHA + comment) and shell one-liners run past
+#                      80; 120 is the ceiling, matching the project's tolerance.
+extends: default
+
+rules:
+  document-start: disable
+  truthy:
+    check-keys: false
+  line-length:
+    max: 120
+    level: error
+
+# Directories that are not project source: the venv, agent worktrees, and any
+# tooling caches. (CI runs on a clean checkout without these, but this keeps
+# `yamllint .` quiet locally.)
+ignore: |
+  .venv/
+  .claude/
+  node_modules/

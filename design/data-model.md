@@ -1,6 +1,8 @@
 # Data Model — Schema & Domain Types
 
-> Detail doc for [DESIGN.md](../DESIGN.md) §3 (Data Model) and §15 (Domain Types & Enums). Read the main doc first for context; this file has the full SQL and type definitions.
+> Detail doc for [DESIGN.md](../DESIGN.md) §3 (Data Model) and §15 (Domain Types
+> & Enums). Read the main doc first for context; this file has the full SQL and
+> type definitions.
 
 ## 3. Data Model (SQLite Schema)
 
@@ -61,8 +63,7 @@ CREATE TABLE vacation_record (
 CREATE INDEX idx_vacation_record_date ON vacation_record(date);
 ```
 
-> **Migration note.** `hours` was originally `CHECK(hours > 0)`; a `PRAGMA
-> user_version` migration (db/database.py, version 2) relaxed it to
+> **Migration note.** `hours` was originally `CHECK(hours > 0)`; a `PRAGMA user_version` migration (db/database.py, version 2) relaxed it to
 > `CHECK(hours >= 0)` to allow 0-hour holiday imports (e.g. a
 > `public_holiday` row imported for a day that carries no hour value).
 
@@ -129,11 +130,18 @@ Example:
 
 Stored as computed value on read — not persisted. DB stores raw start/end/break.
 
-> **Time semantics (important).** `start_time`/`end_time` are **wall-clock local** `HH:MM`. The schema default `datetime('now')` returns **UTC**, so it is used **only** for the audit columns `created_at`/`updated_at`, never for `start_time`/`end_time`. "Now" for clock-in/out comes from `datetime.now().strftime('%H:%M')` (local). See [design/time-and-balance.md](time-and-balance.md) (§18) for DST and overnight handling.
+> **Time semantics (important).** `start_time`/`end_time` are **wall-clock
+> local** `HH:MM`. The schema default `datetime('now')` returns **UTC**, so it
+> is used **only** for the audit columns `created_at`/`updated_at`, never for
+> `start_time`/`end_time`. "Now" for clock-in/out comes from
+> `datetime.now().strftime('%H:%M')` (local). See
+> [design/time-and-balance.md](time-and-balance.md) (§18) for DST and overnight
+> handling.
 
 ## 15. Domain Types & Enums
 
-A single typed source of truth for every record, shared by models, controllers, views, and tests. No raw dicts crossing layer boundaries.
+A single typed source of truth for every record, shared by models, controllers,
+views, and tests. No raw dicts crossing layer boundaries.
 
 Declared in `domain/enums.py` and `domain/types.py`:
 
@@ -169,6 +177,10 @@ Dataclasses (slots=True):
   SicknessSummary:    used, total_pool, remaining
 ```
 
-- `(str, Enum)` / `(int, Enum)` values serialize straight to DB columns and round-trip cleanly.
-- Models own the only mapping between these dataclasses and SQLite rows (`row_to_record` / `record_to_params`). Schema `CHECK(...)` on each column mirrors the Python enum values.
-- `str`/`date`/`time` ↔ ISO conversion centralized in `core/timeutil.py`; dataclasses always hold real `date`/`time`, never strings.
+- `(str, Enum)` / `(int, Enum)` values serialize straight to DB columns and
+  round-trip cleanly.
+- Models own the only mapping between these dataclasses and SQLite rows
+  (`row_to_record` / `record_to_params`). Schema `CHECK(...)` on each column
+  mirrors the Python enum values.
+- `str`/`date`/`time` ↔ ISO conversion centralized in `core/timeutil.py`;
+  dataclasses always hold real `date`/`time`, never strings.

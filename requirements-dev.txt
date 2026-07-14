@@ -11,3 +11,17 @@ pyright==1.1.411
 # so CI and local pre-commit enforce the identical ruff version.
 ruff==0.15.20
 pylint>=4.0.6
+# Markdown + YAML linters -- whole-project gate (CI + pre-commit). All pinned to
+# match their .pre-commit-config.yaml revs so CI and local pre-commit enforce
+# the identical version, same as ruff above.
+#
+# Markdown is a two-tool gate, both pip (no Node): PyMarkdown scans structure +
+# prose rules (config [tool.pymarkdown] in pyproject.toml), and mdformat
+# (+ mdformat-gfm for GFM tables) enforces canonical formatting -- run as
+# `mdformat --check` in CI -- which is what gives us consistent table pipe /
+# column / alignment style, since PyMarkdown implements no table rules.
+pymarkdownlnt==0.9.39
+mdformat==1.0.0
+mdformat-gfm==1.0.0
+# YAML lint. Config: .yamllint.
+yamllint==1.38.0
