@@ -71,17 +71,26 @@ jobs:
 
       # Well-formedness gate for every TOML / JSON file (the check-toml /
       # check-json pre-commit hooks are the local equivalents). Uses stdlib
-      # only -- no extra dependency.
+      # only -- no extra dependency. Scoped to tracked files via git ls-files
+      # (like the mdformat gate above) so it honours .gitignore and never
+      # descends into .venv/.claude -- and so a local run matches CI.
       - name: Check TOML + JSON parse
         run: |
           python - <<'PY'
-          import glob
           import json
+          import subprocess
           import tomllib
-          for f in glob.glob("**/*.toml", recursive=True):
-              tomllib.load(open(f, "rb"))
-          for f in glob.glob("**/*.json", recursive=True):
-              json.load(open(f))
+          out = subprocess.run(
+              ["git", "ls-files", "-z", "*.toml", "*.json"],
+              capture_output=True, check=True,
+          ).stdout
+          for path in filter(None, out.decode().split("\0")):
+              if path.endswith(".toml"):
+                  with open(path, "rb") as fh:
+                      tomllib.load(fh)
+              else:
+                  with open(path, encoding="utf-8") as fh:
+                      json.load(fh)
           PY
 
   type-check:
