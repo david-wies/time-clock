@@ -299,18 +299,18 @@ Two prominent one-click buttons above the record list:
 
 ### 5.6 Input Validation
 
-| Field                             | Rule                                                         | Error Message                                             |
-| --------------------------------- | ------------------------------------------------------------ | --------------------------------------------------------- |
-| date                              | Required, valid ISO date                                     | "Please enter a valid date."                              |
-| start_time                        | Required, format HH:MM                                       | "Start time must be in HH:MM format."                     |
-| end_time                          | Optional, format HH:MM. NULL = clocked in                    | "End time must be in HH:MM format."                       |
-| end_time > start_time             | Checked only when end_time present AND end_time > start_time | "End time must be after start time."                      |
-| overnight (end_time < start_time) | Allowed with warning (see §5.7)                              | "End time is before start — treating as overnight shift." |
-| break                             | Optional, format HH:MM, ≤ shift_duration                     | "Break cannot exceed shift length."                       |
-| work_type                         | Required, one of enum                                        | "Please select a work type."                              |
-| office                            | Required if work_type = in_site                              | "Please select or enter an office."                       |
-| note                              | Optional, max 500 chars                                      | "Note is too long (max 500 characters)."                  |
-| overlapping                       | No overlap with existing records on same date                | "Record overlaps with an existing time record."           |
+| Field                             | Rule                                                                                                                                                        | Error Message                                             |
+| --------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| date                              | Required, valid ISO date                                                                                                                                    | "Please enter a valid date."                              |
+| start_time                        | Required, format HH:MM                                                                                                                                      | "Start time must be in HH:MM format."                     |
+| end_time                          | Optional, format HH:MM. NULL = clocked in                                                                                                                   | "End time must be in HH:MM format."                       |
+| end_time == start_time            | Zero-duration record — allowed with confirmation (see §12 #6)                                                                                               | "Zero duration record. Are you sure?"                     |
+| overnight (end_time < start_time) | Allowed with warning (see §5.7)                                                                                                                             | "End time is before start — treating as overnight shift." |
+| break                             | Optional, format HH:MM, ≤ shift_duration                                                                                                                    | "Break cannot exceed shift length."                       |
+| work_type                         | Required, one of enum                                                                                                                                       | "Please select a work type."                              |
+| office                            | Required if work_type = in_site                                                                                                                             | "Please select or enter an office."                       |
+| note                              | Optional, max 500 chars                                                                                                                                     | "Note is too long (max 500 characters)."                  |
+| overlapping                       | No overlap once intervals are normalized to date-time (overnight records expand into the next day); checked against same-date **and** adjacent-date records | "Record overlaps with an existing time record."           |
 
 ### 5.7 Overnight Shift Handling
 
@@ -438,8 +438,13 @@ If `end_time < start_time` (e.g., 22:00 → 06:00):
 
 - Hebrew Date column always shown, populated by `core/hebrew_date.py`.
 
-- Hours-to-days conversion: `days = hours / daily_target` (average), or display
-  both
+- Hours-to-days conversion is **display-only** (balances stay in hours — see
+  §7.4). The two contexts use different targets, scoped explicitly:
+
+  - **Summary / total rows** use the **average** `daily_target`:
+    `days = hours / avg_daily_target`.
+  - **Per-record rows** use that date's **date-specific** `day_of_week` target,
+    capping a zero-target day's equivalent at 1 day max (see §12 #21).
 
 - Grouped by month with collapsible headers, same pattern as Time Clock
 
@@ -583,7 +588,7 @@ time-clock/
 │   ├── testing.md              # Test strategy, fixtures (§20)
 │   └── v1-features.md          # Holidays import, reports, tray, etc. (§21)
 ├── AGENTS.md                   # Agent-facing project state & file map
-├── requirements.txt            # tkcalendar, sv-ttk, holidays, reportlab, pystray, Pillow — all optional / graceful
+├── requirements.txt            # tkcalendar, sv-ttk, holidays, reportlab, pystray, Pillow — all required, imported unconditionally
 ├── tray.py                     # System-tray icon + quick clock in/out (§21.4), started from main.py
 ├── settings.py                 # Settings manager (reads/writes using DB app_config table)
 ├── domain/
@@ -629,31 +634,31 @@ time-clock/
 
 ## 12. Edge Cases & Constraints
 
-| #   | Scenario                                          | Handling                                                                                                                                                                                          |
-| --- | ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | No target set for today                           | Show "No target" grey text; remaining = N/A                                                                                                                                                       |
-| 2   | Target = 0 on weekend                             | Hidden or "Day off" shown                                                                                                                                                                         |
-| 3   | Overnight shift (22:00-06:00)                     | end_time < start_time → assume next day; warn user; compute duration as sum of two segments                                                                                                       |
-| 4   | Overlapping time records                          | Warn on save: "Overlaps with existing record on same date" — block save                                                                                                                           |
-| 5   | Net duration negative (break > shift length)      | Warn: "Break exceeds shift length." Block save unless corrected                                                                                                                                   |
-| 6   | Zero-length record (start = end, break = 0)       | Warn: "Zero duration record. Are you sure?" Allow with confirmation                                                                                                                               |
-| 7   | Vacation > yearly allowance                       | Show warning; allow override with confirmation                                                                                                                                                    |
-| 8   | Carry-over exceeds max                            | Clamp to max_carry_over; inform user                                                                                                                                                              |
-| 9   | Already-transferred carry-over detected           | Subtract from available; display "Xh already transferred"                                                                                                                                         |
-| 10  | Delete last record in a day                       | Day header remains (empty day) or collapses (UX choice — keep header)                                                                                                                             |
-| 11  | Same date used twice                              | Allowed (half-day annual_leave + public_holiday same day; multiple time records same day)                                                                                                         |
-| 12  | Future dates                                      | Time records: warn but allow. Vacation: allowed by design                                                                                                                                         |
-| 13  | DB migration                                      | Schema version table; `PRAGMA user_version` tracks migrations                                                                                                                                     |
-| 14  | Overtime displayed negative                       | Show "−2.0h overtime" in purple/blue, distinct from under-target orange                                                                                                                           |
-| 15  | App closed while clocked in                       | On restart, detect record WHERE end_time IS NULL for today. Show warning: "Open record found. Clock out or delete?" Resume tracking if user continues                                             |
-| 16  | Database corruption                               | App ships with `time_clock.db` next to executable. Recommend user backs up periodically or enables File → Export to JSON                                                                          |
-| 17  | Sick day exceeds yearly allowance                 | Show warning; allow override with confirmation                                                                                                                                                    |
-| 18  | Sick record on same day as time record            | Allowed (worked half-day, went home sick). No automatic deduction                                                                                                                                 |
-| 19  | Sick record on same day as vacation record        | Allowed. User manually manages overlapping absences                                                                                                                                               |
-| 20  | Year rollover — sick days reset                   | On Jan 1, sickness used counter resets to 0. Previous year records remain for history. No carry-over logic needed                                                                                 |
-| 21  | Hours-to-days conversion when daily_target varies | Each sick record's equivalent days computed individually based on that date's `day_of_week` target. If Mon=8h target → 8h sick = 1 day. If Sat=0 target → 8h sick on Saturday capped at 1 day max |
-| 22  | Date exception on sick/vacation day               | Work target exception still applies for "remaining today" display. If 0h exception (holiday), remaining shows N/A                                                                                 |
-| 23  | Multiple exceptions same date                     | `UNIQUE(date)` constraint prevents duplicates. Edit existing instead                                                                                                                              |
+| #   | Scenario                                          | Handling                                                                                                                                                                                                                                          |
+| --- | ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | No target set for today                           | Show "No target" grey text; remaining = N/A                                                                                                                                                                                                       |
+| 2   | Target = 0 on weekend                             | Hidden or "Day off" shown                                                                                                                                                                                                                         |
+| 3   | Overnight shift (22:00-06:00)                     | end_time < start_time → assume next day; warn user; compute duration as sum of two segments                                                                                                                                                       |
+| 4   | Overlapping time records                          | Warn on save: "Overlaps with existing record" — compare normalized date-time intervals (overnight records expand into the next calendar day), checking adjacent-date as well as same-date records — block save                                    |
+| 5   | Net duration negative (break > shift length)      | Warn: "Break exceeds shift length." Block save unless corrected                                                                                                                                                                                   |
+| 6   | Zero-length record (start = end, break = 0)       | Warn: "Zero duration record. Are you sure?" Allow with confirmation                                                                                                                                                                               |
+| 7   | Vacation > yearly allowance                       | Show warning; allow override with confirmation                                                                                                                                                                                                    |
+| 8   | Carry-over exceeds max                            | Clamp to max_carry_over; inform user                                                                                                                                                                                                              |
+| 9   | Already-transferred carry-over detected           | Subtract from available; display "Xh already transferred"                                                                                                                                                                                         |
+| 10  | Delete last record in a day                       | Day header remains (empty day) or collapses (UX choice — keep header)                                                                                                                                                                             |
+| 11  | Same date used twice                              | Allowed (half-day annual_leave + public_holiday same day; multiple time records same day)                                                                                                                                                         |
+| 12  | Future dates                                      | Time records: warn but allow. Vacation: allowed by design                                                                                                                                                                                         |
+| 13  | DB migration                                      | Schema version table; `PRAGMA user_version` tracks migrations                                                                                                                                                                                     |
+| 14  | Overtime displayed negative                       | Show "−2.0h overtime" in purple/blue, distinct from under-target orange                                                                                                                                                                           |
+| 15  | App closed while clocked in                       | On restart, detect record WHERE end_time IS NULL for today. Show warning: "Open record found. Clock out or delete?" Resume tracking if user continues                                                                                             |
+| 16  | Database corruption                               | App ships with `time_clock.db` next to executable. Recommend user backs up periodically or enables File → Export to JSON                                                                                                                          |
+| 17  | Sick day exceeds yearly allowance                 | Show warning; allow override with confirmation                                                                                                                                                                                                    |
+| 18  | Sick record on same day as time record            | Allowed (worked half-day, went home sick). No automatic deduction                                                                                                                                                                                 |
+| 19  | Sick record on same day as vacation record        | Allowed. User manually manages overlapping absences                                                                                                                                                                                               |
+| 20  | Year rollover — sick days reset                   | On Jan 1, sickness used counter resets to 0. Previous year records remain for history. No carry-over logic needed                                                                                                                                 |
+| 21  | Hours-to-days conversion when daily_target varies | **Per-record rows**: equivalent days from that date's `day_of_week` target (Mon=8h → 8h = 1 day; Sat=0 target → 8h capped at 1 day max). **Summary / total rows**: average `daily_target` (see §7.1). Display-only; balances stay in hours (§7.4) |
+| 22  | Date exception on sick/vacation day               | Work target exception still applies for "remaining today" display. If 0h exception (holiday), remaining shows N/A                                                                                                                                 |
+| 23  | Multiple exceptions same date                     | `UNIQUE(date)` constraint prevents duplicates. Edit existing instead                                                                                                                                                                              |
 
 ## 13. Data Backup & Portability
 

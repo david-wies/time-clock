@@ -7,13 +7,13 @@ in the main doc makes the logic-heavy parts testable **without a GUI**.
 
 ## 20.1 Strategy & tooling
 
-| Concern      | Tool                          | Notes                                                                               |
-| ------------ | ----------------------------- | ----------------------------------------------------------------------------------- |
-| Test runner  | `pytest`                      | `tests/` mirrors source tree                                                        |
-| Coverage     | `pytest-cov`                  | Target ≥ 90% on `core/`, `models/`, `controllers/`, validation                      |
-| DB isolation | in-memory SQLite (`:memory:`) | Fresh schema per test via a `db` fixture                                            |
-| Time control | inject a `clock` callable     | Pass `now` into controllers/timeutil; never call `datetime.now()` directly in logic |
-| GUI          | **not** unit-tested broadly   | Smoke test only (§20.4); logic lives outside views by design                        |
+| Concern      | Tool                          | Notes                                                                                                                                                                    |
+| ------------ | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Test runner  | `pytest`                      | `tests/` mirrors source tree                                                                                                                                             |
+| Coverage     | `pytest-cov`                  | Target ≥ 90% on `core/`, `models/`, `controllers/`, validation                                                                                                           |
+| DB isolation | in-memory SQLite (`:memory:`) | Fresh schema per test via a `db` fixture                                                                                                                                 |
+| Time control | inject a `clock` callable     | Production logic receives an injected `now`/`now_hm` callable (returns "now"); tests inject `fixed_clock` for determinism. Never call `datetime.now()` directly in logic |
+| GUI          | **not** unit-tested broadly   | Smoke test only (§20.4); logic lives outside views by design                                                                                                             |
 
 ## 20.2 What gets unit tested (priority order)
 
@@ -109,5 +109,6 @@ def test_break_exceeds_shift_is_negative():
 ## 20.5 CI hook (optional)
 
 - `pytest -q --cov` runnable locally and in CI; `mypy --strict` on `domain/`,
-  `core/`, `controllers/` as a second gate.
+  `core/`, `controllers/`, `models/` as a second gate (matches the CI
+  `mypy --strict domain/ core/ controllers/ models/` invocation).
 - Tests must pass before PyInstaller packaging.

@@ -9,7 +9,10 @@ testable in isolation (`core/timeutil.py`, `core/balance.py`).
 ## 18.1 Local time, no UTC for wall-clock
 
 - `now_hm() -> str` returns `datetime.now().strftime("%H:%M")` (local). Used by
-  clock-in/out.
+  clock-in/out. It is an **injectable callable**: production logic receives it
+  (not a hard-coded `datetime.now()` call) so tests can inject a `fixed_clock`
+  for deterministic "now"; the default production implementation reads local
+  wall-clock time.
 - All `start_time`/`end_time` are naive local wall-clock; the app is single-user
   single-timezone. UTC is reserved for `created_at`/`updated_at` audit columns
   only.

@@ -133,10 +133,12 @@ Stored as computed value on read — not persisted. DB stores raw start/end/brea
 > **Time semantics (important).** `start_time`/`end_time` are **wall-clock
 > local** `HH:MM`. The schema default `datetime('now')` returns **UTC**, so it
 > is used **only** for the audit columns `created_at`/`updated_at`, never for
-> `start_time`/`end_time`. "Now" for clock-in/out comes from
-> `datetime.now().strftime('%H:%M')` (local). See
-> [design/time-and-balance.md](time-and-balance.md) (§18) for DST and overnight
-> handling.
+> `start_time`/`end_time`. "Now" for clock-in/out is obtained through an
+> **injected `now`/`now_hm` callable** rather than a direct call, so tests can
+> supply a `fixed_clock` for determinism; the underlying production source is
+> local wall-clock `datetime.now().strftime('%H:%M')`. See
+> [design/time-and-balance.md](time-and-balance.md) (§18) for the callable
+> contract, DST, and overnight handling.
 
 ## 15. Domain Types & Enums
 

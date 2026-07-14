@@ -24,7 +24,8 @@ ______________________________________________________________________
 - **PDF Reports** — Monthly, quarterly, yearly summaries with overtime and
   absence breakdown
 - **System Tray** — Quick clock-in/out from tray; minimize-to-tray option
-- **Hebrew dates** — Full Hebrew calendar column when `hdate` is installed
+- **Hebrew dates** — Full Hebrew calendar column, always shown (`hdate` is a
+  required dependency)
 
 ______________________________________________________________________
 

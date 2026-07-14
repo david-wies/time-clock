@@ -63,7 +63,7 @@ jobs:
       # table pipe/column/alignment style, fences, lists) -- the table-style
       # gate PyMarkdown can't provide. Scans tracked files only.
       - name: Run mdformat --check
-        run: git ls-files '*.md' | xargs mdformat --check
+        run: git ls-files -z '*.md' | xargs -0 mdformat --check --
 
       # Whole-project YAML lint. Config: .yamllint.
       - name: Run yamllint

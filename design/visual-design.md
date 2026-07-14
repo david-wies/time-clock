@@ -86,7 +86,12 @@ dict.
 
 ## 16.5 Dark mode
 
-- Toggle in Settings + respect OS preference where detectable. Persisted in
-  database via the `app_config` table (`"theme": "light"|"dark"|"system"`).
+- Toggle in Settings. Persisted in the database via the `app_config` table
+  (`"theme": "light"|"dark"|"system"`). All three values are stored as-is;
+  the toggle and `apply_theme` behavior are unchanged.
+- OS-preference detection is **not** currently implemented: per
+  `resolve_theme_mode`, `ThemeMode.SYSTEM` (like `None` or any unrecognized
+  value) falls back to `ThemeMode.LIGHT` today. **Future:** `SYSTEM` will
+  resolve to the OS light/dark preference where detectable.
 - All views read tokens, so dark mode is a single `apply_theme(ThemeMode.DARK)`
   re-style + Treeview tag refresh.
