@@ -1,31 +1,40 @@
 # Time Clock
 
-A desktop time-tracking application built with Python and tkinter. Tracks daily work hours, vacation, and sick leave — with Hebrew-date support, a system-tray icon, and offline PDF reports.
+A desktop time-tracking application built with Python and tkinter. Tracks daily
+work hours, vacation, and sick leave — with Hebrew-date support, a system-tray
+icon, and offline PDF reports.
 
-![Python](https://img.shields.io/badge/python-3.10%2B-blue) ![License](https://img.shields.io/badge/license-MIT-green)
+![Python](https://img.shields.io/badge/python-3.10%2B-blue)
+![License](https://img.shields.io/badge/license-MIT-green)
 
----
+______________________________________________________________________
 
 ## Features
 
-- **Time Clock** — Clock in/out, manual records, overnight-shift support, week/month views with running balance
-- **Vacation** — Annual allowance, carry-over, five leave types (annual, public holiday, special, unpaid, carry-over), balance warning on over-draw
+- **Time Clock** — Clock in/out, manual records, overnight-shift support,
+  week/month views with running balance
+- **Vacation** — Annual allowance, carry-over, five leave types (annual, public
+  holiday, special, unpaid, carry-over), balance warning on over-draw
 - **Sickness** — Hours-to-day conversion, per-year allowance, balance tracking
-- **Miliuim** — Reserve-duty periods tracked as date ranges, with optional document attachment per period
-- **Settings** — Per-day work targets, break presets, office list, overtime rate, holiday auto-import (34 countries), light/dark/system theme
+- **Miliuim** — Reserve-duty periods tracked as date ranges, with optional
+  document attachment per period
+- **Settings** — Per-day work targets, break presets, office list, overtime
+  rate, holiday auto-import (34 countries), light/dark/system theme
 - **Export** — CSV, Excel (`pandas`/`openpyxl`), PDF (`reportlab`) for each tab
-- **PDF Reports** — Monthly, quarterly, yearly summaries with overtime and absence breakdown
+- **PDF Reports** — Monthly, quarterly, yearly summaries with overtime and
+  absence breakdown
 - **System Tray** — Quick clock-in/out from tray; minimize-to-tray option
-- **Hebrew dates** — Full Hebrew calendar column when `hdate` is installed
+- **Hebrew dates** — Full Hebrew calendar column, always shown (`hdate` is a
+  required dependency)
 
----
+______________________________________________________________________
 
 ## Requirements
 
 - Python 3.10+
 - See `requirements.txt` for all dependencies
 
----
+______________________________________________________________________
 
 ## Setup
 
@@ -42,7 +51,7 @@ source .venv/bin/activate        # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
----
+______________________________________________________________________
 
 ## Running
 
@@ -50,11 +59,11 @@ pip install -r requirements.txt
 python main.py
 ```
 
----
+______________________________________________________________________
 
 ## Project Structure
 
-```
+```text
 Time Clock/
 ├── main.py                  # Entry point — wires all layers together
 ├── settings.py              # SettingsManager (DB-backed key/value store)
@@ -124,16 +133,19 @@ Time Clock/
 
 ### Architecture
 
-```
+```text
 Views → Controllers → Models → SQLite
           ↕ bus.publish(Event.*)
 ```
 
-- **No raw dicts cross layer boundaries** — use typed dataclasses from `domain/types.py`
-- **Controllers return `Result(ok, errors)`** — never raise for expected validation failures
-- **EventBus is synchronous** — models publish after every successful mutation; views subscribe and refresh
+- **No raw dicts cross layer boundaries** — use typed dataclasses from
+  `domain/types.py`
+- **Controllers return `Result(ok, errors)`** — never raise for expected
+  validation failures
+- **EventBus is synchronous** — models publish after every successful mutation;
+  views subscribe and refresh
 
----
+______________________________________________________________________
 
 ## Testing
 
@@ -147,34 +159,42 @@ Type-check:
 mypy --strict domain/ core/ controllers/
 ```
 
----
+______________________________________________________________________
 
 ## Data Storage
 
 All data is stored in a local SQLite database:
 
-| OS      | Path |
-|---------|------|
-| Windows | `%APPDATA%\Time Clock\time_clock.db` |
+| OS      | Path                                                     |
+| ------- | -------------------------------------------------------- |
+| Windows | `%APPDATA%\Time Clock\time_clock.db`                     |
 | macOS   | `~/Library/Application Support/Time Clock/time_clock.db` |
-| Linux   | `~/.local/share/time-clock/time_clock.db` |
+| Linux   | `~/.local/share/time-clock/time_clock.db`                |
 
-Settings are stored in the `app_config` table as JSON-serialized key/value pairs.
+Settings are stored in the `app_config` table as JSON-serialized key/value
+pairs.
 
----
+______________________________________________________________________
 
 ## Key Behaviours
 
-- **Time fields are local wall-clock** (`HH:MM`). UTC is used only for `created_at`/`updated_at` audit columns.
-- **Overnight shifts** (`end < start`) are fully supported — duration computed as `(1440 − start_mins) + end_mins − break`.
-- **Holiday import** adds public holidays as Vacation tab records (type: Public Holiday, 0 h — visible for reference, no quota impact).
-- **Vacation carry-over** is capped per the per-year `max_carry_over` setting and logged in `carry_over_log`.
-- **Tray thread safety** — all pystray callbacks marshal to the tkinter main thread via `root.after(0, fn)`.
+- **Time fields are local wall-clock** (`HH:MM`). UTC is used only for
+  `created_at`/`updated_at` audit columns.
+- **Overnight shifts** (`end < start`) are fully supported — duration computed
+  as `(1440 − start_mins) + end_mins − break`.
+- **Holiday import** adds public holidays as Vacation tab records (type: Public
+  Holiday, 0 h — visible for reference, no quota impact).
+- **Vacation carry-over** is capped per the per-year `max_carry_over` setting
+  and logged in `carry_over_log`.
+- **Tray thread safety** — all pystray callbacks marshal to the tkinter main
+  thread via `root.after(0, fn)`.
 
----
+______________________________________________________________________
 
 ## Feedback
 
-Found a bug or have a feature idea? Use **Help → Report a Bug** or **Help → Suggest a Feature** in the app —
-it opens a prefilled GitHub issue in your browser for you to review and submit. Or file one directly at
+Found a bug or have a feature idea? Use **Help → Report a Bug** or **Help →
+Suggest a Feature** in the app —
+it opens a prefilled GitHub issue in your browser for you to review and submit.
+Or file one directly at
 [github.com/david-wies/time-clock/issues](https://github.com/david-wies/time-clock/issues).

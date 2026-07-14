@@ -353,6 +353,7 @@ def test_report_month(
     assert data.worked_hours > 0
     assert data.vac_used == 8.0
     assert data.sick_used_hours == 8.0
+    assert isinstance(data.monthly_rows, list)
     assert not data.monthly_rows
 
 

@@ -1,6 +1,7 @@
 # Data Flow — Full Sequences
 
-> Detail doc for [DESIGN.md](../DESIGN.md) §10 (Data Flow). Each sequence below is View → Controller → Model → DB → EventBus → View refresh.
+> Detail doc for [DESIGN.md](../DESIGN.md) §10 (Data Flow). Each sequence below
+> is View → Controller → Model → DB → EventBus → View refresh.
 
 ## 10.1 Time Clock — Add Record
 

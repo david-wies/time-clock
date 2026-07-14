@@ -92,6 +92,23 @@ extraPaths = ["."]
 # elsewhere are still caught. Pylint has no native per-path message control
 # (unlike ruff's per-file-ignores), so module-level disables are the idiomatic
 # substitute that keeps a single `pylint` CI command.
+# PyMarkdown lints every tracked *.md (structure + prose): fence languages
+# (MD040), blanks around fences/lists (MD031/MD032), a top-level heading
+# (MD041), heading/spacing hygiene. Prose is hard-wrapped to 80 columns.
+#
+# MD013 (line-length): pymarkdown's MD013 has no per-element toggle for tables
+# (unlike markdownlint), so it can't enforce 80 on prose while exempting the
+# wide markdown tables and ASCII box-diagrams that can't wrap. code_blocks =
+# false exempts the fenced diagrams; line_length = 320 clears the widest
+# mdformat-aligned table row while still catching runaway lines. Prose is kept
+# to 80 by hand (and by mdformat's word-wrap discipline), not by this ceiling.
+# Table *style* (pipe/column/alignment consistency) is enforced separately by
+# `mdformat --check`, which pymarkdown does not cover.
+[tool.pymarkdown]
+plugins.md013.line_length = 320
+plugins.md013.heading_line_length = 320
+plugins.md013.code_blocks = false
+
 [tool.pylint.main]
 source-roots = ["."]
 

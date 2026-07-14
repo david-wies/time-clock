@@ -48,7 +48,53 @@ jobs:
       # trimmed to only the deliberately-kept design-metric rules (issue #42);
       # everything else is enforced.
       - name: Run pylint
-        run: pylint domain/ core/ controllers/ models/ db/ views/ tests/ theme/ help/ settings.py main.py version.py
+        run: >
+          pylint domain/ core/ controllers/ models/ db/ views/ tests/
+          theme/ help/ settings.py main.py version.py
+
+      # Whole-project Markdown lint (two pip tools, no Node). PyMarkdown scans
+      # structure + prose rules (config [tool.pymarkdown]); --respect-gitignore
+      # skips the git-ignored dev docs (CLAUDE.md/AGENTS.md/.claude) so this
+      # matches the pre-commit hook's tracked-files scope.
+      - name: Run pymarkdown
+        run: pymarkdown scan -r --respect-gitignore .
+
+      # mdformat --check enforces canonical Markdown formatting (consistent
+      # table pipe/column/alignment style, fences, lists) -- the table-style
+      # gate PyMarkdown can't provide. Scans tracked files only.
+      - name: Run mdformat --check
+        run: git ls-files -z '*.md' | xargs -0 mdformat --check --
+
+      # Whole-project YAML lint. Config: .yamllint.
+      - name: Run yamllint
+        run: yamllint .
+
+      # Well-formedness gate for every TOML / JSON file (the check-toml /
+      # check-json pre-commit hooks are the local equivalents). Uses stdlib
+      # only -- no extra dependency. Scoped to tracked files via git ls-files
+      # (like the mdformat gate above) so it honours .gitignore and never
+      # descends into .venv/.claude -- and so a local run matches CI.
+      - name: Check TOML + JSON parse
+        run: |
+          python - <<'PY'
+          import json
+          import subprocess
+          import tomllib
+          out = subprocess.run(
+              ["git", "ls-files", "-z", "*.toml", "*.json"],
+              capture_output=True, check=True,
+          ).stdout
+          for path in filter(None, out.decode().split("\0")):
+              try:
+                  if path.endswith(".toml"):
+                      with open(path, "rb") as fh:
+                          tomllib.load(fh)
+                  else:
+                      with open(path, encoding="utf-8") as fh:
+                          json.load(fh)
+              except (tomllib.TOMLDecodeError, json.JSONDecodeError) as exc:
+                  raise SystemExit(f"{path}: {exc}")
+          PY
 
   type-check:
     name: Type Check

@@ -5,6 +5,8 @@ repos:
       - id: trailing-whitespace
       - id: end-of-file-fixer
       - id: check-yaml
+      - id: check-toml
+      - id: check-json
       - id: check-added-large-files
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
@@ -22,3 +24,29 @@ repos:
         # changed files, so the gate is identical locally and in CI.
         args: [--strict, domain/, core/, controllers/, models/]
         pass_filenames: false
+
+  # Markdown structure + prose lint. rev pinned to match pymarkdownlnt in
+  # requirements-dev.txt; rules live in [tool.pymarkdown] (pyproject.toml).
+  - repo: https://github.com/jackdewinter/pymarkdown
+    rev: v0.9.39
+    hooks:
+      - id: pymarkdown
+        args: [scan]
+
+  # Markdown formatting (canonical tables/fences/lists -- this is what enforces
+  # consistent table style, which PyMarkdown can't). Auto-fixes in place like
+  # ruff-format above; CI runs `mdformat --check`. mdformat-gfm adds GFM table
+  # support. rev + additional_dependencies pinned to requirements-dev.txt.
+  - repo: https://github.com/hukkin/mdformat
+    rev: 1.0.0
+    hooks:
+      - id: mdformat
+        additional_dependencies:
+          - mdformat-gfm==1.0.0
+
+  # YAML lint. rev pinned to match yamllint in requirements-dev.txt; rules live
+  # in .yamllint.
+  - repo: https://github.com/adrienverge/yamllint
+    rev: v1.38.0
+    hooks:
+      - id: yamllint
