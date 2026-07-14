@@ -82,6 +82,13 @@ def test_record_not_found_error_rejects_invalid_action() -> None:
         RecordNotFoundError(RecordEntity.TIME_RECORD, 1, "insert")  # type: ignore[arg-type]
 
 
+def test_record_not_found_error_rejects_invalid_record_id() -> None:
+    """Same runtime guard as for entity/action: a record_id that isn't an
+    int must raise ValueError rather than flow into diagnostic logs."""
+    with pytest.raises(ValueError, match="Invalid record_id"):
+        RecordNotFoundError(RecordEntity.TIME_RECORD, "42", RecordAction.UPDATE)  # type: ignore[arg-type]
+
+
 def test_raise_if_no_rows_raises_runtime_error_after_select(
     cursor: sqlite3.Cursor,
 ) -> None:
