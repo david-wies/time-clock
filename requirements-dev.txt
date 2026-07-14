@@ -2,14 +2,14 @@
 
 pytest>=9.1.1
 pytest-cov>=7.1.0
-mypy>=2.1.0
+mypy>=2.3.0
 # Pinned: pyright ships new checks in minor releases, which would fail CI on
 # code that was clean when merged. Bump deliberately, not implicitly. Config
 # (include scope, mode) lives in [tool.pyright] in pyproject.toml.
 pyright==1.1.411
 # Pinned to match .pre-commit-config.yaml's astral-sh/ruff-pre-commit rev,
 # so CI and local pre-commit enforce the identical ruff version.
-ruff==0.15.20
+ruff==0.15.21
 pylint>=4.0.6
 # Markdown + YAML linters -- whole-project gate (CI + pre-commit). All pinned to
 # match their .pre-commit-config.yaml revs so CI and local pre-commit enforce
