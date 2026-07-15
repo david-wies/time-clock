@@ -7,10 +7,11 @@ import pytest
 from core.events import Event, EventBus
 from db.database import Database
 from domain.enums import VacationType
-from domain.types import Hours, VacationRecord
+from domain.types import Hours, VacationGrant, VacationRecord
 from models.errors import RecordNotFoundError
 from models.time_clock_model import TimeClockModel
 from models.vacation_model import VacationModel
+from settings import SettingsManager
 
 
 def test_vacation_events(db: Database, event_bus: EventBus) -> None:
@@ -555,3 +556,283 @@ def test_daily_target_uses_date_exception_over_weekday(
     assert model.get_daily_target_for_date(exception_date) == 4.0
     # A day without an exception still falls back to the weekday target.
     assert model.get_daily_target_for_date(date(2026, 6, 29)) == 9.0
+
+
+# ──────────── #47: charge-weighted `used` ───────────────────────────────────
+
+
+def test_used_is_charge_weighted_half_rate(db: Database, event_bus: EventBus) -> None:
+    """A debit record with charge_rate=0.5 spends only half its hours against
+    the year's pool: `used` is sum(hours * charge_rate), so an 8h day at 0.5
+    contributes 4.0 to `used` (and total_pool/remaining reflect only that
+    charge-weighted cost)."""
+    model = VacationModel(db, event_bus)
+    model.save_settings(2026, 160.0, 40.0)
+    model.insert_record(
+        VacationRecord(
+            None,
+            date(2026, 3, 10),
+            Hours(8.0),
+            VacationType.ANNUAL_LEAVE,
+            charge_rate=0.5,
+        )
+    )
+
+    summary = model.calculate_vacation_summary(2026)
+
+    assert summary.used == 4.0
+    assert summary.total_pool == 160.0
+    assert summary.remaining == 156.0
+
+
+def test_used_charge_weight_mix_full_half_and_zero(
+    db: Database, event_bus: EventBus
+) -> None:
+    """Charge weighting is applied per debit record: rate=1.0 bills the full
+    hours, rate=0.5 bills half, rate=0.0 bills nothing. Three 8h debit records
+    at those rates sum to 8 + 4 + 0 = 12 charge-weighted `used` hours."""
+    model = VacationModel(db, event_bus)
+    model.save_settings(2026, 160.0, 40.0)
+    model.insert_record(
+        VacationRecord(
+            None,
+            date(2026, 1, 5),
+            Hours(8.0),
+            VacationType.ANNUAL_LEAVE,
+            charge_rate=1.0,
+        )
+    )
+    model.insert_record(
+        VacationRecord(
+            None,
+            date(2026, 2, 5),
+            Hours(8.0),
+            VacationType.SPECIAL_LEAVE,
+            charge_rate=0.5,
+        )
+    )
+    model.insert_record(
+        VacationRecord(
+            None,
+            date(2026, 3, 5),
+            Hours(8.0),
+            VacationType.PUBLIC_HOLIDAY,
+            charge_rate=0.0,
+        )
+    )
+
+    summary = model.calculate_vacation_summary(2026)
+
+    assert summary.used == 12.0  # 8*1.0 + 8*0.5 + 8*0.0
+    assert summary.remaining == 148.0  # 160 - 12
+
+
+@pytest.mark.parametrize("rate", [-0.1, -1.0, 1.1, 1.5])
+def test_vacation_record_rejects_charge_rate_out_of_range(rate: float) -> None:
+    """The 0.0..1.0 charge_rate bound is a context-free invariant enforced at
+    construction (via vacation_record_invariant_errors / __post_init__), so a
+    rate below 0 or above 1 raises immediately."""
+    with pytest.raises(ValueError, match="Charge rate must be between 0.0 and 1.0."):
+        VacationRecord(
+            None,
+            date(2026, 7, 15),
+            Hours(8.0),
+            VacationType.ANNUAL_LEAVE,
+            charge_rate=rate,
+        )
+
+
+@pytest.mark.parametrize("rate", [0.0, 0.5, 1.0])
+def test_vacation_record_accepts_charge_rate_in_range(rate: float) -> None:
+    """The boundary rates 0.0 and 1.0 (and anything between) are accepted."""
+    rec = VacationRecord(
+        None, date(2026, 7, 15), Hours(8.0), VacationType.ANNUAL_LEAVE, charge_rate=rate
+    )
+    assert rec.charge_rate == rate
+
+
+# ──────────── #47: vacation grants (CRUD + pooling) ─────────────────────────
+
+
+def test_vacation_grant_crud(db: Database, event_bus: EventBus) -> None:
+    """Grant insert/update/delete round-trips through its own vacation_grant
+    table, mirroring the vacation_record CRUD surface."""
+    model = VacationModel(db, event_bus)
+
+    grant = VacationGrant(None, date(2026, 6, 1), Hours(12.0), note="Signing bonus")
+    grant_id = model.insert_grant(grant)
+    assert grant_id > 0
+
+    fetched = model.get_grant_by_id(grant_id)
+    assert fetched is not None
+    assert fetched.hours == 12.0
+    assert fetched.note == "Signing bonus"
+
+    updated = dataclasses.replace(fetched, hours=6.0)
+    model.update_grant(updated)
+    reread = model.get_grant_by_id(grant_id)
+    assert reread is not None
+    assert reread.hours == 6.0
+
+    model.delete_grant(grant_id)
+    assert model.get_grant_by_id(grant_id) is None
+
+
+def test_vacation_grant_events(db: Database, event_bus: EventBus) -> None:
+    """Every grant mutation publishes VACATION_CHANGED, matching the
+    vacation_record CRUD event contract."""
+    model = VacationModel(db, event_bus)
+
+    change_called = False
+
+    def on_change() -> None:
+        nonlocal change_called
+        change_called = True
+
+    event_bus.subscribe(Event.VACATION_CHANGED, on_change)
+
+    grant = VacationGrant(None, date(2026, 6, 1), Hours(12.0))
+    grant_id = model.insert_grant(grant)
+    assert change_called is True
+
+    change_called = False
+    fetched = model.get_grant_by_id(grant_id)
+    assert fetched is not None
+    model.update_grant(dataclasses.replace(fetched, hours=4.0))
+    assert change_called is True
+
+    change_called = False
+    model.delete_grant(grant_id)
+    assert change_called is True
+
+
+def test_get_grants_for_year_filters_and_extra_grant_pools(
+    db: Database, event_bus: EventBus
+) -> None:
+    """get_grants_for_year(year) returns only that year's grants, and their
+    total feeds VacationSummary.extra_grant, enlarging base_pool/total_pool. A
+    grant dated in another year must not leak into either."""
+    model = VacationModel(db, event_bus)
+    model.save_settings(2026, 100.0, 0.0)
+
+    model.insert_grant(VacationGrant(None, date(2026, 3, 1), Hours(10.0)))
+    model.insert_grant(VacationGrant(None, date(2026, 9, 1), Hours(5.0)))
+    # A grant in the previous year must not leak into 2026's pool.
+    model.insert_grant(VacationGrant(None, date(2025, 12, 31), Hours(99.0)))
+
+    grants_2026 = model.get_grants_for_year(2026)
+    assert len(grants_2026) == 2
+    assert all(g.date.year == 2026 for g in grants_2026)
+    assert sum(g.hours for g in grants_2026) == 15.0
+
+    summary = model.calculate_vacation_summary(2026)
+    assert summary.extra_grant == 15.0
+    assert summary.base_pool == 115.0  # 100 allowance + 0 carry + 15 grants
+    assert summary.total_pool == 115.0  # no borrowing configured
+    assert summary.remaining == 115.0  # no debits yet
+
+
+# ──────────── #47: one-hop borrow-forward (borrowed_prev) ───────────────────
+
+
+def test_get_max_borrow_hours_default_and_roundtrip(
+    db: Database, event_bus: EventBus, settings_manager: SettingsManager
+) -> None:
+    """get_max_borrow_hours() defaults to 0.0 (no borrowing) when the
+    app_config key is absent, and reads back the JSON-serialized value once
+    SettingsManager writes it."""
+    model = VacationModel(db, event_bus)
+    assert model.get_max_borrow_hours() == 0.0
+
+    settings_manager.set("vacation.max_borrow_hours", 12.5)
+    assert model.get_max_borrow_hours() == 12.5
+
+
+@pytest.mark.parametrize(
+    "prev_used, max_borrow, expected_borrow",
+    [
+        (30.0, 15.0, 15.0),  # overage 20 -> capped at max_borrow 15
+        (13.0, 15.0, 3.0),  # overage 3 -> below cap, borrows the overage
+        (8.0, 15.0, 0.0),  # used < base_pool -> no overage, no borrow
+    ],
+    ids=["capped", "under-cap", "no-overage"],
+)
+def test_borrow_prev_is_min_of_overage_and_cap(
+    db: Database,
+    event_bus: EventBus,
+    settings_manager: SettingsManager,
+    prev_used: float,
+    max_borrow: float,
+    expected_borrow: float,
+) -> None:
+    """With a non-zero max_borrow, a year's borrowed_prev equals
+    min(prev_year_overage, max_borrow), where the prior year's overage is
+    max(0, prev.used - prev.base_pool). 2025 has base_pool = 10 (allowance 10,
+    no carry/grants), so borrowed_prev for 2026 depends only on 2025's usage
+    and the cap. borrowed_prev shrinks this year's total_pool."""
+    model = VacationModel(db, event_bus)
+    settings_manager.set("vacation.max_borrow_hours", max_borrow)
+    model.save_settings(2025, 10.0, 0.0)
+    model.save_settings(2026, 100.0, 0.0)
+    model.insert_record(
+        VacationRecord(
+            None, date(2025, 6, 1), Hours(prev_used), VacationType.ANNUAL_LEAVE
+        )
+    )
+
+    summary = model.calculate_vacation_summary(2026)
+
+    assert summary.borrowed_prev == expected_borrow
+    assert summary.base_pool == 100.0
+    assert summary.total_pool == 100.0 - expected_borrow
+    assert summary.remaining == 100.0 - expected_borrow
+
+
+def test_borrow_disabled_when_max_borrow_zero(
+    db: Database, event_bus: EventBus
+) -> None:
+    """Backward-compat guard: with max_borrow at its 0.0 default, borrowed_prev
+    is always 0 even when the prior year is heavily over-drawn, so total_pool
+    reduces to allowance + carry_over exactly as before #47."""
+    model = VacationModel(db, event_bus)
+    assert model.get_max_borrow_hours() == 0.0
+    model.save_settings(2025, 10.0, 0.0)
+    model.save_settings(2026, 100.0, 0.0)
+    model.insert_record(
+        VacationRecord(None, date(2025, 6, 1), Hours(30.0), VacationType.ANNUAL_LEAVE)
+    )
+
+    summary = model.calculate_vacation_summary(2026)
+
+    assert summary.borrowed_prev == 0.0
+    assert summary.total_pool == 100.0
+    assert summary.remaining == 100.0
+
+
+def test_borrow_recursion_is_bounded_to_one_hop(
+    db: Database, event_bus: EventBus, settings_manager: SettingsManager
+) -> None:
+    """Borrowing propagates exactly one year forward: the prior year is summed
+    with _apply_borrow_prev=False, so its own borrowed_prev is 0 and a chain of
+    over-drawn years does not compound. Across three consecutive over-drawn
+    years, 2026's borrowed_prev reflects ONLY 2025's (capped) overage, and
+    computing every year's summary terminates without recursion errors."""
+    model = VacationModel(db, event_bus)
+    settings_manager.set("vacation.max_borrow_hours", 10.0)
+    for year in (2024, 2025, 2026):
+        model.save_settings(year, 10.0, 0.0)
+        model.insert_record(
+            VacationRecord(
+                None, date(year, 6, 1), Hours(25.0), VacationType.ANNUAL_LEAVE
+            )
+        )
+
+    summary_2026 = model.calculate_vacation_summary(2026)
+    # 2025 overage = used(25) - base_pool(10) = 15, capped at max_borrow 10.
+    assert summary_2026.borrowed_prev == 10.0
+    # 2025 borrows from 2024 (also over-drawn) — but only one hop, so the
+    # chain does not compound beyond a single year.
+    assert model.calculate_vacation_summary(2025).borrowed_prev == 10.0
+    # 2024's prior year (2023) is empty: overage 0 -> no borrow. The recursion
+    # terminates cleanly at the unconfigured year rather than running away.
+    assert model.calculate_vacation_summary(2024).borrowed_prev == 0.0
