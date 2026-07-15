@@ -14,9 +14,12 @@ from unittest import mock
 
 import pytest
 
+from domain.enums import VacationType
+from domain.types import Hours, VacationRecord
 from models.sickness_model import SicknessModel
 from models.time_clock_model import TimeClockModel
 from models.vacation_model import VacationModel
+from views.enums import ExportTab
 from views.export_dialog import ExportDialog
 
 
@@ -305,3 +308,62 @@ def test_fetch_records_sums_skipped_across_two_years(
 
     assert skipped_count == 2, "both years' skip counts must be summed, not just one"
     assert [r.date for r in records] == list(good_dates)
+
+
+# ─────────── Vacation charge-rate: charged-hours column + summary block ───────
+
+
+def test_vacation_columns_include_charged_hours() -> None:
+    """The vacation export gains a 'Charged Hours' column next to 'Hours'."""
+    dialog = ExportDialog.__new__(ExportDialog)
+    cols = dialog._columns(ExportTab.VACATION)
+    assert cols == ["Date", "Hebrew Date", "Hours", "Charged Hours", "Type", "Note"]
+
+
+def test_vacation_record_values_include_charged_hours() -> None:
+    """A record's charged hours are hours * charge_rate, placed after hours."""
+    dialog = ExportDialog.__new__(ExportDialog)
+    rec = VacationRecord(
+        id=None,
+        date=date(2026, 6, 1),
+        hours=Hours(8.0),
+        vtype=VacationType.ANNUAL_LEAVE,
+        charge_rate=0.5,
+    )
+    values = dialog._record_to_values(rec, ExportTab.VACATION)
+    # [display_date, hebrew, hours, charged_hours, type, note]
+    assert values[2] == 8.0
+    assert values[3] == 4.0
+
+
+def test_vacation_csv_appends_summary_block(export_models, tmp_path) -> None:
+    """The vacation CSV ends with a summary block carrying raw + charged
+    totals and the extra-grant / borrowed lines."""
+    _model_tc, model_vacation, _model_sickness = export_models
+    model_vacation.insert_record(
+        VacationRecord(
+            id=None,
+            date=date(2026, 6, 1),
+            hours=Hours(8.0),
+            vtype=VacationType.ANNUAL_LEAVE,
+            charge_rate=0.5,
+        )
+    )
+    records = model_vacation.get_records_for_year(2026)
+
+    dialog = ExportDialog.__new__(ExportDialog)
+    dialog._model_vacation = model_vacation
+    dialog._var_data = mock.MagicMock(get=mock.MagicMock(return_value="vacation"))
+    dialog._var_group = mock.MagicMock(get=mock.MagicMock(return_value=False))
+
+    out = tmp_path / "vac.csv"
+    dialog._export_csv(records, str(out))
+    text = out.read_text(encoding="utf-8-sig")
+
+    assert "Charged Hours" in text
+    assert "Total" in text
+    assert "Extra Grant" in text
+    assert "Borrowed" in text
+    # raw total 8.0h and charged total 4.0h both present in the summary block
+    assert "8.0h" in text
+    assert "4.0h" in text

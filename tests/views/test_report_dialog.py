@@ -13,19 +13,39 @@ from core.events import EventBus
 from core.report import ReportData
 from db.database import Database
 from domain.enums import PeriodType, WorkType
-from domain.types import Hours, SicknessRecord, TimeRecord
+from domain.types import Hours, SicknessRecord, TimeRecord, VacationSummary
 from models.sickness_model import SicknessModel
 from models.time_clock_model import TimeClockModel
+from models.vacation_model import VacationModel
 from views.report_dialog import ReportDialog
 
 
-def _make_dialog(model_tc, model_sickness, model_miliuim=None):
+def _stub_vac_model(extra_grant: float = 0.0, borrowed_prev: float = 0.0):
+    """A minimal stand-in for the vacation model whose
+    ``calculate_vacation_summary`` returns a fixed ``VacationSummary``.
+
+    The report views call ``calculate_vacation_summary(year)`` directly to
+    surface the extra-grant and borrowed lines (those figures are not carried
+    on ``ReportData``)."""
+    model = mock.MagicMock()
+    model.calculate_vacation_summary.return_value = VacationSummary(
+        allowance=0.0,
+        carry_over=0.0,
+        extra_grant=extra_grant,
+        used=0.0,
+        borrowed_prev=borrowed_prev,
+    )
+    return model
+
+
+def _make_dialog(model_tc, model_sickness, model_miliuim=None, model_vacation=None):
     """Builds a ReportDialog instance without running its Tk __init__/mainloop,
     since _collect_documents only touches the model attributes it sets."""
     dialog = ReportDialog.__new__(ReportDialog)
     dialog._model_tc = model_tc
     dialog._model_sickness = model_sickness
     dialog._model_miliuim = model_miliuim
+    dialog._model_vacation = model_vacation or _stub_vac_model()
     return dialog
 
 
@@ -189,14 +209,29 @@ def _make_report_data(skipped_record_count: int = 0) -> ReportData:
 
 def test_build_preview_text_no_warning_when_nothing_skipped() -> None:
     dialog = ReportDialog.__new__(ReportDialog)
+    dialog._model_vacation = _stub_vac_model()
     text = dialog._build_preview_text(_make_report_data(skipped_record_count=0))
     assert "skipped" not in text.lower()
 
 
 def test_build_preview_text_warns_when_records_skipped() -> None:
     dialog = ReportDialog.__new__(ReportDialog)
+    dialog._model_vacation = _stub_vac_model()
     text = dialog._build_preview_text(_make_report_data(skipped_record_count=2))
     assert "2 record(s) skipped due to data errors" in text
+
+
+def test_build_preview_text_includes_extra_grant_and_borrowed_lines() -> None:
+    """The vacation summary must surface the ad-hoc grant total and the hours
+    borrowed forward by the previous year — both sourced from the vacation
+    model, not from ReportData."""
+    dialog = ReportDialog.__new__(ReportDialog)
+    dialog._model_vacation = _stub_vac_model(extra_grant=12.0, borrowed_prev=5.0)
+    text = dialog._build_preview_text(_make_report_data())
+    assert "Extra grant:" in text
+    assert "12.0 h" in text
+    assert "Borrowed:" in text
+    assert "5.0 h" in text
 
 
 def _make_export_pdf_dialog(data: ReportData) -> ReportDialog:
@@ -278,7 +313,11 @@ def _make_pdf_export_dialog(db: Database, event_bus: EventBus):
     test can seed a ROAD record carrying a PDF attachment.
     """
     tc_model = TimeClockModel(db, event_bus)
-    dialog = _make_dialog(tc_model, SicknessModel(db, event_bus))
+    dialog = _make_dialog(
+        tc_model,
+        SicknessModel(db, event_bus),
+        model_vacation=VacationModel(db, event_bus),
+    )
     return dialog, tc_model
 
 
