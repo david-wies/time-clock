@@ -28,6 +28,8 @@ class RecordNotFoundError(Exception):
             raise ValueError(f"Invalid entity {entity!r}: must be a RecordEntity")
         if not isinstance(action, RecordAction):
             raise ValueError(f"Invalid action {action!r}: must be a RecordAction")
+        if isinstance(record_id, bool) or not isinstance(record_id, int):
+            raise ValueError(f"Invalid record_id {record_id!r}: must be an int")
         self.entity = entity
         self.record_id = record_id
         self.action = action
