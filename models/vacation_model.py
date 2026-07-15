@@ -1,5 +1,6 @@
 """Model for vacation records: DB row/dataclass mapping and CRUD."""
 
+import json
 import logging
 import sqlite3
 from datetime import date, datetime
@@ -12,17 +13,35 @@ from domain.enums import RecordAction, RecordEntity, VacationType
 from domain.types import (
     CarryOverAllowance,
     CarryOverLogEntry,
+    VacationGrant,
     VacationRecord,
     VacationSummary,
 )
 from models._row_mapping import rows_to_records
 from models.errors import raise_if_no_rows
 
+# app_config key holding the maximum hours a year may borrow forward from the
+# next year's pool. Stored JSON-serialized via SettingsManager; default 0.0
+# (no borrowing) preserves the pre-#47 balance behaviour exactly.
+_MAX_BORROW_HOURS_KEY = "vacation.max_borrow_hours"
+
+_DEBIT_VACATION_TYPES = (
+    VacationType.ANNUAL_LEAVE,
+    VacationType.PUBLIC_HOLIDAY,
+    VacationType.SPECIAL_LEAVE,
+)
+
 logger = logging.getLogger(__name__)
 
 
-class VacationModel:
-    """Manages vacation records, allowance settings, and carry-over calculations."""
+class VacationModel:  # pylint: disable=too-many-public-methods
+    # This model owns two parallel record families (vacation records AND
+    # ad-hoc grants), each with its own get/get-by-id/insert/update/delete
+    # surface, plus the settings/carry-over/borrow accessors — one method
+    # over pylint's default 20 (#47 added grant CRUD + get_max_borrow_hours).
+    # The methods are cohesive, not a god-object; splitting the grant CRUD
+    # into a second model would fragment a single table-owning boundary.
+    """Manages vacation records, grants, allowance settings, and carry-over."""
 
     def __init__(self, db: Database, bus: EventBus) -> None:
         self.db = db
@@ -48,6 +67,7 @@ class VacationModel:
                 hours=row["hours"],
                 vtype=VacationType(row["vtype"]),
                 note=row["note"],
+                charge_rate=row["charge_rate"],
             )
         except (ValueError, TypeError):  # fmt: skip
             logger.warning(
@@ -92,14 +112,16 @@ class VacationModel:
                 cursor = conn.cursor()
                 cursor.execute(
                     """
-                    INSERT INTO vacation_record (date, hours, vtype, note)
-                    VALUES (?, ?, ?, ?);
+                    INSERT INTO vacation_record
+                        (date, hours, vtype, note, charge_rate)
+                    VALUES (?, ?, ?, ?, ?);
                     """,
                     (
                         date_to_iso(record.date),
                         record.hours,
                         record.vtype.value,
                         record.note,
+                        record.charge_rate,
                     ),
                 )
                 record_id = cursor.lastrowid or 0
@@ -116,7 +138,7 @@ class VacationModel:
                     """
                     UPDATE vacation_record
                     SET date = ?, hours = ?, vtype = ?, note = ?,
-                        updated_at = datetime('now')
+                        charge_rate = ?, updated_at = datetime('now')
                     WHERE id = ?;
                     """,
                     (
@@ -124,6 +146,7 @@ class VacationModel:
                         record.hours,
                         record.vtype.value,
                         record.note,
+                        record.charge_rate,
                         record.id,
                     ),
                 )
@@ -146,6 +169,123 @@ class VacationModel:
                     cursor,
                     RecordEntity.VACATION_RECORD,
                     record_id,
+                    RecordAction.DELETE,
+                )
+            self.bus.publish(Event.VACATION_CHANGED)
+
+    # --- Vacation Grant CRUD ---
+    #
+    # Grants reuse RecordEntity.VACATION_RECORD for their RecordNotFoundError
+    # staleness reporting rather than adding a dedicated enum member: the
+    # user-facing "this record no longer exists" wording is identical, and
+    # keeping the enum untouched minimizes blast radius (per the #47 contract).
+
+    def _grant_row_to_record(self, row: sqlite3.Row) -> VacationGrant | None:
+        """Builds a VacationGrant from a DB row, or None (with a logged
+        warning) if the row violates a VacationGrant invariant -- e.g. a
+        non-positive hours value added directly to the DB. Mirrors
+        _row_to_record(): without this guard a single malformed row would
+        raise out of every read method and take down the whole query."""
+        try:
+            return VacationGrant(
+                id=row["id"],
+                date=iso_to_date(row["date"]),
+                hours=row["hours"],
+                note=row["note"],
+            )
+        except (ValueError, TypeError):  # fmt: skip
+            logger.warning(
+                "Skipping malformed vacation_grant row: id=%r date=%r",
+                row["id"],
+                row["date"],
+            )
+            return None
+
+    def get_grant_by_id(self, grant_id: int) -> VacationGrant | None:
+        """Returns the vacation grant with the given id, or None if not found."""
+        with self.db.connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM vacation_grant WHERE id = ?;", (grant_id,))
+            row = cursor.fetchone()
+            return self._grant_row_to_record(row) if row else None
+
+    def get_grants_for_year(self, year: int) -> list[VacationGrant]:
+        """Returns all vacation grants dated within the given year, ordered by
+        date DESC. Malformed rows are skipped (and counted in
+        last_skipped_count), mirroring get_records_for_year()."""
+        start_date, end_date = period_bounds(year, None)
+        with self.db.connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT * FROM vacation_grant WHERE date >= ? AND date <= ? "
+                "ORDER BY date DESC;",
+                (start_date, end_date),
+            )
+            rows = cursor.fetchall()
+        grants, self.last_skipped_count = rows_to_records(
+            rows, self._grant_row_to_record
+        )
+        return grants
+
+    def insert_grant(self, grant: VacationGrant) -> int:
+        """Inserts a new vacation grant and returns its id."""
+        with self.db.connection() as conn:
+            with conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    """
+                    INSERT INTO vacation_grant (date, hours, note)
+                    VALUES (?, ?, ?);
+                    """,
+                    (
+                        date_to_iso(grant.date),
+                        grant.hours,
+                        grant.note,
+                    ),
+                )
+                grant_id = cursor.lastrowid or 0
+            self.bus.publish(Event.VACATION_CHANGED)
+            return grant_id
+
+    def update_grant(self, grant: VacationGrant) -> None:
+        """Updates an existing vacation grant identified by its id."""
+        if grant.id is None:
+            raise ValueError("Cannot update a grant without an ID.")
+        with self.db.connection() as conn:
+            with conn:
+                cursor = conn.execute(
+                    """
+                    UPDATE vacation_grant
+                    SET date = ?, hours = ?, note = ?,
+                        updated_at = datetime('now')
+                    WHERE id = ?;
+                    """,
+                    (
+                        date_to_iso(grant.date),
+                        grant.hours,
+                        grant.note,
+                        grant.id,
+                    ),
+                )
+                raise_if_no_rows(
+                    cursor,
+                    RecordEntity.VACATION_RECORD,
+                    grant.id,
+                    RecordAction.UPDATE,
+                )
+            self.bus.publish(Event.VACATION_CHANGED)
+
+    def delete_grant(self, grant_id: int) -> None:
+        """Deletes the vacation grant with the given id."""
+        with self.db.connection() as conn:
+            with conn:
+                cursor = conn.execute(
+                    "DELETE FROM vacation_grant WHERE id = ?;", (grant_id,)
+                )
+                raise_if_no_rows(
+                    cursor,
+                    RecordEntity.VACATION_RECORD,
+                    grant_id,
                     RecordAction.DELETE,
                 )
             self.bus.publish(Event.VACATION_CHANGED)
@@ -248,14 +388,21 @@ class VacationModel:
             return row["total"] if row and row["total"] is not None else 0.0
 
     def calculate_vacation_summary(
-        self, year: int, records: list[VacationRecord] | None = None
+        self,
+        year: int,
+        records: list[VacationRecord] | None = None,
+        _apply_borrow_prev: bool = True,
     ) -> VacationSummary:
         """
         Calculates vacation totals for a year:
           - allowance: from settings
-          - carry_over: total carry_over credit records in vacation_record
-          - total_pool: allowance + carry_over
-          - used: total annual_leave, public_holiday, special_leave records
+          - carry_over: total carry_over credit records (NOT charge-weighted)
+          - extra_grant: total of the year's ad-hoc VacationGrant hours
+          - base_pool: allowance + carry_over + extra_grant
+          - used: CHARGE-WEIGHTED sum(hours * charge_rate) over debit records
+          - borrowed_prev: hours the previous year borrowed forward from this
+            year's pool (see below)
+          - total_pool: base_pool - borrowed_prev
           - remaining: total_pool - used
 
         If `records` is omitted, the full year's records are fetched
@@ -267,6 +414,19 @@ class VacationModel:
         Both branches sum over the same VacationRecord objects, so a
         malformed row is skipped consistently regardless of which path is
         used.
+
+        Borrowing (`_apply_borrow_prev`): when a non-zero
+        `vacation.max_borrow_hours` is configured, a year whose usage exceeds
+        its own base pool is allowed to "borrow" the overage (capped at
+        max_borrow_hours) from the *next* year. This method computes
+        `borrowed_prev` for `year` by recursing into `year - 1` with
+        `_apply_borrow_prev=False`, which bounds the recursion to exactly ONE
+        hop: borrowing propagates exactly one year forward and multi-year
+        borrow chains are intentionally out of scope. When max_borrow_hours
+        is 0 (the default) `borrowed_prev` is always 0, so total_pool reduces
+        to `allowance + carry_over` and the pre-#47 behaviour is preserved
+        exactly. The `_apply_borrow_prev` parameter is private (leading
+        underscore) — external callers always want the borrow-aware result.
         """
         settings = self.get_settings(year)
         allowance = settings["hours_per_year"] if settings else 0.0
@@ -275,22 +435,57 @@ class VacationModel:
             records = self.get_records_for_year(year)
 
         carry_over = sum(r.hours for r in records if r.vtype == VacationType.CARRY_OVER)
+        extra_grant = sum(g.hours for g in self.get_grants_for_year(year))
         used = sum(
-            r.hours
-            for r in records
-            if r.vtype
-            in (
-                VacationType.ANNUAL_LEAVE,
-                VacationType.PUBLIC_HOLIDAY,
-                VacationType.SPECIAL_LEAVE,
-            )
+            r.hours * r.charge_rate for r in records if r.vtype in _DEBIT_VACATION_TYPES
         )
+
+        borrowed_prev = 0.0
+        if _apply_borrow_prev:
+            max_borrow = self.get_max_borrow_hours()
+            if max_borrow > 0:
+                prev = self.calculate_vacation_summary(
+                    year - 1, _apply_borrow_prev=False
+                )
+                overage = max(0.0, prev.used - prev.base_pool)
+                borrowed_prev = min(overage, max_borrow)
 
         return VacationSummary(
             allowance=allowance,
             carry_over=carry_over,
+            extra_grant=extra_grant,
             used=used,
+            borrowed_prev=borrowed_prev,
         )
+
+    def get_max_borrow_hours(self) -> float:
+        """Returns the configured maximum borrow-forward hours (app_config key
+        `vacation.max_borrow_hours`), or 0.0 if unset/malformed.
+
+        Reads app_config directly (JSON-parsing the stored value) rather than
+        going through SettingsManager, consistent with get_settings() and the
+        other direct-SELECT accessors on this model. A malformed/non-numeric
+        stored value falls back to 0.0 — the same no-borrow default as an
+        absent key — so a corrupt setting can never widen the borrow cap."""
+        with self.db.connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT value FROM app_config WHERE key = ?;",
+                (_MAX_BORROW_HOURS_KEY,),
+            )
+            row = cursor.fetchone()
+        if not row:
+            return 0.0
+        try:
+            value = float(json.loads(row["value"]))
+        except ValueError, TypeError, json.JSONDecodeError:
+            logger.warning(
+                "Malformed %s app_config value %r; defaulting to 0.0",
+                _MAX_BORROW_HOURS_KEY,
+                row["value"],
+            )
+            return 0.0
+        return max(0.0, value)
 
     def calculate_carry_over_allowance(self, to_year: int) -> CarryOverAllowance:
         """

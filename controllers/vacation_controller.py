@@ -9,8 +9,10 @@ from controllers.time_clock_controller import (
 from domain.enums import VacationType
 from domain.types import (
     Result,
+    VacationGrant,
     VacationRecord,
     set_generated_id,
+    vacation_grant_invariant_errors,
     vacation_record_invariant_errors,
 )
 from models.vacation_model import VacationModel
@@ -107,9 +109,13 @@ class VacationController:
                 year = record.date.year
                 summary = self.model.calculate_vacation_summary(year)
 
-                # If editing, subtract old record hours from used to
-                # calculate projected remaining
-                old_hours = 0.0
+                # Balance impact is charge-weighted: a debit only spends
+                # hours * charge_rate of the pool (a half-charged day costs
+                # half its hours). If editing an existing same-year debit,
+                # add back its old charge-weighted cost before subtracting
+                # the new one to get the projected remaining.
+                new_charge = record.hours * record.charge_rate
+                old_charge = 0.0
                 if record.id is not None:
                     old_rec = self.model.get_record_by_id(record.id)
                     if (
@@ -117,15 +123,30 @@ class VacationController:
                         and old_rec.vtype in _DEBIT_VACATION_TYPES
                         and old_rec.date.year == year
                     ):
-                        old_hours = old_rec.hours
+                        old_charge = old_rec.hours * old_rec.charge_rate
 
-                projected_remaining = summary.remaining + old_hours - record.hours
+                projected_remaining = summary.remaining + old_charge - new_charge
 
-                if projected_remaining < 0 and not confirm_over_balance:
-                    decision = over_balance_decision()
-                    if not decision.ok:
-                        return decision
-                    over_balance_warnings = decision.warnings
+                if projected_remaining < 0:
+                    # Hard block only when a borrow cap is configured and the
+                    # overdraw exceeds it (WarningCode.OVER_BORROW_LIMIT — no
+                    # confirm-then-retry). When max_borrow is 0 (the default)
+                    # this branch is skipped entirely, so over-balance stays a
+                    # confirm-then-retry exactly as before #47.
+                    max_borrow = self.model.get_max_borrow_hours()
+                    if max_borrow > 0 and projected_remaining < -max_borrow:
+                        return Result(
+                            ok=False,
+                            errors=(
+                                f"Cannot borrow {(-projected_remaining):.1f} "
+                                f"hours. Max borrow is {max_borrow:.1f} hours.",
+                            ),
+                        )
+                    if not confirm_over_balance:
+                        decision = over_balance_decision()
+                        if not decision.ok:
+                            return decision
+                        over_balance_warnings = decision.warnings
 
             if record.id is None:
                 record_id = self.model.insert_record(record)
@@ -173,5 +194,36 @@ class VacationController:
         )
         with guard:
             self.model.delete_record(record_id)
+            return Result(ok=True, errors=())
+        return guard.unwrap()
+
+    def save_grant(self, grant: VacationGrant) -> Result:
+        """Validates and saves a VacationGrant (insert if id is None, else
+        update). Grants enlarge a year's pool via VacationSummary.extra_grant;
+        they carry no over-balance check (adding hours never overdraws)."""
+        invariant_errors = vacation_grant_invariant_errors(grant)
+        if invariant_errors:
+            return Result(ok=False, errors=tuple(invariant_errors))
+
+        guard = DatabaseErrorGuard(
+            logger, "Database error while saving vacation grant %r", grant
+        )
+        with guard:
+            if grant.id is None:
+                grant_id = self.model.insert_grant(grant)
+                # Backfill the DB-generated id onto the frozen grant.
+                set_generated_id(grant, grant_id)
+            else:
+                self.model.update_grant(grant)
+            return Result(ok=True, errors=())
+        return guard.unwrap()
+
+    def delete_grant(self, grant_id: int) -> Result:
+        """Delete the vacation grant with the given id."""
+        guard = DatabaseErrorGuard(
+            logger, "Database error while deleting vacation grant id=%s", grant_id
+        )
+        with guard:
+            self.model.delete_grant(grant_id)
             return Result(ok=True, errors=())
         return guard.unwrap()

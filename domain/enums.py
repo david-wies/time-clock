@@ -66,6 +66,14 @@ class WarningCode(StrEnum):
     OPEN_RECORD_EXISTS = ("OPEN_RECORD_EXISTS", True)
     MULTIPLE_OPEN_RECORDS = ("MULTIPLE_OPEN_RECORDS", True)
     OVER_BALANCE = ("OVER_BALANCE_WARNING", True)
+    # A debit vacation record would push the year's balance below the
+    # negative borrow limit (settings key `vacation.max_borrow_hours`).
+    # Unlike OVER_BALANCE, this is a hard block with no confirm-then-retry:
+    # the view surfaces the error and refuses the save (there is nothing to
+    # confirm — the cap has been exceeded). Only enforced when a non-zero
+    # max_borrow_hours is configured; with the default (0) the ordinary
+    # OVER_BALANCE confirm flow applies instead.
+    OVER_BORROW_LIMIT = ("OVER_BORROW_LIMIT", True)
     # The record targeted by an update/delete no longer exists (a stale-UI
     # race: it was already deleted elsewhere). Views own the user-facing
     # wording; on this code they should inform the user, reload their data

@@ -5,6 +5,7 @@ __all__ = [
     "BreakMinutes",
     "TimeRecord",
     "VacationRecord",
+    "VacationGrant",
     "SicknessRecord",
     "MiliuimRecord",
     "MiliuimSummary",
@@ -13,6 +14,7 @@ __all__ = [
     "set_generated_id",
     "time_record_invariant_errors",
     "vacation_record_invariant_errors",
+    "vacation_grant_invariant_errors",
     "sickness_record_invariant_errors",
     "miliuim_record_invariant_errors",
 ]
@@ -231,6 +233,12 @@ def vacation_record_invariant_errors(record: VacationRecord) -> list[str]:
     except (ValueError, TypeError) as e:
         errors.append(str(e))
 
+    # charge_rate is context-free (it never depends on other DB rows or live
+    # settings), so it is enforced here alongside hours/note rather than in
+    # the controller's context-dependent validate_vacation_record().
+    if not 0.0 <= record.charge_rate <= 1.0:
+        errors.append("Charge rate must be between 0.0 and 1.0.")
+
     _check_note_length(record.note, errors)
 
     return errors
@@ -259,6 +267,12 @@ class VacationRecord:
     hours: Hours
     vtype: VacationType
     note: str | None = None
+    # Fraction of `hours` billed against the vacation balance (0.0..1.0).
+    # A half-charged day (charge_rate=0.5) still records its full `hours`
+    # for display, but only deducts half of them from the year's pool. The
+    # 0.0..1.0 bound is a context-free invariant enforced in
+    # vacation_record_invariant_errors() above.
+    charge_rate: float = 1.0
 
     def __post_init__(self) -> None:
         # NOTE: vtype == VacationType.CARRY_OVER is deliberately NOT rejected
@@ -283,6 +297,65 @@ class VacationRecord:
         # dataclass that needs to normalize a field in __post_init__ (see
         # TimeRecord.__post_init__).
         object.__setattr__(self, "hours", Hours(self.hours))
+
+
+def vacation_grant_invariant_errors(record: VacationGrant) -> list[str]:
+    """Context-free invariants for VacationGrant.
+
+    A grant records ad-hoc extra vacation hours awarded on a given date, so
+    its `hours` must be strictly positive (a zero- or negative-hour grant is
+    meaningless). Mirrors the other `*_invariant_errors` helpers: enforced
+    unconditionally by VacationGrant.__post_init__ (both at construction and
+    on any `dataclasses.replace()`), and re-run by
+    VacationController.save_grant() as defense-in-depth. Only the strictly-
+    positive hours floor and the shared note-length cap are checked here.
+    """
+    errors: list[str] = []
+
+    try:
+        _positive_hours(record.hours)
+    except (ValueError, TypeError) as e:
+        errors.append(str(e))
+
+    _check_note_length(record.note, errors)
+
+    return errors
+
+
+@dataclass(frozen=True, slots=True)
+class VacationGrant:
+    """An ad-hoc award of extra vacation hours on a specific date.
+
+    Grants live in their own `vacation_grant` table (not as vacation_record
+    rows) and feed VacationSummary.extra_grant, enlarging a year's base pool
+    beyond its allowance + carry-over. `hours` must be strictly positive.
+
+    Frozen rather than a `_ValidatingRecord` subclass — mirrors
+    VacationRecord/SicknessRecord (domain/types.py): freezing removes
+    in-place mutation entirely, so the only way to change a field on an
+    existing VacationGrant is `dataclasses.replace(record, field=value)`,
+    which rebuilds the instance and reruns `__post_init__` in full. See
+    controllers.vacation_controller.VacationController.save_grant() for the
+    one legitimate post-construction assignment (backfilling the DB-generated
+    `id`), which uses the documented `object.__setattr__` escape hatch.
+    """
+
+    __hash__ = None  # type: ignore[assignment]
+
+    id: int | None
+    date: date
+    hours: Hours
+    note: str | None = None
+
+    def __post_init__(self) -> None:
+        errors = vacation_grant_invariant_errors(self)
+        if errors:
+            raise ValueError("; ".join(errors))
+        # object.__setattr__ bypasses the frozen-dataclass __setattr__ that
+        # would otherwise reject this — the standard pattern for a frozen
+        # dataclass that needs to normalize a field in __post_init__ (see
+        # TimeRecord.__post_init__).
+        object.__setattr__(self, "hours", _positive_hours(self.hours))
 
 
 def sickness_record_invariant_errors(record: SicknessRecord) -> list[str]:
@@ -386,25 +459,44 @@ class Result:
 
 @dataclass(slots=True)
 class VacationSummary:
-    """A year's vacation balance: allowance, carry-over, usage, and remaining hours.
+    """A year's vacation balance: allowance, carry-over, grants, usage, and
+    remaining hours.
 
-    `total_pool` and `remaining` are computed properties, not stored fields
-    — VacationModel.calculate_vacation_summary() (their only construction
-    site) always derives them as `allowance + carry_over` and `total_pool -
-    used` respectively, with no conditional branch that ever computes them
+    `base_pool`, `total_pool`, and `remaining` are computed properties, not
+    stored fields — VacationModel.calculate_vacation_summary() (their only
+    construction site) always derives them as `allowance + carry_over +
+    extra_grant`, `base_pool - borrowed_prev`, and `total_pool - used`
+    respectively, with no conditional branch that ever computes them
     differently. Storing them as independent fields would let a future
     caller pass an inconsistent value; computing them here makes that
     impossible.
+
+    `used` is charge-weighted: it is `sum(hours * charge_rate)` over the
+    year's debit records, so a half-charged day only spends half its hours.
+    `carry_over` is NOT charge-weighted (carry-over rows have no meaningful
+    charge_rate). `extra_grant` is the year's ad-hoc VacationGrant total,
+    which enlarges the base pool. `borrowed_prev` is the number of hours the
+    *previous* year borrowed forward from this year's pool (bounded by the
+    configured `vacation.max_borrow_hours`); it shrinks this year's total
+    pool. When no borrow limit is configured, `borrowed_prev` is always 0
+    and `total_pool` reduces to `allowance + carry_over` as before.
     """
 
     allowance: float
     carry_over: float
+    extra_grant: float
     used: float
+    borrowed_prev: float
+
+    @property
+    def base_pool(self) -> float:
+        """Pool before borrowing: allowance, carry-over, and ad-hoc grants."""
+        return self.allowance + self.carry_over + self.extra_grant
 
     @property
     def total_pool(self) -> float:
-        """Total hours available this year: allowance plus carried-over surplus."""
-        return self.allowance + self.carry_over
+        """Hours available this year: base pool minus hours borrowed by last year."""
+        return self.base_pool - self.borrowed_prev
 
     @property
     def remaining(self) -> float:
