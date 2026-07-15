@@ -424,15 +424,25 @@ class VacationModel:  # pylint: disable=too-many-public-methods
         hop: borrowing propagates exactly one year forward and multi-year
         borrow chains are intentionally out of scope. When max_borrow_hours
         is 0 (the default) `borrowed_prev` is always 0, so total_pool reduces
-        to `allowance + carry_over` and the pre-#47 behaviour is preserved
-        exactly. The `_apply_borrow_prev` parameter is private (leading
-        underscore) — external callers always want the borrow-aware result.
+        to `base_pool` (allowance + carry_over + extra_grant) and the
+        pre-borrow behaviour is preserved exactly. The `_apply_borrow_prev`
+        parameter is private (leading underscore) — external callers always
+        want the borrow-aware result.
         """
         settings = self.get_settings(year)
         allowance = settings["hours_per_year"] if settings else 0.0
 
         if records is None:
             records = self.get_records_for_year(year)
+
+        # get_grants_for_year() and the borrow recursion below each overwrite
+        # self.last_skipped_count with their own (grants / other-year) skip
+        # counts. core/report.py reads last_skipped_count right after this call
+        # expecting THIS year's malformed-record skip count (the documented
+        # "read it right after the fetch" contract), so snapshot it here --
+        # after the records fetch, or the caller-supplied value when records
+        # was passed in -- and restore it before returning.
+        records_skipped = self.last_skipped_count
 
         carry_over = sum(r.hours for r in records if r.vtype == VacationType.CARRY_OVER)
         extra_grant = sum(g.hours for g in self.get_grants_for_year(year))
@@ -450,6 +460,7 @@ class VacationModel:  # pylint: disable=too-many-public-methods
                 overage = max(0.0, prev.used - prev.base_pool)
                 borrowed_prev = min(overage, max_borrow)
 
+        self.last_skipped_count = records_skipped
         return VacationSummary(
             allowance=allowance,
             carry_over=carry_over,

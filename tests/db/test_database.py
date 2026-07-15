@@ -295,7 +295,7 @@ def test_vacation_record_v2_migration_preserves_existing_rows(tmp_path) -> None:
     assert count == 4
 
     user_version = conn.execute("PRAGMA user_version;").fetchone()[0]
-    assert user_version == 8
+    assert user_version == 9
 
 
 def test_sickness_settings_v3_migration_converts_days_to_hours_and_preserves_rows(
@@ -335,7 +335,7 @@ def test_sickness_settings_v3_migration_converts_days_to_hours_and_preserves_row
     assert rows[1]["hours_per_year"] == pytest.approx(18.0 * 8.0)
 
     user_version = conn.execute("PRAGMA user_version;").fetchone()[0]
-    assert user_version == 8
+    assert user_version == 9
 
 
 def test_time_record_v8_migration_repairs_negative_break_minutes_and_logs_warning(
@@ -399,7 +399,7 @@ def test_time_record_v8_migration_repairs_negative_break_minutes_and_logs_warnin
     )
 
     user_version = conn.execute("PRAGMA user_version;").fetchone()[0]
-    assert user_version == 8
+    assert user_version == 9
 
 
 def test_time_record_v8_migration_preserves_rows_and_adds_break_minutes_check(
@@ -472,4 +472,4 @@ def test_time_record_v8_migration_preserves_rows_and_adds_break_minutes_check(
     assert count == 4
 
     user_version = conn.execute("PRAGMA user_version;").fetchone()[0]
-    assert user_version == 8
+    assert user_version == 9
