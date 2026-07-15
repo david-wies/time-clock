@@ -118,6 +118,7 @@ class SettingsDialog(tk.Toplevel):
         self._vac_year_var: tk.StringVar
         self._var_vac_hours: tk.StringVar
         self._var_vac_carry: tk.StringVar
+        self._var_vac_max_borrow: tk.StringVar
         self._lbl_vac_status: ttk.Label
         self._sick_year_var: tk.StringVar
         self._var_sick_days: tk.StringVar
@@ -673,6 +674,25 @@ class SettingsDialog(tk.Toplevel):
             format="%.1f",
         ).pack(side="left", padx=(4, 0))
 
+        # Max borrow-forward hours is a single global app_config value (not
+        # per-year), read back by VacationModel.get_max_borrow_hours(); 0.0
+        # disables borrowing entirely (the pre-#47 default).
+        mb_row = ttk.Frame(outer)
+        mb_row.pack(fill="x", pady=(0, 6))
+        ttk.Label(mb_row, text="Max borrow hours:", width=18, anchor="e").pack(
+            side="left"
+        )
+        self._var_vac_max_borrow = tk.StringVar(value="0.0")
+        ttk.Spinbox(
+            mb_row,
+            textvariable=self._var_vac_max_borrow,
+            from_=0.0,
+            to=5000.0,
+            increment=8.0,
+            width=8,
+            format="%.1f",
+        ).pack(side="left", padx=(4, 0))
+
         ttk.Button(outer, text="Save Vacation Settings", command=self._vac_save).pack(
             anchor="w", pady=(10, 0)
         )
@@ -694,6 +714,11 @@ class SettingsDialog(tk.Toplevel):
         else:
             self._var_vac_hours.set("160.0")
             self._var_vac_carry.set("40.0")
+        # Max borrow hours is global (app_config), not per-year — reload it
+        # alongside the year-scoped settings so the field always reflects the
+        # stored value.
+        max_borrow = self._settings.get("vacation.max_borrow_hours", 0.0)
+        self._var_vac_max_borrow.set(f"{float(max_borrow):.1f}")
         self._lbl_vac_status.config(text="")
 
     def _vac_save(self) -> None:
@@ -701,11 +726,20 @@ class SettingsDialog(tk.Toplevel):
             year = int(self._vac_year_var.get())
             hours = float(self._var_vac_hours.get())
             carry = float(self._var_vac_carry.get())
+            max_borrow = float(self._var_vac_max_borrow.get())
         except ValueError:
             messagebox.showerror("Error", "Invalid values.", parent=self)
             return
+        if max_borrow < 0:
+            messagebox.showerror(
+                "Error", "Max borrow hours cannot be negative.", parent=self
+            )
+            return
         try:
             self._model_vacation.save_settings(year, hours, carry)
+            # Global (non-year) app_config value, persisted via SettingsManager
+            # exactly like the other settings written in _on_save().
+            self._settings.set("vacation.max_borrow_hours", max_borrow)
         except Exception as exc:  # pylint: disable=broad-exception-caught
             # Model errors are unpredictable; reported to the user below.
             logger.exception("Failed to save vacation settings for year=%s", year)

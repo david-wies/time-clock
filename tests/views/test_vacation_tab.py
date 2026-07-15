@@ -173,3 +173,65 @@ def test_do_delete_record_not_found_shows_info_and_refreshes(
     common_mb.showinfo.assert_called_once()
     common_mb.showerror.assert_not_called()
     refresh_mock.assert_called_once()
+
+
+def test_make_row_values_includes_charged_column() -> None:
+    """Each record row exposes both raw hours (col 3) and charge-weighted
+    hours (col 4); a half-charged 8h day charges 4h."""
+    tab = VacationTab.__new__(VacationTab)
+    rec = VacationRecord(
+        1, date(2026, 6, 1), Hours(8.0), VacationType.ANNUAL_LEAVE, "Trip", 0.5
+    )
+
+    values = tab._make_row_values(rec)
+
+    assert len(values) == 6
+    assert values[3] == "8.0h"  # raw hours
+    assert values[4] == "4.0h"  # charged (8.0 * 0.5)
+
+
+def test_make_row_values_none_row_has_six_columns() -> None:
+    """The placeholder/total row must match the 6-column tree layout so the
+    charged column lines up."""
+    tab = VacationTab.__new__(VacationTab)
+
+    values = tab._make_row_values(None, "Total: 8.0h")
+
+    assert values == ("Total: 8.0h", "", "", "", "", "")
+
+
+def test_borrow_breakdown_parts_empty_without_cap() -> None:
+    """With no borrow cap configured, the breakdown adds no borrow fragments
+    (pre-#47 layout preserved)."""
+    tab = VacationTab.__new__(VacationTab)
+    tab.model = mock.Mock()
+    tab.model.get_max_borrow_hours.return_value = 0.0
+
+    assert tab._borrow_breakdown_parts(used=10.0, total_pool=8.0) == []
+
+
+def test_borrow_breakdown_parts_reports_borrowed_and_headroom() -> None:
+    """current-year borrowed = max(0, min(used - total_pool, max_borrow));
+    headroom = max_borrow - borrowed."""
+    tab = VacationTab.__new__(VacationTab)
+    tab.model = mock.Mock()
+    tab.model.get_max_borrow_hours.return_value = 40.0
+
+    parts = tab._borrow_breakdown_parts(used=50.0, total_pool=40.0)
+
+    assert parts == ["borrowed: 10.0h", "borrow headroom: 30.0h"]
+
+
+def test_do_grants_opens_grant_dialog(db: Database, event_bus: EventBus) -> None:
+    """The Grants… button opens VacationGrantDialog for the selected year,
+    wired with the tab's controller/model (mirroring the carry-over button)."""
+    model = VacationModel(db, event_bus)
+    tab = _make_tab(model, selected_iid=None)
+    tab._selected_year = 2026
+
+    with mock.patch("views.vacation_tab.VacationGrantDialog") as dialog_mock:
+        tab._do_grants()
+
+    dialog_mock.assert_called_once_with(
+        tab, controller=tab.controller, model=model, year=2026
+    )

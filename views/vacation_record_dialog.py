@@ -116,6 +116,27 @@ class VacationRecordDialog(tk.Toplevel):
                 value=str(vt),
             ).pack(side="left", padx=(4, 0))
 
+        # ── Charge Rate ───────────────────────────────────────────────────────
+        charge_row = ttk.Frame(outer)
+        charge_row.pack(fill="x", pady=(0, 6))
+        ttk.Label(charge_row, text="Charge:", width=8, anchor="e").pack(side="left")
+        self._var_charge = tk.StringVar(value="1.0")
+        self._spn_charge = ttk.Spinbox(
+            charge_row,
+            textvariable=self._var_charge,
+            from_=0.0,
+            to=1.0,
+            increment=0.05,
+            width=8,
+            format="%.2f",
+        )
+        self._spn_charge.pack(side="left", padx=(4, 0))
+        ttk.Label(
+            charge_row,
+            text="(fraction billed to balance, 0.0–1.0)",
+            foreground="gray",
+        ).pack(side="left", padx=(6, 0))
+
         # ── Note ──────────────────────────────────────────────────────────────
         note_row = ttk.Frame(outer)
         note_row.pack(fill="x", pady=(0, 10))
@@ -151,11 +172,13 @@ class VacationRecordDialog(tk.Toplevel):
             self._set_date(date.today())
             self._var_hours.set("8.0")
             self._var_vtype.set(str(VacationType.ANNUAL_LEAVE))
+            self._var_charge.set("1.0")
             self._var_note.set("")
         else:
             self._set_date(record.date)
             self._var_hours.set(f"{record.hours:.1f}")
             self._var_vtype.set(str(record.vtype))
+            self._var_charge.set(f"{record.charge_rate:.2f}")
             self._var_note.set(record.note or "")
         self._update_hours_cap()
 
@@ -222,6 +245,12 @@ class VacationRecordDialog(tk.Toplevel):
             field_errors.append(f"Invalid vacation type: {vt_val!r}")
             vtype = VacationType.ANNUAL_LEAVE
 
+        try:
+            charge_rate = float(self._var_charge.get())
+        except ValueError:
+            field_errors.append("Charge rate must be a number between 0.0 and 1.0.")
+            charge_rate = 1.0
+
         if field_errors:
             self._lbl_error.config(text="\n".join(field_errors))
             return
@@ -234,6 +263,7 @@ class VacationRecordDialog(tk.Toplevel):
                 hours=hours,
                 vtype=vtype,
                 note=note_s or None,
+                charge_rate=charge_rate,
             )
         except ValueError as exc:
             self._lbl_error.config(text=str(exc))

@@ -41,6 +41,8 @@ def _make_dialog_for_save(get_date, raw_date_text="2026-99-99"):
     dialog._var_hours.get.return_value = "8.0"
     dialog._var_vtype = mock.MagicMock()
     dialog._var_vtype.get.return_value = str(VacationType.ANNUAL_LEAVE)
+    dialog._var_charge = mock.MagicMock()
+    dialog._var_charge.get.return_value = "1.0"
     return dialog
 
 
@@ -183,6 +185,8 @@ def _make_dialog_for_record_not_found() -> VacationRecordDialog:
     dialog._var_vtype.get.return_value = str(VacationType.ANNUAL_LEAVE)
     dialog._var_note = mock.MagicMock()
     dialog._var_note.get.return_value = ""
+    dialog._var_charge = mock.MagicMock()
+    dialog._var_charge.get.return_value = "1.0"
     dialog._record = mock.Mock(id=123)
     dialog._controller = mock.MagicMock()
     dialog.destroy = mock.MagicMock()
@@ -212,3 +216,52 @@ def test_on_save_record_not_found_sets_vanished_warns_and_destroys() -> None:
     assert dialog.record_vanished is True
     messagebox_mock.showwarning.assert_called_once()
     destroy_mock.assert_called_once()
+
+
+def test_on_save_feeds_charge_rate_into_saved_record() -> None:
+    """The Charge spinbox value must flow into the VacationRecord handed to
+    the controller — a half-charged day carries charge_rate=0.5."""
+    dialog = _make_dialog_for_record_not_found()
+    dialog._var_charge.get.return_value = "0.50"
+    controller_mock = mock.MagicMock()
+    dialog._controller = controller_mock
+    controller_mock.save_record.return_value = Result(ok=True)
+
+    with mock.patch("views.vacation_record_dialog.messagebox"):
+        dialog._on_save()
+
+    controller_mock.save_record.assert_called_once()
+    saved = controller_mock.save_record.call_args.args[0]
+    assert saved.charge_rate == 0.5
+
+
+def test_on_save_non_numeric_charge_is_reported_as_field_error() -> None:
+    """A non-numeric Charge entry must surface as a field error before the
+    record is built, and must not reach the controller."""
+    dialog = _make_dialog_for_record_not_found()
+    dialog._var_charge.get.return_value = "abc"
+    controller_mock = mock.MagicMock()
+    dialog._controller = controller_mock
+
+    dialog._on_save()
+
+    controller_mock.save_record.assert_not_called()
+    dialog._lbl_error.config.assert_called_with(
+        text="Charge rate must be a number between 0.0 and 1.0."
+    )
+
+
+def test_on_save_out_of_range_charge_shows_invariant_error() -> None:
+    """An in-range-parseable but out-of-bounds Charge (e.g. 1.5) is rejected by
+    the VacationRecord invariant, surfaced inline, and never saved."""
+    dialog = _make_dialog_for_record_not_found()
+    dialog._var_charge.get.return_value = "1.50"
+    controller_mock = mock.MagicMock()
+    dialog._controller = controller_mock
+
+    dialog._on_save()
+
+    controller_mock.save_record.assert_not_called()
+    dialog._lbl_error.config.assert_called_with(
+        text="Charge rate must be between 0.0 and 1.0."
+    )
