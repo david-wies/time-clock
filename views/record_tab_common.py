@@ -11,9 +11,11 @@ from __future__ import annotations
 import logging
 import tkinter as tk
 from collections.abc import Callable
-from tkinter import ttk
+from tkinter import messagebox, ttk
 
 from core.timeutil import MONTH_NAMES
+from domain.enums import RECORD_NOT_FOUND_MESSAGE, WarningCode
+from domain.types import Result
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +38,42 @@ class RecordTabMixin:
 
     def _do_edit(self) -> None:
         raise NotImplementedError
+
+    def _handle_delete_result(
+        self, result: Result, *, already_gone_title: str, error_title: str
+    ) -> None:
+        """Shared ``_do_delete`` result handling for record tabs.
+
+        On the RECORD_NOT_FOUND stale-record race (the selected row was
+        already deleted elsewhere) shows an informational box titled
+        ``already_gone_title`` and refreshes so the phantom row disappears;
+        the race is benign and self-healing, so it is ``showinfo``, not
+        ``showwarning`` (unlike the dialog save-race, which discards edits).
+        ``already_gone_title``/``error_title`` are passed in rather than
+        fixed here because they are keyed to each tab's Delete/Remove verb
+        ("Record Already Deleted"/"Delete Failed" for the time-clock tab,
+        "Record Already Removed"/"Remove Failed" for the others). Any other
+        error surfaces via ``showerror``; a successful result is a no-op
+        (the model's mutation event already drives the refresh)."""
+        if result.ok:
+            return
+        if WarningCode.RECORD_NOT_FOUND.value in result.errors:
+            messagebox.showinfo(
+                already_gone_title, RECORD_NOT_FOUND_MESSAGE, parent=self
+            )
+            self._refresh()
+            return
+        messagebox.showerror(error_title, "\n".join(result.errors), parent=self)
+
+    def _after_record_dialog(self, dialog: object) -> None:
+        """Refresh epilogue to run after a modal record-edit dialog closes.
+
+        If the dialog's save hit the RECORD_NOT_FOUND stale-record race it
+        set ``record_vanished`` and published no mutation event, so refresh
+        explicitly to drop the phantom row; otherwise the model's own event
+        already drove the refresh and this is a no-op."""
+        if getattr(dialog, "record_vanished", False):
+            self._refresh()
 
     def _get_selected_record_id(self) -> int | None:
         """Returns the id encoded in the selected row's ``rec_<id>`` iid, if any."""

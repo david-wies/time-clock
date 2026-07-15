@@ -154,10 +154,13 @@ def test_do_delete_record_not_found_shows_info_and_refreshes(
     refresh_mock = mock.Mock()
     tab._refresh = refresh_mock
 
-    with mock.patch("views.sickness_tab.messagebox") as messagebox_mock:
+    with (
+        mock.patch("views.sickness_tab.messagebox") as messagebox_mock,
+        mock.patch("views.record_tab_common.messagebox") as common_mb,
+    ):
         messagebox_mock.askyesno.return_value = True
         tab._do_delete()
 
-    messagebox_mock.showinfo.assert_called_once()
-    messagebox_mock.showerror.assert_not_called()
+    common_mb.showinfo.assert_called_once()
+    common_mb.showerror.assert_not_called()
     refresh_mock.assert_called_once()

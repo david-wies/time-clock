@@ -5,15 +5,19 @@ from __future__ import annotations
 import logging
 import tkinter as tk
 from datetime import date, datetime, time
-from tkinter import messagebox, ttk
+from tkinter import ttk
 
 from controllers.time_clock_controller import TimeClockController
 from core.timeutil import duration
-from domain.enums import RECORD_NOT_FOUND_MESSAGE, WarningCode, WorkType
+from domain.enums import WarningCode, WorkType
 from domain.types import TimeRecord
 from settings import SettingsManager
 from views.date_picker import make_date_picker
-from views.dialog_common import setup_modal_window, validate_note_length
+from views.dialog_common import (
+    close_dialog_record_vanished,
+    setup_modal_window,
+    validate_note_length,
+)
 from views.document_attachment import make_document_picker
 
 logger = logging.getLogger(__name__)
@@ -392,16 +396,6 @@ class TimeRecordDialog(tk.Toplevel):
         if result.ok:
             self.destroy()
         elif WarningCode.RECORD_NOT_FOUND.value in result.errors:
-            # Stale-record race: the record being edited was already
-            # deleted elsewhere, so this save can never succeed — inform
-            # the user and close (the opening tab reloads via
-            # record_vanished).
-            messagebox.showwarning(
-                "Record No Longer Exists",
-                RECORD_NOT_FOUND_MESSAGE,
-                parent=self,
-            )
-            self.record_vanished = True
-            self.destroy()
+            close_dialog_record_vanished(self)
         else:
             self._lbl_error.config(text="\n".join(result.errors))
