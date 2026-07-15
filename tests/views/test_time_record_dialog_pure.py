@@ -67,7 +67,7 @@ def test_on_save_record_not_found_sets_vanished_warns_and_destroys() -> None:
     destroy_mock = mock.MagicMock()
     dialog.destroy = destroy_mock
 
-    with mock.patch("views.time_record_dialog.messagebox") as messagebox_mock:
+    with mock.patch("views.dialog_common.messagebox") as messagebox_mock:
         dialog._on_save()
 
     controller_mock.save_record.assert_called_once()

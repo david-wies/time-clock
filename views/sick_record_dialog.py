@@ -8,11 +8,15 @@ from datetime import date
 from tkinter import messagebox, ttk
 
 from controllers.sickness_controller import SicknessController
-from domain.enums import RECORD_NOT_FOUND_MESSAGE, WarningCode
+from domain.enums import WarningCode
 from domain.types import SicknessRecord
 from models.sickness_model import SicknessModel
 from views.date_picker import make_date_picker
-from views.dialog_common import setup_modal_window, validate_note_length
+from views.dialog_common import (
+    close_dialog_record_vanished,
+    setup_modal_window,
+    validate_note_length,
+)
 from views.document_attachment import make_document_picker
 
 logger = logging.getLogger(__name__)
@@ -260,16 +264,6 @@ class SickRecordDialog(tk.Toplevel):
             ):
                 self._on_save(confirm_over_balance=True)
         elif WarningCode.RECORD_NOT_FOUND.value in result.errors:
-            # Stale-record race: the record being edited was already
-            # deleted elsewhere, so this save can never succeed — inform
-            # the user and close (the opening tab reloads via
-            # record_vanished).
-            messagebox.showwarning(
-                "Record No Longer Exists",
-                RECORD_NOT_FOUND_MESSAGE,
-                parent=self,
-            )
-            self.record_vanished = True
-            self.destroy()
+            close_dialog_record_vanished(self)
         else:
             self._lbl_error.config(text="\n".join(result.errors))

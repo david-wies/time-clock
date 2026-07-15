@@ -3,6 +3,25 @@
 from __future__ import annotations
 
 import tkinter as tk
+from tkinter import messagebox
+
+from domain.enums import RECORD_NOT_FOUND_MESSAGE
+
+
+def close_dialog_record_vanished(dialog: tk.Toplevel) -> None:
+    """Handle the RECORD_NOT_FOUND save-race in a record-edit dialog.
+
+    The record being edited was already deleted elsewhere, so the save can
+    never succeed. Warn the user, flag ``record_vanished`` so the opening
+    tab's ``_after_record_dialog`` reloads to drop the phantom row, then
+    close. This uses ``showwarning`` (not the ``showinfo`` of the passive
+    delete/clock-out races) because the user's in-progress edits are being
+    discarded."""
+    messagebox.showwarning(
+        "Record No Longer Exists", RECORD_NOT_FOUND_MESSAGE, parent=dialog
+    )
+    dialog.record_vanished = True
+    dialog.destroy()
 
 
 def setup_modal_window(

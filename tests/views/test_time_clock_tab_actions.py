@@ -148,23 +148,27 @@ def test_do_delete_record_not_found_shows_info_and_refreshes(
     refresh_mock = mock.Mock()
     tab._refresh = refresh_mock
 
-    with mock.patch("views.time_clock_tab.messagebox") as messagebox_mock:
+    with (
+        mock.patch("views.time_clock_tab.messagebox") as messagebox_mock,
+        mock.patch("views.record_tab_common.messagebox") as common_mb,
+    ):
         messagebox_mock.askyesno.return_value = True
         tab._do_delete()
 
-    messagebox_mock.showinfo.assert_called_once()
-    messagebox_mock.showerror.assert_not_called()
+    common_mb.showinfo.assert_called_once()
+    common_mb.showerror.assert_not_called()
     refresh_mock.assert_called_once()
 
 
 # ─────────────────────── _handle_vanished_open_record() ──────────────────
 
 
-def test_handle_vanished_open_record_shows_warning_and_refreshes(
+def test_handle_vanished_open_record_shows_info_and_refreshes(
     db: Database, event_bus: EventBus
 ) -> None:
-    """Must show the clock-out-specific "Nothing to Clock Out" warning
-    (not the generic "Record Not Found" one used by _do_edit()) and call
+    """Must show the clock-out-specific "Nothing to Clock Out" info box
+    (issue #38: this benign self-healing stale-record race is presented as
+    info, matching the delete race and the tray -- not a warning) and call
     self._refresh() unconditionally."""
     model = TimeClockModel(db, event_bus)
     tab = _make_tab(model)
@@ -176,8 +180,8 @@ def test_handle_vanished_open_record_shows_warning_and_refreshes(
     with mock.patch("views.time_clock_tab.messagebox") as messagebox_mock:
         tab._handle_vanished_open_record()
 
-    messagebox_mock.showwarning.assert_called_once()
-    messagebox_mock.showinfo.assert_not_called()
+    messagebox_mock.showinfo.assert_called_once()
+    messagebox_mock.showwarning.assert_not_called()
     refresh_mock.assert_called_once()
 
 

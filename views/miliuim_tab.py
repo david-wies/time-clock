@@ -10,7 +10,6 @@ from controllers.miliuim_controller import MiliuimController
 from core.events import Event, EventBus
 from core.hebrew_date import to_hebrew_label as _safe_hebrew
 from core.timeutil import date_to_iso, period_bounds, to_display_date
-from domain.enums import RECORD_NOT_FOUND_MESSAGE, WarningCode
 from domain.types import MiliuimRecord
 from models.miliuim_model import MiliuimModel
 from settings import SettingsManager
@@ -239,12 +238,10 @@ class MiliuimTab(RecordTabMixin, ttk.Frame):
         dlg = MiliuimRecordDialog(
             self, controller=self.controller, model=self.model, record=rec
         )
-        # The dialog is modal (wait_window in __init__), so by now it has
-        # closed. If its save hit the RECORD_NOT_FOUND stale-record race,
-        # no mutation event was published — refresh explicitly so the
-        # phantom row disappears.
-        if dlg.record_vanished:
-            self._refresh()
+        # Dialog is modal (wait_window in __init__), so it has closed by now;
+        # _after_record_dialog refreshes if its save hit the RECORD_NOT_FOUND
+        # race.
+        self._after_record_dialog(dlg)
 
     def _do_delete(self) -> None:
         rec_id = self._get_selected_record_id()
@@ -258,13 +255,8 @@ class MiliuimTab(RecordTabMixin, ttk.Frame):
         ):
             return
         result = self.controller.delete_record(rec_id)
-        if not result.ok:
-            if WarningCode.RECORD_NOT_FOUND.value in result.errors:
-                messagebox.showinfo(
-                    "Record Already Removed",
-                    RECORD_NOT_FOUND_MESSAGE,
-                    parent=self,
-                )
-                self._refresh()
-                return
-            messagebox.showerror("Remove Failed", "\n".join(result.errors), parent=self)
+        self._handle_delete_result(
+            result,
+            already_gone_title="Record Already Removed",
+            error_title="Remove Failed",
+        )

@@ -21,7 +21,6 @@ from core.hebrew_date import to_hebrew_label as _safe_hebrew
 from core.timeutil import MONTH_NAMES as _MONTH_NAMES
 from core.timeutil import time_to_str, to_display_date
 from domain.enums import (
-    RECORD_NOT_FOUND_MESSAGE,
     RECORD_NOT_FOUND_OPEN_RECORD_MESSAGE,
     WarningCode,
     Weekday,
@@ -852,7 +851,7 @@ class TimeClockTab(RecordTabMixin, ttk.Frame):
         record was already deleted elsewhere. Inform the user with
         clock-out-appropriate wording, then refresh so the phantom open
         record disappears and the buttons/auto-refresh match reality."""
-        messagebox.showwarning(
+        messagebox.showinfo(
             "Nothing to Clock Out",
             RECORD_NOT_FOUND_OPEN_RECORD_MESSAGE + " The display will refresh.",
             parent=self,
@@ -946,12 +945,10 @@ class TimeClockTab(RecordTabMixin, ttk.Frame):
             settings=self.settings,
             record=rec,
         )
-        # The dialog is modal (wait_window in __init__), so by now it has
-        # closed. If its save hit the RECORD_NOT_FOUND stale-record race,
-        # no mutation event was published — refresh explicitly so the
-        # phantom row disappears.
-        if dlg.record_vanished:
-            self._refresh()
+        # Dialog is modal (wait_window in __init__), so it has closed by now;
+        # _after_record_dialog refreshes if its save hit the RECORD_NOT_FOUND
+        # race.
+        self._after_record_dialog(dlg)
 
     def _do_delete(self) -> None:
         rec_id = self._get_selected_record_id()
@@ -965,16 +962,11 @@ class TimeClockTab(RecordTabMixin, ttk.Frame):
         ):
             return
         result = self.controller.delete_record(rec_id)
-        if not result.ok:
-            if WarningCode.RECORD_NOT_FOUND.value in result.errors:
-                messagebox.showinfo(
-                    "Record Already Deleted",
-                    RECORD_NOT_FOUND_MESSAGE,
-                    parent=self,
-                )
-                self._refresh()
-                return
-            messagebox.showerror("Delete Failed", "\n".join(result.errors), parent=self)
+        self._handle_delete_result(
+            result,
+            already_gone_title="Record Already Deleted",
+            error_title="Delete Failed",
+        )
 
     # ─────────────────────────── Lifecycle ──────────────────────────────────
 
