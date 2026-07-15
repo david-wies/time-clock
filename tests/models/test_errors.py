@@ -89,6 +89,15 @@ def test_record_not_found_error_rejects_invalid_record_id() -> None:
         RecordNotFoundError(RecordEntity.TIME_RECORD, "42", RecordAction.UPDATE)  # type: ignore[arg-type]
 
 
+@pytest.mark.parametrize("record_id", [True, False])
+def test_record_not_found_error_rejects_bool_record_id(record_id: bool) -> None:
+    """bool is a subclass of int, so True/False would slip past a bare
+    isinstance(record_id, int) check and flow into diagnostic logs as if
+    they were real record ids. The guard must reject them explicitly."""
+    with pytest.raises(ValueError, match="Invalid record_id"):
+        RecordNotFoundError(RecordEntity.TIME_RECORD, record_id, RecordAction.UPDATE)  # type: ignore[arg-type]
+
+
 def test_raise_if_no_rows_raises_runtime_error_after_select(
     cursor: sqlite3.Cursor,
 ) -> None:
