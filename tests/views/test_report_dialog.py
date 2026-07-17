@@ -230,7 +230,7 @@ def test_build_preview_text_includes_extra_grant_and_borrowed_lines() -> None:
     text = dialog._build_preview_text(_make_report_data())
     assert "Extra grant:" in text
     assert "12.0 h" in text
-    assert "Borrowed:" in text
+    assert "Borrowed (prev yr):" in text
     assert "5.0 h" in text
 
 

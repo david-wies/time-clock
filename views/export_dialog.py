@@ -434,7 +434,7 @@ class ExportDialog(tk.Toplevel):
         return [
             _row("Total", raw_total, charged_total),
             _row("Extra Grant", extra_grant),
-            _row("Borrowed", borrowed),
+            _row("Borrowed (prev yr)", borrowed),
         ]
 
     @staticmethod

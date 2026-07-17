@@ -500,7 +500,7 @@ class VacationModel:  # pylint: disable=too-many-public-methods
             value = float(parsed)
             if not math.isfinite(value):
                 raise ValueError("non-finite borrow-hours value")
-        except ValueError, TypeError, json.JSONDecodeError:
+        except (ValueError, TypeError, json.JSONDecodeError):  # fmt: skip
             logger.warning(
                 "Malformed %s app_config value %r; defaulting to 0.0",
                 _MAX_BORROW_HOURS_KEY,

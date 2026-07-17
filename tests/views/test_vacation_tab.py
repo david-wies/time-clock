@@ -219,7 +219,7 @@ def test_borrow_breakdown_parts_reports_borrowed_and_headroom() -> None:
 
     parts = tab._borrow_breakdown_parts(used=50.0, total_pool=40.0)
 
-    assert parts == ["borrowed: 10.0h", "borrow headroom: 30.0h"]
+    assert parts == ["borrowed this yr: 10.0h", "borrow headroom: 30.0h"]
 
 
 def test_do_grants_opens_grant_dialog(db: Database, event_bus: EventBus) -> None:

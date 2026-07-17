@@ -280,7 +280,7 @@ class VacationTab(RecordTabMixin, ttk.Frame):
         borrowed = max(0.0, min(used - total_pool, max_borrow))
         headroom = max_borrow - borrowed
         return [
-            f"borrowed: {_fmt_h(borrowed)}",
+            f"borrowed this yr: {_fmt_h(borrowed)}",
             f"borrow headroom: {_fmt_h(headroom)}",
         ]
 

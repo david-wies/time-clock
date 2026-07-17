@@ -363,7 +363,7 @@ def test_vacation_csv_appends_summary_block(export_models, tmp_path) -> None:
     assert "Charged Hours" in text
     assert "Total" in text
     assert "Extra Grant" in text
-    assert "Borrowed" in text
+    assert "Borrowed (prev yr)" in text
     # raw total 8.0h and charged total 4.0h both present in the summary block
     assert "8.0h" in text
     assert "4.0h" in text

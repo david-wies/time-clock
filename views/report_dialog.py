@@ -366,7 +366,7 @@ class ReportDialog(tk.Toplevel):
         lines.append(f"  Allowance:           {data.vac_allowance:>9.1f} h")
         lines.append(f"  Carry-over:          {data.vac_carry_over:>9.1f} h")
         lines.append(f"  Extra grant:         {vac.extra_grant:>9.1f} h")
-        lines.append(f"  Borrowed:            {vac.borrowed_prev:>9.1f} h")
+        lines.append(f"  Borrowed (prev yr):  {vac.borrowed_prev:>9.1f} h")
         lines.append(f"  Total pool:          {data.vac_total_pool:>9.1f} h")
         lines.append(f"  Used:                {data.vac_used:>9.1f} h")
         lines.append(f"  Remaining:           {data.vac_remaining:>9.1f} h")
@@ -599,7 +599,7 @@ class ReportDialog(tk.Toplevel):
                     ["Allowance", f"{data.vac_allowance:.1f} h"],
                     ["Carry-over", f"{data.vac_carry_over:.1f} h"],
                     ["Extra Grant", f"{vac.extra_grant:.1f} h"],
-                    ["Borrowed", f"{vac.borrowed_prev:.1f} h"],
+                    ["Borrowed (prev yr)", f"{vac.borrowed_prev:.1f} h"],
                     ["Total Pool", f"{data.vac_total_pool:.1f} h"],
                     ["Used", f"{data.vac_used:.1f} h"],
                     ["Remaining", f"{data.vac_remaining:.1f} h"],
