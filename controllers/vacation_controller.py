@@ -6,7 +6,7 @@ from controllers.time_clock_controller import (
     DatabaseErrorGuard,
     over_balance_decision,
 )
-from domain.enums import VacationType, WarningCode
+from domain.enums import VacationType, WarningCode, is_debit_vacation_type
 from domain.types import (
     Result,
     VacationGrant,
@@ -18,12 +18,6 @@ from domain.types import (
 from models.vacation_model import VacationModel
 
 logger = logging.getLogger(__name__)
-
-_DEBIT_VACATION_TYPES = (
-    VacationType.ANNUAL_LEAVE,
-    VacationType.PUBLIC_HOLIDAY,
-    VacationType.SPECIAL_LEAVE,
-)
 
 
 def validate_vacation_record(
@@ -100,7 +94,7 @@ class VacationController:
 
             # Check balance if this is a debit record (not carry-over or
             # unpaid leave)
-            is_debit = record.vtype in _DEBIT_VACATION_TYPES
+            is_debit = is_debit_vacation_type(record.vtype)
 
             # Non-blocking over-balance (a future flip of OVER_BALANCE.blocking)
             # must still surface on the success Result; carry it through here.
@@ -120,7 +114,7 @@ class VacationController:
                     old_rec = self.model.get_record_by_id(record.id)
                     if (
                         old_rec
-                        and old_rec.vtype in _DEBIT_VACATION_TYPES
+                        and is_debit_vacation_type(old_rec.vtype)
                         and old_rec.date.year == year
                     ):
                         old_charge = old_rec.hours * old_rec.charge_rate
@@ -128,6 +122,10 @@ class VacationController:
                 projected_remaining = summary.remaining + old_charge - new_charge
 
                 if projected_remaining < 0:
+                    # Cap is measured against total_pool (summary.remaining
+                    # already nets this year's borrowed_prev); multi-year borrow
+                    # chains are intentionally out of scope (one hop) — see
+                    # calculate_vacation_summary's `_apply_borrow_prev` docstring.
                     # Hard block only when a borrow cap is configured and the
                     # overdraw exceeds it (WarningCode.OVER_BORROW_LIMIT — no
                     # confirm-then-retry). When max_borrow is 0 (the default)

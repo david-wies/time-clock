@@ -516,7 +516,6 @@ class ExportDialog(tk.Toplevel):
         table_data: list[list] = [columns]
         month_header_rows: set[int] = set()
 
-        total = 0.0
         current_month: tuple[int, int] | None = None
 
         for rec in records:
@@ -531,26 +530,16 @@ class ExportDialog(tk.Toplevel):
 
             table_data.append(self._record_to_values(rec, tab))
 
-            if tab == ExportTab.TIME:
-                if not isinstance(rec, TimeRecord):
-                    raise TypeError(f"Expected TimeRecord, got {type(rec).__name__}")
-                if rec.end_time:
-                    total += duration(rec.start_time, rec.end_time, rec.break_minutes)
-            else:
-                if not isinstance(rec, (VacationRecord, SicknessRecord)):
-                    raise TypeError(
-                        "Expected VacationRecord or SicknessRecord, got "
-                        f"{type(rec).__name__}"
-                    )
-                total += rec.hours
-
         # ── Summary rows ─────────────────────────────────────────────────────
         # Vacation gets a multi-line block (raw + charged totals, extra grant,
-        # borrowed); time/sickness keep the single "Total: Xh" row.
+        # borrowed); time/sickness keep the single "Total: Xh" row.  Only the
+        # single-total tabs need `total`, so it is computed there rather than
+        # accumulated in the shared loop above (vacation would discard it).
         if tab == ExportTab.VACATION:
             summary_rows = self._vacation_summary_rows(records)
         else:
             decimals = 2 if tab == ExportTab.TIME else 1
+            total = self._compute_total(records, tab)
             total_row: list = [""] * len(columns)
             total_row[0] = f"Total: {total:.{decimals}f}h"
             summary_rows = [total_row]
