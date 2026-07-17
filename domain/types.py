@@ -236,7 +236,18 @@ def vacation_record_invariant_errors(record: VacationRecord) -> list[str]:
     # charge_rate is context-free (it never depends on other DB rows or live
     # settings), so it is enforced here alongside hours/note rather than in
     # the controller's context-dependent validate_vacation_record().
-    if not 0.0 <= record.charge_rate <= 1.0:
+    # Reject non-numeric, boolean (a bool is an int subclass, so True/False
+    # would otherwise sneak through the range check as 1.0/0.0), and
+    # non-finite values explicitly — a bare `0.0 <= charge_rate <= 1.0`
+    # comparison would raise an uncaught TypeError on a non-numeric value
+    # instead of reporting it as this same domain validation error.
+    charge_rate = record.charge_rate
+    if (
+        isinstance(charge_rate, bool)
+        or not isinstance(charge_rate, (int, float))
+        or not math.isfinite(charge_rate)
+        or not 0.0 <= charge_rate <= 1.0
+    ):
         errors.append("Charge rate must be between 0.0 and 1.0.")
 
     _check_note_length(record.note, errors)

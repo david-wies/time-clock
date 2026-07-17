@@ -6,7 +6,7 @@ from controllers.time_clock_controller import (
     DatabaseErrorGuard,
     over_balance_decision,
 )
-from domain.enums import VacationType
+from domain.enums import VacationType, WarningCode
 from domain.types import (
     Result,
     VacationGrant,
@@ -135,9 +135,15 @@ class VacationController:
                     # confirm-then-retry exactly as before #47.
                     max_borrow = self.model.get_max_borrow_hours()
                     if max_borrow > 0 and projected_remaining < -max_borrow:
+                        # Carry the structured WarningCode.OVER_BORROW_LIMIT
+                        # alongside the user-facing message, mirroring how
+                        # blocking codes (RECORD_NOT_FOUND, OVER_BALANCE) are
+                        # surfaced in `errors` — the view keys off the code,
+                        # not the free-text sentence.
                         return Result(
                             ok=False,
                             errors=(
+                                WarningCode.OVER_BORROW_LIMIT.value,
                                 f"Cannot borrow {(-projected_remaining):.1f} "
                                 f"hours. Max borrow is {max_borrow:.1f} hours.",
                             ),

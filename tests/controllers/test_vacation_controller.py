@@ -785,7 +785,13 @@ def test_save_over_borrow_cap_is_hard_blocked(
     res = controller.save_record(rec)
 
     assert res.ok is False
-    assert res.errors == ("Cannot borrow 8.0 hours. Max borrow is 5.0 hours.",)
+    # The structured warning code must accompany the user-facing message.
+    assert WarningCode.OVER_BORROW_LIMIT.value in res.errors
+    assert "Cannot borrow 8.0 hours. Max borrow is 5.0 hours." in res.errors
+    assert res.errors == (
+        WarningCode.OVER_BORROW_LIMIT.value,
+        "Cannot borrow 8.0 hours. Max borrow is 5.0 hours.",
+    )
     assert rec.id is None
 
     # A confirm re-call must still be hard-blocked, not saved.

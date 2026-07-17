@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import math
 import tkinter as tk
 from collections.abc import Callable
 from datetime import date
@@ -717,8 +718,8 @@ class SettingsDialog(tk.Toplevel):
         # Max borrow hours is global (app_config), not per-year — reload it
         # alongside the year-scoped settings so the field always reflects the
         # stored value.
-        max_borrow = self._settings.get("vacation.max_borrow_hours", 0.0)
-        self._var_vac_max_borrow.set(f"{float(max_borrow):.1f}")
+        max_borrow = self._model_vacation.get_max_borrow_hours()
+        self._var_vac_max_borrow.set(f"{max_borrow:.1f}")
         self._lbl_vac_status.config(text="")
 
     def _vac_save(self) -> None:
@@ -730,16 +731,18 @@ class SettingsDialog(tk.Toplevel):
         except ValueError:
             messagebox.showerror("Error", "Invalid values.", parent=self)
             return
-        if max_borrow < 0:
+        if not math.isfinite(max_borrow) or max_borrow < 0:
             messagebox.showerror(
                 "Error", "Max borrow hours cannot be negative.", parent=self
             )
             return
         try:
-            self._model_vacation.save_settings(year, hours, carry)
             # Global (non-year) app_config value, persisted via SettingsManager
-            # exactly like the other settings written in _on_save().
+            # exactly like the other settings written in _on_save(). Written
+            # BEFORE save_settings() so the SETTINGS_CHANGED event it publishes
+            # observes the newly-stored cap.
             self._settings.set("vacation.max_borrow_hours", max_borrow)
+            self._model_vacation.save_settings(year, hours, carry)
         except Exception as exc:  # pylint: disable=broad-exception-caught
             # Model errors are unpredictable; reported to the user below.
             logger.exception("Failed to save vacation settings for year=%s", year)

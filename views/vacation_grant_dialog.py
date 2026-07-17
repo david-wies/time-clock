@@ -234,6 +234,10 @@ class VacationGrantDialog(tk.Toplevel):
             return
         grant = self._model.get_grant_by_id(grant_id)
         if grant is None:
+            # The selected grant vanished (e.g. deleted in a race). Reload to
+            # drop the phantom row and reset the form, so a stale ``_editing_id``
+            # from a previously loaded grant can't leak into the next Save.
+            self._reload()
             return
         self._editing_id = grant.id
         self._set_date(grant.date)

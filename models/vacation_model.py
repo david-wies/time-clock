@@ -2,6 +2,7 @@
 
 import json
 import logging
+import math
 import sqlite3
 from datetime import date, datetime
 from typing import Any
@@ -9,7 +10,12 @@ from typing import Any
 from core.events import Event, EventBus
 from core.timeutil import date_to_iso, iso_to_date, period_bounds
 from db.database import Database
-from domain.enums import RecordAction, RecordEntity, VacationType
+from domain.enums import (
+    DEBIT_VACATION_TYPES,
+    RecordAction,
+    RecordEntity,
+    VacationType,
+)
 from domain.types import (
     CarryOverAllowance,
     CarryOverLogEntry,
@@ -24,12 +30,6 @@ from models.errors import raise_if_no_rows
 # next year's pool. Stored JSON-serialized via SettingsManager; default 0.0
 # (no borrowing) preserves the pre-#47 balance behaviour exactly.
 _MAX_BORROW_HOURS_KEY = "vacation.max_borrow_hours"
-
-_DEBIT_VACATION_TYPES = (
-    VacationType.ANNUAL_LEAVE,
-    VacationType.PUBLIC_HOLIDAY,
-    VacationType.SPECIAL_LEAVE,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -447,7 +447,7 @@ class VacationModel:  # pylint: disable=too-many-public-methods
         carry_over = sum(r.hours for r in records if r.vtype == VacationType.CARRY_OVER)
         extra_grant = sum(g.hours for g in self.get_grants_for_year(year))
         used = sum(
-            r.hours * r.charge_rate for r in records if r.vtype in _DEBIT_VACATION_TYPES
+            r.hours * r.charge_rate for r in records if r.vtype in DEBIT_VACATION_TYPES
         )
 
         borrowed_prev = 0.0
@@ -488,7 +488,18 @@ class VacationModel:  # pylint: disable=too-many-public-methods
         if not row:
             return 0.0
         try:
-            value = float(json.loads(row["value"]))
+            parsed = json.loads(row["value"])
+            # Reject booleans (JSON `true`/`false` -> Python bool, which
+            # float() would silently turn into 1.0/0.0) and non-finite values
+            # (JSON `Infinity`/`NaN`, which json.loads accepts) BEFORE the
+            # max() below — either would otherwise widen a bounded borrow into
+            # an unlimited one. Both fall through the existing malformed-value
+            # path to the safe 0.0 default.
+            if isinstance(parsed, bool):
+                raise ValueError("boolean is not a valid borrow-hours value")
+            value = float(parsed)
+            if not math.isfinite(value):
+                raise ValueError("non-finite borrow-hours value")
         except ValueError, TypeError, json.JSONDecodeError:
             logger.warning(
                 "Malformed %s app_config value %r; defaulting to 0.0",

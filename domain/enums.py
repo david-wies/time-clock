@@ -5,6 +5,8 @@ from enum import IntEnum, StrEnum
 __all__ = [
     "WorkType",
     "VacationType",
+    "DEBIT_VACATION_TYPES",
+    "is_debit_vacation_type",
     "Weekday",
     "WarningCode",
     "RECORD_NOT_FOUND_MESSAGE",
@@ -32,6 +34,30 @@ class VacationType(StrEnum):
     SPECIAL_LEAVE = "special_leave"
     UNPAID_LEAVE = "unpaid_leave"
     CARRY_OVER = "carry_over"
+
+
+# Vacation types that actually debit the balance pool. Carry-over and unpaid
+# leave are excluded: carry-over *adds* to the pool and unpaid leave never
+# draws from it, so neither counts toward "used"/"charged" hours. Kept here as
+# the single shared source of truth so models and views classify records the
+# same way (VacationModel.used and the export/vacation-tab charged totals must
+# agree with balance accounting).
+DEBIT_VACATION_TYPES = frozenset(
+    {
+        VacationType.ANNUAL_LEAVE,
+        VacationType.PUBLIC_HOLIDAY,
+        VacationType.SPECIAL_LEAVE,
+    }
+)
+
+
+def is_debit_vacation_type(vtype: VacationType) -> bool:
+    """Return True when a vacation record of this type debits the balance pool.
+
+    Carry-over and unpaid leave return False; they do not consume vacation
+    balance and so contribute zero charged hours.
+    """
+    return vtype in DEBIT_VACATION_TYPES
 
 
 class Weekday(IntEnum):

@@ -26,7 +26,7 @@ from core.hebrew_date import to_hebrew_label as _safe_hebrew
 from core.report import fetch_with_skip_count
 from core.timeutil import MONTH_NAMES as _MONTH_NAMES
 from core.timeutil import duration, to_display_date
-from domain.enums import VacationType, WorkType
+from domain.enums import VacationType, WorkType, is_debit_vacation_type
 from domain.types import SicknessRecord, TimeRecord, VacationRecord
 from models.sickness_model import SicknessModel
 from models.time_clock_model import TimeClockModel
@@ -343,11 +343,18 @@ class ExportDialog(tk.Toplevel):
         if tab == ExportTab.VACATION:
             if not isinstance(rec, VacationRecord):
                 raise TypeError(f"Expected VacationRecord, got {type(rec).__name__}")
+            # Carry-over and unpaid leave don't debit the pool, so they charge
+            # zero hours regardless of charge_rate (see is_debit_vacation_type).
+            charged = (
+                round(rec.hours * rec.charge_rate, 2)
+                if is_debit_vacation_type(rec.vtype)
+                else 0
+            )
             return [
                 to_display_date(rec.date),
                 hebrew,
                 rec.hours,
-                round(rec.hours * rec.charge_rate, 2),
+                charged,
                 _VTYPE_LABELS.get(rec.vtype, str(rec.vtype)),
                 rec.note or "",
             ]
@@ -404,7 +411,14 @@ class ExportDialog(tk.Toplevel):
         columns = self._columns(ExportTab.VACATION)
         vac_records = [r for r in records if isinstance(r, VacationRecord)]
         raw_total = sum((r.hours for r in vac_records), 0.0)
-        charged_total = sum((r.hours * r.charge_rate for r in vac_records), 0.0)
+        charged_total = sum(
+            (
+                r.hours * r.charge_rate
+                for r in vac_records
+                if is_debit_vacation_type(r.vtype)
+            ),
+            0.0,
+        )
         extra_grant, borrowed = self._vacation_summary_extras(records)
 
         def _row(

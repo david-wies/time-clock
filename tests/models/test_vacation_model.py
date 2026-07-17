@@ -651,6 +651,26 @@ def test_vacation_record_accepts_charge_rate_in_range(rate: float) -> None:
     assert rec.charge_rate == rate
 
 
+@pytest.mark.parametrize(
+    "rate",
+    [float("nan"), float("inf"), float("-inf"), True, False, "0.5", None],
+    ids=["nan", "inf", "neg-inf", "bool-true", "bool-false", "str", "none"],
+)
+def test_vacation_record_rejects_malformed_charge_rate(rate: object) -> None:
+    """Non-numeric, boolean, and non-finite charge_rate values are rejected as
+    the same domain validation error as an out-of-range rate — never leaked as
+    an uncaught TypeError (non-numeric/None) nor silently accepted (bool
+    True/False read as 1.0/0.0, or inf/nan slipping past a bare range check)."""
+    with pytest.raises(ValueError, match="Charge rate must be between 0.0 and 1.0."):
+        VacationRecord(
+            None,
+            date(2026, 7, 15),
+            Hours(8.0),
+            VacationType.ANNUAL_LEAVE,
+            charge_rate=rate,
+        )
+
+
 # ──────────── #47: vacation grants (CRUD + pooling) ─────────────────────────
 
 
@@ -746,6 +766,27 @@ def test_get_max_borrow_hours_default_and_roundtrip(
 
     settings_manager.set("vacation.max_borrow_hours", 12.5)
     assert model.get_max_borrow_hours() == 12.5
+
+
+@pytest.mark.parametrize(
+    "raw_value",
+    ["Infinity", "-Infinity", "NaN", "true", "false"],
+    ids=["inf", "neg-inf", "nan", "bool-true", "bool-false"],
+)
+def test_get_max_borrow_hours_rejects_nonfinite_and_bool(
+    db: Database, event_bus: EventBus, raw_value: str
+) -> None:
+    """Non-finite (Infinity/NaN — both accepted by json.loads) and boolean
+    (JSON true/false, a bool being an int subclass) app_config values must NOT
+    widen the borrow cap: each falls back to the safe 0.0 default via the
+    malformed-value path, exactly like a non-numeric string would."""
+    model = VacationModel(db, event_bus)
+    with db.connection() as conn:
+        conn.execute(
+            "INSERT OR REPLACE INTO app_config (key, value) VALUES (?, ?);",
+            ("vacation.max_borrow_hours", raw_value),
+        )
+    assert model.get_max_borrow_hours() == 0.0
 
 
 @pytest.mark.parametrize(

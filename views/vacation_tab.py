@@ -10,7 +10,7 @@ from controllers.vacation_controller import VacationController
 from core.events import Event, EventBus
 from core.hebrew_date import to_hebrew_label as _safe_hebrew
 from core.timeutil import to_display_date
-from domain.enums import VacationType
+from domain.enums import VacationType, is_debit_vacation_type
 from domain.types import VacationRecord
 from models.vacation_model import VacationModel
 from settings import SettingsManager
@@ -306,7 +306,10 @@ class VacationTab(RecordTabMixin, ttk.Frame):
         for rec in records:
             self._insert_record_row(rec)
             total_hours += rec.hours
-            total_charged += rec.hours * rec.charge_rate
+            # Only debit types (annual/holiday/special) draw down the pool;
+            # carry-over and unpaid leave charge zero (see is_debit_vacation_type).
+            if is_debit_vacation_type(rec.vtype):
+                total_charged += rec.hours * rec.charge_rate
 
         if records:
             total_values = list(
@@ -336,7 +339,12 @@ class VacationTab(RecordTabMixin, ttk.Frame):
         disp = to_display_date(rec.date)
         type_label = _VTYPE_LABELS.get(rec.vtype, str(rec.vtype))
         hours_str = _fmt_h(rec.hours)
-        charged_str = _fmt_h(rec.hours * rec.charge_rate)
+        # Carry-over and unpaid leave don't debit the pool, so they report
+        # zero charged hours regardless of charge_rate.
+        charged = (
+            rec.hours * rec.charge_rate if is_debit_vacation_type(rec.vtype) else 0.0
+        )
+        charged_str = _fmt_h(charged)
         note = rec.note or ""
         return (disp, _safe_hebrew(rec.date), type_label, hours_str, charged_str, note)
 
