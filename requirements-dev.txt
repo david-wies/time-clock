@@ -9,7 +9,7 @@ mypy>=2.3.0
 pyright==1.1.411
 # Pinned to match .pre-commit-config.yaml's astral-sh/ruff-pre-commit rev,
 # so CI and local pre-commit enforce the identical ruff version.
-ruff==0.15.21
+ruff==0.15.22
 pylint>=4.0.6
 # Markdown + YAML linters -- whole-project gate (CI + pre-commit). All pinned to
 # match their .pre-commit-config.yaml revs so CI and local pre-commit enforce
