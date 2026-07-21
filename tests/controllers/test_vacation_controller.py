@@ -8,9 +8,10 @@ from controllers.vacation_controller import VacationController
 from core.events import EventBus
 from db.database import Database
 from domain.enums import VacationType, WarningCode
-from domain.types import Hours, VacationRecord
+from domain.types import Hours, VacationGrant, VacationRecord
 from models.time_clock_model import TimeClockModel
 from models.vacation_model import VacationModel
+from settings import SettingsManager
 
 
 @pytest.fixture
@@ -726,3 +727,192 @@ def test_save_record_edit_lookup_read_sqlite_error_is_caught_and_returned(
 
     assert res.ok is False
     assert "Database error" in res.errors[0]
+
+
+# ──────────── #47: charge-weighted over-balance ─────────────────────────────
+
+
+def _uncapped_targets(controller: VacationController, event_bus: EventBus) -> None:
+    """Configure 24h daily targets for every weekday so the per-day hours cap
+    never blocks the records these #47 balance tests exercise (they push large
+    hours deliberately to trip the over-balance / borrow paths, not the daily
+    cap)."""
+    tc_model = TimeClockModel(controller.model.db, event_bus)
+    tc_model.save_work_day_targets({i: 24.0 for i in range(7)})
+
+
+def test_over_balance_check_is_charge_weighted(
+    controller: VacationController, event_bus: EventBus
+) -> None:
+    """The projected-balance check spends hours * charge_rate, not raw hours:
+    a 16h debit at charge_rate=0.5 costs only 8h, so against an 8h allowance it
+    lands exactly on zero remaining and saves without an over-balance prompt."""
+    controller.model.save_settings(2026, 8.0, 0.0)
+    _uncapped_targets(controller, event_bus)
+
+    rec = VacationRecord(
+        None, date(2026, 7, 15), Hours(16.0), VacationType.ANNUAL_LEAVE, charge_rate=0.5
+    )
+    res = controller.save_record(rec)
+
+    assert res.ok is True
+    assert rec.id is not None
+    assert controller.model.calculate_vacation_summary(2026).used == 8.0
+    assert controller.model.calculate_vacation_summary(2026).remaining == 0.0
+
+
+# ──────────── #47: OVER_BORROW_LIMIT hard block vs. confirm flow ─────────────
+
+
+def test_save_over_borrow_cap_is_hard_blocked(
+    controller: VacationController,
+    event_bus: EventBus,
+    settings_manager: SettingsManager,
+) -> None:
+    """With a borrow cap configured, a debit whose projected_remaining drops
+    below -max_borrow is hard-blocked (WarningCode.OVER_BORROW_LIMIT): the
+    result is ok=False with the "Cannot borrow ..." message, the record is NOT
+    persisted, and confirm_over_balance cannot override it (the hard block
+    returns before the confirm path)."""
+    settings_manager.set("vacation.max_borrow_hours", 5.0)
+    controller.model.save_settings(2026, 16.0, 0.0)
+    _uncapped_targets(controller, event_bus)
+
+    # remaining 16, request 24 -> projected_remaining = -8, below the -5 cap.
+    rec = VacationRecord(
+        None, date(2026, 7, 15), Hours(24.0), VacationType.ANNUAL_LEAVE
+    )
+    res = controller.save_record(rec)
+
+    assert res.ok is False
+    # The structured warning code must accompany the user-facing message.
+    assert WarningCode.OVER_BORROW_LIMIT.value in res.errors
+    assert "Cannot borrow 8.0 hours. Max borrow is 5.0 hours." in res.errors
+    assert res.errors == (
+        WarningCode.OVER_BORROW_LIMIT.value,
+        "Cannot borrow 8.0 hours. Max borrow is 5.0 hours.",
+    )
+    assert rec.id is None
+
+    # A confirm re-call must still be hard-blocked, not saved.
+    res_confirm = controller.save_record(rec, confirm_over_balance=True)
+    assert res_confirm.ok is False
+    assert rec.id is None
+    assert controller.model.calculate_vacation_summary(2026).used == 0.0
+
+
+def test_save_within_borrow_cap_uses_confirm_then_retry(
+    controller: VacationController,
+    event_bus: EventBus,
+    settings_manager: SettingsManager,
+) -> None:
+    """An over-balance that stays within the borrow cap is NOT hard-blocked: it
+    falls through to the existing over-balance confirm-then-retry flow (ok only
+    once confirm_over_balance=True)."""
+    settings_manager.set("vacation.max_borrow_hours", 10.0)
+    controller.model.save_settings(2026, 16.0, 0.0)
+    _uncapped_targets(controller, event_bus)
+
+    # remaining 16, request 20 -> projected_remaining = -4, within the -10 cap.
+    rec = VacationRecord(
+        None, date(2026, 7, 15), Hours(20.0), VacationType.ANNUAL_LEAVE
+    )
+    res = controller.save_record(rec)
+    assert res.ok is False
+    assert "OVER_BALANCE_WARNING" in res.errors
+    assert all("Cannot borrow" not in e for e in res.errors)
+    assert rec.id is None
+
+    res_override = controller.save_record(rec, confirm_over_balance=True)
+    assert res_override.ok is True
+    assert rec.id is not None
+
+
+def test_max_borrow_zero_preserves_confirm_flow(
+    controller: VacationController, event_bus: EventBus
+) -> None:
+    """Regression guard: with max_borrow at its 0.0 default, the hard-block
+    branch is skipped entirely, so even a wildly over-balance debit stays a
+    plain confirm-then-retry (never a "Cannot borrow" hard error) exactly as
+    before #47."""
+    controller.model.save_settings(2026, 16.0, 0.0)
+    _uncapped_targets(controller, event_bus)
+    assert controller.model.get_max_borrow_hours() == 0.0
+
+    # 24h (the daily-cap ceiling) against a 16h allowance -> projected -8h.
+    rec = VacationRecord(
+        None, date(2026, 7, 15), Hours(24.0), VacationType.ANNUAL_LEAVE
+    )
+    res = controller.save_record(rec)
+    assert res.ok is False
+    assert "OVER_BALANCE_WARNING" in res.errors
+    assert all("Cannot borrow" not in e for e in res.errors)
+    assert rec.id is None
+
+    res_override = controller.save_record(rec, confirm_over_balance=True)
+    assert res_override.ok is True
+    assert rec.id is not None
+
+
+# ──────────── #47: grant save/delete + validation ───────────────────────────
+
+
+def test_save_grant_insert_happy_path(controller: VacationController) -> None:
+    """save_grant() inserts a valid grant and backfills its DB-generated id."""
+    grant = VacationGrant(None, date(2026, 6, 1), Hours(12.0), note="Bonus")
+    res = controller.save_grant(grant)
+
+    assert res.ok is True
+    assert grant.id is not None
+    assert controller.model.get_grant_by_id(grant.id) is not None
+
+
+def test_save_grant_update_happy_path(controller: VacationController) -> None:
+    """save_grant() on a grant that already has an id updates it in place."""
+    grant = VacationGrant(None, date(2026, 6, 1), Hours(12.0))
+    assert controller.save_grant(grant).ok is True
+    assert grant.id is not None
+
+    edited = dataclasses.replace(grant, hours=6.0)
+    assert controller.save_grant(edited).ok is True
+
+    reread = controller.model.get_grant_by_id(grant.id)
+    assert reread is not None
+    assert reread.hours == 6.0
+
+
+def test_delete_grant_happy_path(controller: VacationController) -> None:
+    """delete_grant() removes a saved grant and returns ok=True."""
+    grant = VacationGrant(None, date(2026, 6, 1), Hours(12.0))
+    assert controller.save_grant(grant).ok is True
+    assert grant.id is not None
+
+    res = controller.delete_grant(grant.id)
+
+    assert res.ok is True
+    assert controller.model.get_grant_by_id(grant.id) is None
+
+
+def test_vacation_grant_construction_rejects_non_positive_hours() -> None:
+    """A grant's hours must be strictly positive; a zero-hour grant cannot even
+    be constructed (the invariant runs in __post_init__)."""
+    with pytest.raises(ValueError, match="Hours must be positive."):
+        VacationGrant(None, date(2026, 6, 1), Hours(0.0))
+
+
+def test_save_grant_defense_in_depth_non_positive_hours_via_bypass(
+    controller: VacationController,
+) -> None:
+    """VacationGrant.__post_init__ makes a non-positive-hours grant impossible
+    to construct normally, but save_grant() still re-checks
+    vacation_grant_invariant_errors() as defense-in-depth for a grant obtained
+    outside this module's control -- simulate that with the object.__setattr__
+    escape hatch and confirm the save is rejected and nothing is persisted."""
+    grant = VacationGrant(None, date(2026, 6, 1), Hours(12.0))
+    object.__setattr__(grant, "hours", 0.0)
+
+    res = controller.save_grant(grant)
+
+    assert res.ok is False
+    assert "positive" in res.errors[0]
+    assert grant.id is None

@@ -280,6 +280,26 @@ class Database:
             );
         """)
 
+        # 10. Vacation grants (ad-hoc extra-hour awards). Idempotent via
+        # IF NOT EXISTS; the v9 migration creates the same table for existing
+        # installs. vacation_record.charge_rate is deliberately NOT added here
+        # — the v9 ADD COLUMN adds it for every install (fresh installs run
+        # migrations from version 0), matching the v5/v7 ADD COLUMN pattern.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS vacation_grant (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                date        TEXT    NOT NULL,
+                hours       REAL    NOT NULL CHECK(hours > 0),
+                note        TEXT,
+                created_at  TEXT    NOT NULL DEFAULT (datetime('now')),
+                updated_at  TEXT    NOT NULL DEFAULT (datetime('now'))
+            );
+        """)
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_vacation_grant_date "
+            "ON vacation_grant(date);"
+        )
+
         # Triggers to update updated_at automatically
         conn.execute("""
             CREATE TRIGGER IF NOT EXISTS trg_time_record_updated_at
@@ -304,6 +324,15 @@ class Database:
             AFTER UPDATE ON sickness_record
             BEGIN
                 UPDATE sickness_record SET updated_at = datetime('now')
+                    WHERE id = NEW.id;
+            END;
+        """)
+
+        conn.execute("""
+            CREATE TRIGGER IF NOT EXISTS trg_vacation_grant_updated_at
+            AFTER UPDATE ON vacation_grant
+            BEGIN
+                UPDATE vacation_grant SET updated_at = datetime('now')
                     WHERE id = NEW.id;
             END;
         """)
@@ -512,3 +541,43 @@ class Database:
                     END;
                 """)
                 cursor.execute("PRAGMA user_version = 8")
+
+        if version < 9:
+            # Add vacation_record.charge_rate (fraction of hours billed to the
+            # balance, 0.0..1.0). No DB CHECK — SQLite ADD COLUMN with a CHECK
+            # is fragile; the 0..1 bound is enforced in the domain invariant
+            # (vacation_record_invariant_errors). Runs for fresh installs too,
+            # exactly like the v5/v7 ADD COLUMN migrations (they start at
+            # version 0 and fall through every `version < N` block), which is
+            # why charge_rate is not in _create_tables().
+            conn.execute(
+                "ALTER TABLE vacation_record "
+                "ADD COLUMN charge_rate REAL NOT NULL DEFAULT 1.0;"
+            )
+            # Create the vacation_grant table/index/trigger for existing
+            # installs. IF NOT EXISTS keeps this idempotent with the
+            # _create_tables() definitions above (fresh installs already have
+            # them by the time this runs).
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS vacation_grant (
+                    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                    date        TEXT    NOT NULL,
+                    hours       REAL    NOT NULL CHECK(hours > 0),
+                    note        TEXT,
+                    created_at  TEXT    NOT NULL DEFAULT (datetime('now')),
+                    updated_at  TEXT    NOT NULL DEFAULT (datetime('now'))
+                );
+            """)
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_vacation_grant_date "
+                "ON vacation_grant(date);"
+            )
+            conn.execute("""
+                CREATE TRIGGER IF NOT EXISTS trg_vacation_grant_updated_at
+                AFTER UPDATE ON vacation_grant
+                BEGIN
+                    UPDATE vacation_grant SET updated_at = datetime('now')
+                        WHERE id = NEW.id;
+                END;
+            """)
+            cursor.execute("PRAGMA user_version = 9")

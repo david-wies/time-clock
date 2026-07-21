@@ -10,7 +10,7 @@ from controllers.vacation_controller import VacationController
 from core.events import Event, EventBus
 from core.hebrew_date import to_hebrew_label as _safe_hebrew
 from core.timeutil import to_display_date
-from domain.enums import VacationType
+from domain.enums import VacationType, is_debit_vacation_type
 from domain.types import VacationRecord
 from models.vacation_model import VacationModel
 from settings import SettingsManager
@@ -22,6 +22,7 @@ from views.tab_widgets import (
     build_add_edit_remove_buttons,
     build_year_month_filter_bar,
 )
+from views.vacation_grant_dialog import VacationGrantDialog
 from views.vacation_record_dialog import VacationRecordDialog
 
 _VTYPE_LABELS: dict[VacationType, str] = {
@@ -70,6 +71,7 @@ class VacationTab(RecordTabMixin, ttk.Frame):
         self._lbl_breakdown: ttk.Label
         self._btn_add: ttk.Button
         self._btn_carry_over: ttk.Button
+        self._btn_grants: ttk.Button
 
         self._build_ui()
         self._refresh()
@@ -140,7 +142,7 @@ class VacationTab(RecordTabMixin, ttk.Frame):
         frame = ttk.Frame(self)
         frame.pack(fill="both", expand=True, padx=4, pady=4)
 
-        cols = ["date", "hebrew_date", "type", "hours", "note"]
+        cols = ["date", "hebrew_date", "type", "hours", "charged", "note"]
 
         self._tree = ttk.Treeview(
             frame,
@@ -162,6 +164,9 @@ class VacationTab(RecordTabMixin, ttk.Frame):
 
         self._tree.column("hours", width=70, minwidth=50, stretch=False, anchor="e")
         self._tree.heading("hours", text="Hours", anchor="center")
+
+        self._tree.column("charged", width=80, minwidth=55, stretch=False, anchor="e")
+        self._tree.heading("charged", text="Charged", anchor="center")
 
         self._tree.column("note", width=200, minwidth=80, stretch=True, anchor="w")
         self._tree.heading("note", text="Note", anchor="center")
@@ -209,6 +214,11 @@ class VacationTab(RecordTabMixin, ttk.Frame):
         )
         self._btn_carry_over.pack(side="left")
 
+        self._btn_grants = ttk.Button(
+            inner, text="Grants…", command=self._do_grants, width=12
+        )
+        self._btn_grants.pack(side="left", padx=(6, 0))
+
     def _bind_shortcuts(self) -> None:
         self._bind_shortcut("<Control-Shift-N>", self._do_add)
         self._bind_shortcut("<Control-e>", self._do_edit)
@@ -226,6 +236,7 @@ class VacationTab(RecordTabMixin, ttk.Frame):
         remaining = summary.remaining
         carry_over = summary.carry_over
         allowance = summary.allowance
+        extra_grant = summary.extra_grant
 
         c = COLORS.get(self._theme_mode, COLORS[ThemeMode.LIGHT])
         if remaining < 0:
@@ -247,7 +258,31 @@ class VacationTab(RecordTabMixin, ttk.Frame):
         parts = [f"allowance: {_fmt_h(allowance)}"]
         if carry_over > 0:
             parts.append(f"carry-over: +{_fmt_h(carry_over)}")
+        if extra_grant > 0:
+            parts.append(f"grants: +{_fmt_h(extra_grant)}")
+        parts.extend(self._borrow_breakdown_parts(used, total_pool))
         self._lbl_breakdown.config(text="  ".join(parts))
+
+    def _borrow_breakdown_parts(self, used: float, total_pool: float) -> list[str]:
+        """Returns the borrow-related breakdown fragments (borrowed hours for
+        the year and remaining borrow headroom), or an empty list when no
+        borrow cap is configured.
+
+        Current-year borrowed is the amount this year has overdrawn beyond its
+        own pool, capped by the configured ``vacation.max_borrow_hours``:
+        ``max(0, min(used - total_pool, max_borrow))``. Headroom is what is
+        left of that cap. Both are hidden entirely when max_borrow is 0 (the
+        default), so the breakdown line matches the pre-#47 layout.
+        """
+        max_borrow = self.model.get_max_borrow_hours()
+        if max_borrow <= 0:
+            return []
+        borrowed = max(0.0, min(used - total_pool, max_borrow))
+        headroom = max_borrow - borrowed
+        return [
+            f"borrowed this yr: {_fmt_h(borrowed)}",
+            f"borrow headroom: {_fmt_h(headroom)}",
+        ]
 
     # ─────────────────────────── Treeview Population ────────────────────────
 
@@ -267,16 +302,27 @@ class VacationTab(RecordTabMixin, ttk.Frame):
             records = [r for r in year_records if r.date.month == month]
 
         total_hours = 0.0
+        total_charged = 0.0
         for rec in records:
             self._insert_record_row(rec)
             total_hours += rec.hours
+            # Only debit types (annual/holiday/special) draw down the pool;
+            # carry-over and unpaid leave charge zero (see is_debit_vacation_type).
+            if is_debit_vacation_type(rec.vtype):
+                total_charged += rec.hours * rec.charge_rate
 
         if records:
+            total_values = list(
+                self._make_row_values(None, f"Total: {_fmt_h(total_hours)}")
+            )
+            # Mirror the per-row layout: charged total sits under the
+            # "Charged" column (index 4) alongside the raw-hours total.
+            total_values[4] = _fmt_h(total_charged)
             self._tree.insert(
                 "",
                 "end",
                 iid="__total__",
-                values=self._make_row_values(None, f"Total: {_fmt_h(total_hours)}"),
+                values=tuple(total_values),
                 tags=("total",),
             )
             c = COLORS.get(self._theme_mode, COLORS[ThemeMode.LIGHT])
@@ -288,13 +334,19 @@ class VacationTab(RecordTabMixin, ttk.Frame):
         self, rec: VacationRecord | None, override_date: str = ""
     ) -> tuple:
         if rec is None:
-            return (override_date, "", "", "", "")
+            return (override_date, "", "", "", "", "")
 
         disp = to_display_date(rec.date)
         type_label = _VTYPE_LABELS.get(rec.vtype, str(rec.vtype))
         hours_str = _fmt_h(rec.hours)
+        # Carry-over and unpaid leave don't debit the pool, so they report
+        # zero charged hours regardless of charge_rate.
+        charged = (
+            rec.hours * rec.charge_rate if is_debit_vacation_type(rec.vtype) else 0.0
+        )
+        charged_str = _fmt_h(charged)
         note = rec.note or ""
-        return (disp, _safe_hebrew(rec.date), type_label, hours_str, note)
+        return (disp, _safe_hebrew(rec.date), type_label, hours_str, charged_str, note)
 
     def _insert_record_row(self, rec: VacationRecord) -> None:
         if rec.vtype == VacationType.PUBLIC_HOLIDAY:
@@ -400,4 +452,16 @@ class VacationTab(RecordTabMixin, ttk.Frame):
             controller=self.controller,
             model=self.model,
             to_year=self._selected_year,
+        )
+
+    def _do_grants(self) -> None:
+        # The dialog manages its own grant list and mutates via the
+        # controller, which publishes Event.VACATION_CHANGED; this tab's
+        # existing subscription (see __init__) refreshes the balance summary
+        # and record tree once the modal closes.
+        VacationGrantDialog(
+            self,
+            controller=self.controller,
+            model=self.model,
+            year=self._selected_year,
         )

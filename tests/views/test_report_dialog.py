@@ -159,9 +159,14 @@ def test_get_report_data_period_summary_failure_is_logged_not_swallowed(
 # ─────────── skipped_record_count surfaced to the user ───────────────────────
 
 
-def _make_report_data(skipped_record_count: int = 0) -> ReportData:
+def _make_report_data(
+    skipped_record_count: int = 0,
+    extra_grant: float = 0.0,
+    borrowed_prev: float = 0.0,
+) -> ReportData:
     """Minimal but fully-populated ReportData for preview/export tests --
-    only skipped_record_count varies between cases."""
+    only skipped_record_count and the vacation grant/borrow figures vary
+    between cases."""
     return ReportData(
         period_label="June 2026",
         period_type=PeriodType.MONTH,
@@ -175,6 +180,8 @@ def _make_report_data(skipped_record_count: int = 0) -> ReportData:
         overtime_rate=1.0,
         vac_allowance=0.0,
         vac_carry_over=0.0,
+        vac_extra_grant=extra_grant,
+        vac_borrowed_prev=borrowed_prev,
         vac_total_pool=0.0,
         vac_used=0.0,
         vac_remaining=0.0,
@@ -197,6 +204,20 @@ def test_build_preview_text_warns_when_records_skipped() -> None:
     dialog = ReportDialog.__new__(ReportDialog)
     text = dialog._build_preview_text(_make_report_data(skipped_record_count=2))
     assert "2 record(s) skipped due to data errors" in text
+
+
+def test_build_preview_text_includes_extra_grant_and_borrowed_lines() -> None:
+    """The vacation summary must surface the ad-hoc grant total and the hours
+    borrowed forward by the previous year — both carried on ReportData
+    (alongside the other vac_* figures), not fetched from the vacation model."""
+    dialog = ReportDialog.__new__(ReportDialog)
+    text = dialog._build_preview_text(
+        _make_report_data(extra_grant=12.0, borrowed_prev=5.0)
+    )
+    assert "Extra grant:" in text
+    assert "12.0 h" in text
+    assert "Borrowed (prev yr):" in text
+    assert "5.0 h" in text
 
 
 def _make_export_pdf_dialog(data: ReportData) -> ReportDialog:

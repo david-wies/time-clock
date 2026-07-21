@@ -84,6 +84,8 @@ class ReportData:
     # Vacation
     vac_allowance: float
     vac_carry_over: float
+    vac_extra_grant: float
+    vac_borrowed_prev: float
     vac_total_pool: float
     vac_used: float
     vac_remaining: float
@@ -278,6 +280,8 @@ def period_summary(
         overtime_rate=overtime_rate,
         vac_allowance=vac.allowance,
         vac_carry_over=vac.carry_over,
+        vac_extra_grant=vac.extra_grant,
+        vac_borrowed_prev=vac.borrowed_prev,
         vac_total_pool=vac.total_pool,
         vac_used=vac.used,
         vac_remaining=vac.remaining,

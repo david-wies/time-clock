@@ -26,7 +26,7 @@ from core.hebrew_date import to_hebrew_label as _safe_hebrew
 from core.report import fetch_with_skip_count
 from core.timeutil import MONTH_NAMES as _MONTH_NAMES
 from core.timeutil import duration, to_display_date
-from domain.enums import VacationType, WorkType
+from domain.enums import VacationType, WorkType, is_debit_vacation_type
 from domain.types import SicknessRecord, TimeRecord, VacationRecord
 from models.sickness_model import SicknessModel
 from models.time_clock_model import TimeClockModel
@@ -313,7 +313,7 @@ class ExportDialog(tk.Toplevel):
                 "Net Hours",
             ]
         elif tab == ExportTab.VACATION:
-            cols = ["Date", "Hebrew Date", "Hours", "Type", "Note"]
+            cols = ["Date", "Hebrew Date", "Hours", "Charged Hours", "Type", "Note"]
         else:  # sickness
             cols = ["Date", "Hebrew Date", "Hours", "Note"]
         return cols
@@ -343,10 +343,18 @@ class ExportDialog(tk.Toplevel):
         if tab == ExportTab.VACATION:
             if not isinstance(rec, VacationRecord):
                 raise TypeError(f"Expected VacationRecord, got {type(rec).__name__}")
+            # Carry-over and unpaid leave don't debit the pool, so they charge
+            # zero hours regardless of charge_rate (see is_debit_vacation_type).
+            charged = (
+                round(rec.hours * rec.charge_rate, 2)
+                if is_debit_vacation_type(rec.vtype)
+                else 0
+            )
             return [
                 to_display_date(rec.date),
                 hebrew,
                 rec.hours,
+                charged,
                 _VTYPE_LABELS.get(rec.vtype, str(rec.vtype)),
                 rec.note or "",
             ]
@@ -378,6 +386,57 @@ class ExportDialog(tk.Toplevel):
                 total += rec.hours
         return total
 
+    def _vacation_summary_extras(
+        self, records: list[_AnyRecord]
+    ) -> tuple[float, float]:
+        """Return (extra_grant, borrowed) hours summed across every distinct
+        year present in `records`.
+
+        Both figures are year-level (a vacation summary is computed per year),
+        so a multi-year export sums each year's ad-hoc grant total and the
+        hours the previous year borrowed forward (``borrowed_prev``).
+        """
+        extra_grant = 0.0
+        borrowed = 0.0
+        for year in sorted({rec.date.year for rec in records}):
+            summary = self._model_vacation.calculate_vacation_summary(year)
+            extra_grant += summary.extra_grant
+            borrowed += summary.borrowed_prev
+        return extra_grant, borrowed
+
+    def _vacation_summary_rows(self, records: list[_AnyRecord]) -> list[list]:
+        """Build the vacation summary block: raw + charged hour totals, plus
+        extra-grant and borrowed lines, aligned to the vacation column layout.
+        """
+        columns = self._columns(ExportTab.VACATION)
+        vac_records = [r for r in records if isinstance(r, VacationRecord)]
+        raw_total = sum((r.hours for r in vac_records), 0.0)
+        charged_total = sum(
+            (
+                r.hours * r.charge_rate
+                for r in vac_records
+                if is_debit_vacation_type(r.vtype)
+            ),
+            0.0,
+        )
+        extra_grant, borrowed = self._vacation_summary_extras(records)
+
+        def _row(
+            label: str, hours_val: float, charged_val: float | None = None
+        ) -> list:
+            row: list = [""] * len(columns)
+            row[0] = label
+            row[2] = f"{hours_val:.1f}h"  # "Hours" column
+            if charged_val is not None:
+                row[3] = f"{charged_val:.1f}h"  # "Charged Hours" column
+            return row
+
+        return [
+            _row("Total", raw_total, charged_total),
+            _row("Extra Grant", extra_grant),
+            _row("Borrowed (prev yr)", borrowed),
+        ]
+
     @staticmethod
     def _file_dialog_params(fmt: ExportFormat) -> tuple[list[tuple[str, str]], str]:
         if fmt == ExportFormat.EXCEL:
@@ -405,6 +464,11 @@ class ExportDialog(tk.Toplevel):
                     current_month = month_key
 
                 writer.writerow(self._record_to_values(rec, tab))
+
+            if tab == ExportTab.VACATION:
+                writer.writerow([])  # blank separator before the summary block
+                for summary_row in self._vacation_summary_rows(records):
+                    writer.writerow(summary_row)
 
     # ─────────────────────────── Excel Export ───────────────────────────────
 
@@ -452,7 +516,6 @@ class ExportDialog(tk.Toplevel):
         table_data: list[list] = [columns]
         month_header_rows: set[int] = set()
 
-        total = 0.0
         current_month: tuple[int, int] | None = None
 
         for rec in records:
@@ -467,26 +530,23 @@ class ExportDialog(tk.Toplevel):
 
             table_data.append(self._record_to_values(rec, tab))
 
-            if tab == ExportTab.TIME:
-                if not isinstance(rec, TimeRecord):
-                    raise TypeError(f"Expected TimeRecord, got {type(rec).__name__}")
-                if rec.end_time:
-                    total += duration(rec.start_time, rec.end_time, rec.break_minutes)
-            else:
-                if not isinstance(rec, (VacationRecord, SicknessRecord)):
-                    raise TypeError(
-                        "Expected VacationRecord or SicknessRecord, got "
-                        f"{type(rec).__name__}"
-                    )
-                total += rec.hours
+        # ── Summary rows ─────────────────────────────────────────────────────
+        # Vacation gets a multi-line block (raw + charged totals, extra grant,
+        # borrowed); time/sickness keep the single "Total: Xh" row.  Only the
+        # single-total tabs need `total`, so it is computed there rather than
+        # accumulated in the shared loop above (vacation would discard it).
+        if tab == ExportTab.VACATION:
+            summary_rows = self._vacation_summary_rows(records)
+        else:
+            decimals = 2 if tab == ExportTab.TIME else 1
+            total = self._compute_total(records, tab)
+            total_row: list = [""] * len(columns)
+            total_row[0] = f"Total: {total:.{decimals}f}h"
+            summary_rows = [total_row]
 
-        # ── Total row ────────────────────────────────────────────────────────
-        decimals = 2 if tab == ExportTab.TIME else 1
-        total_str = f"Total: {total:.{decimals}f}h"
-        total_row: list = [""] * len(columns)
-        total_row[0] = total_str
-        total_row_idx = len(table_data)
-        table_data.append(total_row)
+        summary_start_idx = len(table_data)
+        table_data.extend(summary_rows)
+        summary_row_indices = set(range(summary_start_idx, len(table_data)))
 
         # ── Table style ──────────────────────────────────────────────────────
         style_cmds: list = [
@@ -506,19 +566,18 @@ class ExportDialog(tk.Toplevel):
             ("RIGHTPADDING", (0, 0), (-1, -1), 5),
             # Grid
             ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
-            # Total row
-            ("FONTNAME", (0, total_row_idx), (-1, total_row_idx), "Helvetica-Bold"),
-            (
-                "BACKGROUND",
-                (0, total_row_idx),
-                (-1, total_row_idx),
-                colors.HexColor("#e0e0e0"),
-            ),
         ]
+
+        # Summary rows (total, plus vacation extra-grant/borrowed lines)
+        for idx in summary_row_indices:
+            style_cmds += [
+                ("FONTNAME", (0, idx), (-1, idx), "Helvetica-Bold"),
+                ("BACKGROUND", (0, idx), (-1, idx), colors.HexColor("#e0e0e0")),
+            ]
 
         # Alternating row backgrounds for data rows
         for i in range(1, len(table_data)):
-            if i in month_header_rows or i == total_row_idx:
+            if i in month_header_rows or i in summary_row_indices:
                 continue
             bg = colors.white if i % 2 == 1 else colors.HexColor("#f5f5f5")
             style_cmds.append(("BACKGROUND", (0, i), (-1, i), bg))
